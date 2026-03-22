@@ -76,6 +76,19 @@ fn force_crlf(path: &Path) {
         .unwrap_or_else(|error| panic!("failed to write CRLF content to '{}': {error}", path.display()));
 }
 
+fn count_overlay_files(target: &Path) -> usize {
+    let overlay_root = target.join(".bootstrap-overlays");
+    if !overlay_root.exists() {
+        return 0;
+    }
+
+    walkdir::WalkDir::new(overlay_root)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count()
+}
+
 #[test]
 fn bootstrap_creates_valid_workspace() {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
@@ -264,10 +277,87 @@ fn bootstrap_rerun_preserves_observable_stability() {
         .filter(|e| e.file_type().is_file())
         .count();
 
+    let overlay_count = count_overlay_files(target);
+
     assert!(
         count_second <= count_first + 2,
         "File count grew unexpectedly: first={count_first}, second={count_second}"
     );
+    assert_eq!(
+        overlay_count, 0,
+        "Rerun produced unexpected overlay files: {overlay_count}"
+    );
+}
+
+#[test]
+fn bootstrap_rerun_preserves_stability_with_crlf_text_sources() {
+    let skill_copy_root = tempfile::tempdir().expect("failed to create skill copy dir");
+    let copied_skill = skill_copy_root.path().join("prd-to-product-agents");
+    copy_dir_recursive(&skill_root(), &copied_skill);
+
+    force_crlf(&copied_skill.join("templates/workspace/.github/agents/CONTEXT_ZONE_DIVIDER.txt"));
+    force_crlf(&copied_skill.join("templates/workspace/.github/immutable-files.txt"));
+    force_crlf(&copied_skill.join("templates/workspace/reporting-ui/vendor/LICENSE-xlsx.txt"));
+
+    let workspace = tempfile::tempdir().expect("failed to create target dir");
+    let sr_str = copied_skill.to_string_lossy();
+    let tgt_str = workspace.path().to_string_lossy();
+    let common_args = [
+        "--skill-root",
+        &*sr_str,
+        "bootstrap",
+        "workspace",
+        "--target",
+        &*tgt_str,
+        "--project-name",
+        "Idempotent CRLF Test",
+        "--skip-git",
+        "--skip-db-init",
+    ];
+
+    let first = Command::new(cli_binary())
+        .args(&common_args)
+        .output()
+        .expect("first bootstrap failed to execute");
+    assert!(
+        first.status.success(),
+        "First bootstrap failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let count_first: usize = walkdir::WalkDir::new(workspace.path())
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count();
+
+    let second = Command::new(cli_binary())
+        .args(&common_args)
+        .output()
+        .expect("second bootstrap failed to execute");
+    assert!(
+        second.status.success(),
+        "Second bootstrap failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let count_second: usize = walkdir::WalkDir::new(workspace.path())
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count();
+
+    let overlay_count = count_overlay_files(workspace.path());
+
+    assert!(
+        count_second <= count_first + 2,
+        "File count grew unexpectedly for CRLF rerun: first={count_first}, second={count_second}"
+    );
+    assert_eq!(
+        overlay_count, 0,
+        "CRLF rerun produced unexpected overlay files: {overlay_count}"
+    );
+    assert_generated_workspace_has_lf_text_files(workspace.path());
 }
 
 #[test]

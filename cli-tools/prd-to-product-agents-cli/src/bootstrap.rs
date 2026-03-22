@@ -117,6 +117,23 @@ fn copy_template_file(source: &Path, target: &Path) -> Result<()> {
     }
 }
 
+fn hash_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn template_compare_sha256(path: &Path) -> Result<String> {
+    let bytes = fs::read(path)?;
+    if is_utf8_text(&bytes) {
+        let content = std::str::from_utf8(&bytes)
+            .context("template text file became invalid UTF-8 during compare")?;
+        Ok(hash_bytes(util::normalize_lf(content).as_bytes()))
+    } else {
+        Ok(hash_bytes(&bytes))
+    }
+}
+
 // ── Bootstrap workspace ──────────────────────────────────────────
 
 pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
@@ -223,8 +240,8 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
             manifest.set(&relative, "dynamic_generated", "skill", "keep");
         } else {
             // Check for differences
-            let source_hash = file_sha256(source)?;
-            let target_hash = file_sha256(&target_file)?;
+            let source_hash = template_compare_sha256(source)?;
+            let target_hash = template_compare_sha256(&target_file)?;
 
             if source_hash != target_hash {
                 if relative == "AGENTS.md" || relative == ".instructions.md" {
@@ -724,8 +741,8 @@ fn dry_run(template_root: &Path, target_root: &Path) -> Result<()> {
         } else if DYNAMIC_GENERATED.contains(&relative.as_str()) {
             would_skip += 1;
         } else {
-            let sh = file_sha256(source)?;
-            let th = file_sha256(&target_file)?;
+            let sh = template_compare_sha256(source)?;
+            let th = template_compare_sha256(&target_file)?;
             if sh != th {
                 println!("  {} {relative} (collision)", "OVERLAY:".yellow());
                 would_overlay += 1;
