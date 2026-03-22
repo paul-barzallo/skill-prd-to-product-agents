@@ -8,27 +8,108 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
-<!-- skill-version: 1.0.0 -->
-
 # prd-to-product-agents
 
 Use this skill when the user wants to install or maintain the `prd-to-product-agents` workspace template.
 
-## Scope model
+## Agent execution requirements
 
-Keep these scopes separate:
+When this skill is invoked, treat it as an operating contract, not as background reading.
 
-| Scope | Location | Purpose |
-| --- | --- | --- |
-| Project repo | repository root, `docs/`, `cli-tools/skill-dev-cli/` | Develop, test, and release the skill |
-| Skill package | `.agents/skills/prd-to-product-agents/` | Installable skill, bootstrap CLI, template, and package docs |
-| Deployed workspace | generated target workspace | Runtime agents, governance, state files, and runtime CLI |
+- Read this file before answering.
+- Apply its terminology and command semantics in the same turn.
+- Do not stop at an acknowledgement such as `already read`, `ya lo lei`, or a summary of the file.
+- The first substantive reply after reading this skill must do one of these things:
+  - perform the requested task
+  - explain the concrete next action you are taking under this skill
+  - ask for the single missing input that blocks execution
+- If the task concerns bootstrap, validation, governance, or readiness, name the exact command or status model that applies.
+- Do not introduce repo-maintenance scope, packaging scope, or other meta-context unless the user explicitly asks for it.
+
+## Forbidden response pattern
+
+These are failures when this skill has been invoked:
+
+- replying only that the skill was read
+- paraphrasing the skill without applying it to the user request
+- adding unrelated scope explanations about repository maintenance or skill packaging
+- claiming a workspace is ready when the skill only establishes that it is `bootstrapped` or structurally valid
+
+## Required output contract
+
+When this skill is invoked, the agent response must include these literal sections:
+
+- `Status`
+- `User command`
+- `Workspace deployment touched`
+- `Completed tasks`
+- `Failed step`
+- `Failure reason`
+- `Next action`
+
+Rules for those sections:
+
+- `User command` must tell the user, literally and concretely, to run `bootstrap-from-prd` with `pm-orchestrator` and attach the PRD in the same request.
+- `Workspace deployment touched` must describe what the skill changed in the deployed workspace or say `none yet` if no workspace files were changed.
+- If bootstrap ran, `Workspace deployment touched` must mention the target workspace path and any generated or updated deployment artifacts that apply, including `.state/bootstrap-report.md`, `.state/bootstrap-manifest.txt`, and `.github/workspace-capabilities.yaml`.
+- `Completed tasks` must list only the steps that actually finished.
+- If the workflow failed or stopped early, `Failed step` and `Failure reason` are mandatory and must be specific.
+- If the workflow completed successfully, set `Failed step: none` and `Failure reason: none`.
+- `Next action` must point to the next safe step, not a generic closing sentence.
+
+## Required command wording
+
+When the user needs the next command to continue product creation from a PRD,
+the response must include this instruction in substance, without paraphrasing it
+away:
+
+`Run bootstrap-from-prd with pm-orchestrator and attach the PRD file in the same request.`
+
+If the workspace has not been bootstrapped yet, also state that the workspace
+must be bootstrapped first and use the bootstrap command from this skill.
+
+## Required examples
+
+### Good output after successful workspace bootstrap
+
+```text
+Status: done
+User command: Run bootstrap-from-prd with pm-orchestrator and attach the PRD file in the same request.
+Workspace deployment touched: Bootstrapped workspace at <target>; wrote .state/bootstrap-report.md, .state/bootstrap-manifest.txt, and .github/workspace-capabilities.yaml.
+Completed tasks:
+- preflight dependency detection completed
+- workspace bootstrap completed
+- structural validation completed
+Failed step: none
+Failure reason: none
+Next action: Read .state/bootstrap-report.md, confirm Governance status and Readiness status, then run bootstrap-from-prd with pm-orchestrator and attach the PRD.
+```
+
+### Good output after partial or failed execution
+
+```text
+Status: partial
+User command: Run bootstrap-from-prd with pm-orchestrator and attach the PRD file in the same request.
+Workspace deployment touched: Bootstrapped workspace at <target>; wrote .state/bootstrap-report.md and .github/workspace-capabilities.yaml; .state/bootstrap-manifest.txt was not completed.
+Completed tasks:
+- preflight dependency detection completed
+- target workspace creation completed
+Failed step: bootstrap workspace manifest finalization
+Failure reason: sqlite3 was unavailable and the workflow stopped before all post-bootstrap steps completed.
+Next action: Review .state/bootstrap-report.md, resolve the blocking dependency or rerun bootstrap in degraded mode if supported, then continue with bootstrap-from-prd using the PRD attachment.
+```
+
+### Bad output
+
+```text
+I read the skill and understand it.
+```
 
 ## State vocabulary
 
 Use these labels consistently:
 
-- `template`: content inside the skill package template
+- `template`: content inside the bootstrap template
 - `bootstrapped`: workspace generated locally but still pending local configuration
 - `configured`: placeholders removed and governance configured locally
 - `production-ready`: configured workspace with hardened governance enabled

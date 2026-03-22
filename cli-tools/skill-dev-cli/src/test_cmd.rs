@@ -461,12 +461,12 @@ pub fn smoke(skill_root: &Path, args: SmokeArgs) -> Result<()> {
         failed += 1;
     }
 
-    print!("  [9] VERSION consistency... ");
+    print!("  [9] Package version metadata... ");
     let version_args = vec![
         "--skill-root".to_string(),
         skill_root_display.clone(),
         "validate".to_string(),
-        "skill-version".to_string(),
+        "version-metadata".to_string(),
     ];
     let version_result = run_executable(&skill_cli, &version_args, None)?;
     if version_result.success {
@@ -724,7 +724,7 @@ pub struct ReleaseGateArgs {
 
 /// Aggregated release-blocking validation chain.
 ///
-/// Runs in order: unit → skill-version → package-hygiene → platform-claims
+/// Runs in order: unit → version-metadata → package-hygiene → platform-claims
 /// → smoke (bootstrap + validate + encoding + assembly).
 /// Fails immediately on the first error so CI gets a clear signal.
 pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
@@ -750,12 +750,12 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         }
     }
 
-    // Step 2: skill-version
+    // Step 2: version-metadata
     step += 1;
-    print!("  [{step}] Skill version consistency... ");
+    print!("  [{step}] Package version metadata... ");
     let version_args = vec![
         "--skill-root".to_string(), skill_root_str.clone(),
-        "validate".to_string(), "skill-version".to_string(),
+        "validate".to_string(), "version-metadata".to_string(),
     ];
     let result = run_executable(&skill_cli, &version_args, None)?;
     if result.success {
@@ -763,7 +763,7 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         passed += 1;
     } else {
         println!("{}", "FAIL".red());
-        bail!("Release gate blocked at step {step} (skill-version):\n{}", result.combined_output());
+        bail!("Release gate blocked at step {step} (package version metadata):\n{}", result.combined_output());
     }
 
     // Step 3: package hygiene

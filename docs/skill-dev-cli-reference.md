@@ -47,7 +47,7 @@ Run the aggregated release-blocking validation chain. The command stops at the
 first failure and runs, in order:
 
 1. `test unit`
-2. `validate skill-version`
+2. `validate version-metadata` for package `VERSION` metadata
 3. `validate package-hygiene`
 4. `validate platform-claims`
 5. `test smoke`

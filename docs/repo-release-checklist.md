@@ -5,7 +5,7 @@ the `prd-to-product-agents` skill.
 
 ## 1. Version and contract integrity
 
-- Confirm `VERSION` matches the `skill-version:` marker in `SKILL.md`.
+- Confirm `VERSION` is current for the repository release you are preparing.
 - Confirm packaged artifacts and their documentation still match the current release contract when packaging changed.
 - Review recent Markdown edits for drift inside repository-level documentation and release guidance.
 
@@ -28,7 +28,7 @@ the `prd-to-product-agents` skill.
 - Confirm `validate all` checks package integrity, template encoding, and agent assembly consistency.
 - Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate package-hygiene`.
 - Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate platform-claims`.
-- Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate skill-version`.
+- Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-metadata` to verify `VERSION` is readable and present.
 
 ## 4. Packaging and scope review
 

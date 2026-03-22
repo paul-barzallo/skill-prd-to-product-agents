@@ -23,6 +23,7 @@ lo requiere de forma explicita.
 1. `cli-tools/*/target/` y `cli-tools/*/target-staging/` son basura de compilacion local. Nunca forman parte del entregable fuente.
 2. `bin/` contiene binarios publicables del scope proyecto.
 3. No edites manualmente binarios, checksums o bundles publicados salvo que la tarea sea explicitamente una actualizacion de release.
+4. No cambies `VERSION` ni ninguna version publicada por ajustes menores, documentacion o cambios de mantenimiento normales. La version solo se actualiza como parte explicita de un push o release pedido por el humano.
 
 ## 4. Validacion minima obligatoria
 

@@ -81,12 +81,12 @@ Validate platform compatibility claims.
 prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate platform-claims
 ```
 
-### `validate skill-version`
+### `validate version-metadata`
 
-Verify VERSION file matches SKILL.md.
+Verify `VERSION` is present and readable for the packaged skill.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate skill-version
+prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-metadata
 ```
 
 ### `clean workspace`

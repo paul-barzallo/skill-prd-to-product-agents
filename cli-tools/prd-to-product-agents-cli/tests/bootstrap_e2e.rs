@@ -39,6 +39,43 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
     }
 }
 
+fn assert_generated_workspace_has_lf_text_files(target: &Path) {
+    let extensions = ["md", "yaml", "yml", "json", "txt"];
+    let mut encoding_issues = Vec::new();
+    for entry in walkdir::WalkDir::new(target)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !extensions.contains(&ext) {
+            continue;
+        }
+        let bytes = fs::read(path).unwrap();
+        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+            encoding_issues.push(format!("BOM: {}", path.display()));
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        if text.contains("\r\n") {
+            encoding_issues.push(format!("CRLF: {}", path.display()));
+        }
+    }
+    assert!(
+        encoding_issues.is_empty(),
+        "Encoding issues in generated workspace:\n  {}",
+        encoding_issues.join("\n  ")
+    );
+}
+
+fn force_crlf(path: &Path) {
+    let content = fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read '{}' for CRLF rewrite: {error}", path.display()));
+    let crlf = content.replace("\r\n", "\n").replace('\n', "\r\n");
+    fs::write(path, crlf)
+        .unwrap_or_else(|error| panic!("failed to write CRLF content to '{}': {error}", path.display()));
+}
+
 #[test]
 fn bootstrap_creates_valid_workspace() {
     let tmp = tempfile::tempdir().expect("failed to create temp dir");
@@ -125,32 +162,7 @@ fn bootstrap_creates_valid_workspace() {
         "workspace-capabilities.yaml not generated"
     );
 
-    let extensions = ["md", "yaml", "yml", "json", "txt"];
-    let mut encoding_issues = Vec::new();
-    for entry in walkdir::WalkDir::new(target)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
-        let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        if !extensions.contains(&ext) {
-            continue;
-        }
-        let bytes = fs::read(path).unwrap();
-        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
-            encoding_issues.push(format!("BOM: {}", path.display()));
-        }
-        let text = String::from_utf8_lossy(&bytes);
-        if text.contains("\r\n") {
-            encoding_issues.push(format!("CRLF: {}", path.display()));
-        }
-    }
-    assert!(
-        encoding_issues.is_empty(),
-        "Encoding issues in generated workspace:\n  {}",
-        encoding_issues.join("\n  ")
-    );
+    assert_generated_workspace_has_lf_text_files(target);
 
     let report =
         fs::read_to_string(state_dir.join("bootstrap-report.md")).expect("report should be readable");
@@ -160,6 +172,43 @@ fn bootstrap_creates_valid_workspace() {
     assert!(report.contains("Governance status: pending_configuration"));
     assert!(report.contains("Readiness status: not_ready"));
     assert!(report.contains("governance configure"));
+}
+
+#[test]
+fn bootstrap_normalizes_crlf_text_sources() {
+    let skill_copy_root = tempfile::tempdir().expect("failed to create skill copy dir");
+    let copied_skill = skill_copy_root.path().join("prd-to-product-agents");
+    copy_dir_recursive(&skill_root(), &copied_skill);
+
+    force_crlf(&copied_skill.join("templates/workspace/.github/agents/CONTEXT_ZONE_DIVIDER.txt"));
+    force_crlf(&copied_skill.join("templates/workspace/.github/immutable-files.txt"));
+    force_crlf(&copied_skill.join("templates/workspace/reporting-ui/vendor/LICENSE-xlsx.txt"));
+
+    let workspace = tempfile::tempdir().expect("failed to create target dir");
+    let output = Command::new(cli_binary())
+        .args([
+            "--skill-root",
+            &copied_skill.to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &workspace.path().to_string_lossy(),
+            "--project-name",
+            "CRLF Normalization Test",
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    assert!(
+        output.status.success(),
+        "bootstrap failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    assert_generated_workspace_has_lf_text_files(workspace.path());
 }
 
 #[test]

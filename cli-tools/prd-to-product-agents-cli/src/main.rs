@@ -69,8 +69,8 @@ enum ValidateCommands {
     PackageHygiene,
     /// Validate platform compatibility claims
     PlatformClaims,
-    /// Verify VERSION file matches SKILL.md
-    SkillVersion,
+    /// Validate package VERSION metadata
+    VersionMetadata,
 }
 
 // ── Clean sub-commands ───────────────────────────────────────────
@@ -111,7 +111,7 @@ fn execute(command: Commands, skill_root: &std::path::Path) -> anyhow::Result<()
             ValidateCommands::Generated(args) => validate::generated(skill_root, args),
             ValidateCommands::PackageHygiene => validate::package_hygiene(skill_root),
             ValidateCommands::PlatformClaims => validate::platform_claims(skill_root),
-            ValidateCommands::SkillVersion => validate::skill_version(skill_root),
+            ValidateCommands::VersionMetadata => validate::version_metadata(skill_root),
         },
         Commands::Clean { sub } => match sub {
             CleanCommands::Workspace(args) => clean::workspace(skill_root, args),

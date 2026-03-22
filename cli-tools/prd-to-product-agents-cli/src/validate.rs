@@ -41,8 +41,8 @@ pub fn all(skill_root: &Path) -> Result<()> {
         }
     }
 
-    print!("  Skill version... ");
-    match skill_version(skill_root) {
+    print!("  Package version metadata... ");
+    match version_metadata(skill_root) {
         Ok(()) => println!("{}", "PASS".green()),
         Err(e) => {
             println!("{} {e}", "FAIL".red());
@@ -691,23 +691,14 @@ pub fn platform_claims(skill_root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Verify VERSION file matches SKILL.md skill-version.
-pub fn skill_version(skill_root: &Path) -> Result<()> {
+/// Verify VERSION metadata is present and readable for the packaged skill.
+pub fn version_metadata(skill_root: &Path) -> Result<()> {
     let version = util::read_version(skill_root)?;
 
-    let skill_md = skill_root.join("SKILL.md");
-    if !skill_md.exists() {
-        bail!("SKILL.md not found at {}", skill_md.display());
+    if version.is_empty() {
+        bail!("VERSION is empty");
     }
 
-    let content = fs::read_to_string(&skill_md)?;
-    let expected = format!("skill-version: {version}");
-    if !content.contains(&expected) {
-        bail!(
-            "VERSION ({version}) does not match SKILL.md skill-version"
-        );
-    }
-
-    println!("  VERSION matches SKILL.md: {version}");
+    println!("  VERSION is readable: {version}");
     Ok(())
 }

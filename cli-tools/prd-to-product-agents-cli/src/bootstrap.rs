@@ -101,6 +101,22 @@ const TOKEN_FILES: &[&str] = &[
 
 const MANAGED_BLOCK_PREFIX: &str = "bootstrap-product-agent-workspace";
 
+fn is_utf8_text(bytes: &[u8]) -> bool {
+    !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
+}
+
+fn copy_template_file(source: &Path, target: &Path) -> Result<()> {
+    let bytes = fs::read(source)?;
+    if is_utf8_text(&bytes) {
+        let content = std::str::from_utf8(&bytes)
+            .context("template text file became invalid UTF-8 during copy")?;
+        util::write_utf8_lf(target, content)
+    } else {
+        fs::write(target, bytes)?;
+        Ok(())
+    }
+}
+
 // ── Bootstrap workspace ──────────────────────────────────────────
 
 pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
@@ -114,18 +130,6 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
     );
 
     let version = util::read_version(skill_root)?;
-
-    // Validate SKILL.md matches VERSION
-    let skill_md = skill_root.join("SKILL.md");
-    if skill_md.exists() {
-        let content = fs::read_to_string(&skill_md)?;
-        let pattern = format!("skill-version: {version}");
-        if !content.contains(&pattern) {
-            bail!("SKILL.md skill-version does not match VERSION ({version})");
-        }
-    } else {
-        bail!("SKILL.md not found at {}", skill_md.display());
-    }
 
     let template_root = skill_root.join("templates").join("workspace");
     if !template_root.is_dir() {
@@ -209,7 +213,7 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
 
         if !target_file.exists() {
             // New file: copy
-            fs::copy(source, &target_file)?;
+            copy_template_file(source, &target_file)?;
             created.push(relative.clone());
             touched.push(relative.clone());
             manifest.set(&relative, "template_copy", "skill", "delete");
@@ -254,7 +258,7 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
                     if let Some(p) = overlay_file.parent() {
                         fs::create_dir_all(p)?;
                     }
-                    fs::copy(source, &overlay_file)?;
+                    copy_template_file(source, &overlay_file)?;
                     let ov_rel = util::to_relative_posix(&overlay_file, &target_root);
                     overlays.push(ov_rel.clone());
                     collisions.push(relative.clone());
@@ -332,9 +336,7 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
     let mut report = vec![
         "# Bootstrap Report".to_string(),
         String::new(),
-        "## Skill Version".to_string(),
-        String::new(),
-        format!("<!-- skill-version: {version} -->"),
+        "## Package Version".to_string(),
         format!("- Version: {version}"),
         String::new(),
         "## Preflight".to_string(),
