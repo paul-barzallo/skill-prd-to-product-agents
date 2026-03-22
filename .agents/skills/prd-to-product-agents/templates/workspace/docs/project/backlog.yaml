@@ -1,0 +1,19 @@
+epics:
+  - id: EPIC-001
+    title: Example epic
+    description: Replace with a real epic.
+    priority: high
+    status: proposed
+    owner_role: product-owner
+    release_ref: R1
+
+stories:
+  - id: US-001
+    epic_id: EPIC-001
+    title: Example user story
+    description: Replace with a real story.
+    priority: high
+    status: draft
+    owner_role: product-owner
+    depends_on: []
+    acceptance_ref: docs/project/acceptance-criteria.md#us-001

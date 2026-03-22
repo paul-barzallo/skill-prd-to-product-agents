@@ -1,0 +1,26 @@
+name: Setup prdtp-agents-functions-cli
+description: Install the workspace CLI binary into PATH (Linux / macOS / Windows)
+
+runs:
+  using: composite
+  steps:
+    - name: Setup CLI (Unix)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: |
+        BIN_DIR=".agents/bin/prd-to-product-agents"
+        case "$(uname -s)" in
+          Darwin) SUFFIX="darwin-arm64" ;;
+          *)      SUFFIX="linux-x64"   ;;
+        esac
+        CLI="${BIN_DIR}/prdtp-agents-functions-cli-${SUFFIX}"
+        chmod +x "$CLI"
+        sudo cp "$CLI" /usr/local/bin/prdtp-agents-functions-cli
+
+    - name: Setup CLI (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Copy-Item ".agents\bin\prd-to-product-agents\prdtp-agents-functions-cli-windows-x64.exe" `
+          -Destination "$env:RUNNER_TEMP\prdtp-agents-functions-cli.exe"
+        "$env:RUNNER_TEMP" | Out-File -Append -FilePath $env:GITHUB_PATH -Encoding utf8

@@ -1,0 +1,6 @@
+# Release tracker - operational state (source of truth)
+# Owner: devops-release-engineer
+# Schema: see docs.instructions.md for field definitions
+
+releases: []
+

@@ -1,0 +1,75 @@
+name: Repository Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.agents/skills/prd-to-product-agents/**'
+      - 'cli-tools/**'
+      - 'docs/**'
+      - 'bin/**'
+      - '.github/workflows/**'
+      - '.pre-commit-config.yaml'
+      - '.editorconfig'
+      - '.markdownlint.json'
+      - 'AGENTS.md'
+      - 'README.md'
+  push:
+    branches: [main]
+    paths:
+      - '.agents/skills/prd-to-product-agents/**'
+      - 'cli-tools/**'
+      - 'docs/**'
+      - 'bin/**'
+      - '.github/workflows/**'
+      - '.pre-commit-config.yaml'
+      - '.editorconfig'
+      - '.markdownlint.json'
+      - 'AGENTS.md'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    name: Project validation
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            cli-tools/prd-to-product-agents-cli
+            cli-tools/prdtp-agents-functions-cli
+            cli-tools/skill-dev-cli
+
+      - name: Test project CLI
+        run: cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
+
+      - name: Test skill CLI
+        run: cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
+
+      - name: Test runtime CLI
+        run: cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+
+      - name: Markdown contract
+        run: cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test markdown
+
+      - name: Skill package validation
+        run: cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all
+
+      - name: Release gate
+        run: cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate --target "${{ runner.temp }}/prd-to-product-agents-release-gate"

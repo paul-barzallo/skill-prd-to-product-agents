@@ -1,0 +1,16 @@
+# Schema reference for docs/project/findings.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+findings: list(include('finding'), required=False)
+
+---
+finding:
+  id: str(matches=r'^fi-[a-zA-Z0-9_-]+$')
+  source: enum('qa-lead', 'software-architect', 'tech-lead', 'devops-release-engineer')
+  target: enum('product-owner', 'tech-lead', 'pm-orchestrator')
+  type: enum('bug', 'risk', 'ambiguity', 'security', 'ux', 'architecture')
+  severity: enum('low', 'medium', 'high', 'critical')
+  entity: str()
+  title: str(min=3)
+  status: enum('open', 'triaged', 'in_progress', 'resolved', 'wont_fix')
+  created: str(matches=r'^\d{4}-\d{2}-\d{2}$')

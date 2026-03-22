@@ -1,0 +1,18 @@
+[package]
+name = "prdtp-agents-shared"
+version = "1.0.0"
+edition = "2021"
+description = "Shared library for the workspace CLI — enums, YAML ops, audit, fs utilities"
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
+regex.workspace = true
+anyhow.workspace = true
+sha2.workspace = true

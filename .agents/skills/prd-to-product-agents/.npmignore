@@ -1,0 +1,25 @@
+# Bootstrap overlay artifacts (temporary merge state, never distribute)
+.bootstrap-overlays/
+
+# Runtime state (generated at deploy time, not distributable)
+.state/
+
+# Pending/temporary file markers
+*.new
+
+# Build cache
+.mypy_cache/
+__pycache__/
+*.pyc
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.editorconfig
+
+# Git internals
+.gitattributes
+.gitignore

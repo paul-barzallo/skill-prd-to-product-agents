@@ -1,0 +1,74 @@
+name: Feature task
+description: Capture a scoped feature task for the multi-agent delivery flow.
+title: "[Feature] "
+labels:
+  - needs-triage
+  - kind:feature
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Functional summary
+      description: Describe the requested outcome in plain language.
+      placeholder: Users need...
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Owning role
+      description: Select the primary role that should execute this task.
+      options:
+        - backend
+        - frontend
+        - qa
+        - arch
+        - ux
+        - product
+        - ops
+        - techlead
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - p0
+        - p1
+        - p2
+        - p3
+    validations:
+      required: true
+  - type: dropdown
+    id: criticality
+    attributes:
+      label: Criticality
+      options:
+        - normal
+        - critical
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: Release or milestone
+      placeholder: R1
+  - type: textarea
+    id: canonical_refs
+    attributes:
+      label: Canonical refs
+      description: Point to the source-of-truth docs that define this task.
+      placeholder: |
+        docs/project/backlog.yaml
+        docs/project/refined-stories.yaml
+        docs/project/acceptance-criteria.md
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      placeholder: List the conditions that must be true before opening a PR.
+    validations:
+      required: true

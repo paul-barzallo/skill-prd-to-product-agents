@@ -1,0 +1,16 @@
+# Schema reference for docs/project/handoffs.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+handoffs: list(include('handoff'), required=False)
+
+---
+handoff:
+  id: str(matches=r'^ho-[a-zA-Z0-9_-]+$')
+  from: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer')
+  to: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer')
+  type: enum('normal', 'escalation', 'rework', 'approval')
+  entity: str()
+  reason: enum('new_work', 'needs_refinement', 'needs_rework', 'blocked', 'ready_for_review', 'ready_for_release', 'scope_change', 'technical_risk', 'environment_issue', 'client_rejected')
+  status: enum('pending', 'claimed', 'done', 'cancelled')
+  created: str(matches=r'^\d{4}-\d{2}-\d{2}$')
+  details: str(required=False)

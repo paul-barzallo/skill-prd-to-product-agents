@@ -1,0 +1,33 @@
+# Governance files protected by the pre-commit hook.
+# For intentional edits, use prdtp-agents-functions-cli governance immutable-token --reason "..."
+# This creates a time-limited local bypass token for intentional maintenance.
+#
+# === Governance (protected by the local immutable-edit bypass flow) ===
+.github/copilot-instructions.md
+.github/agent-model-policy.yaml
+.github/CODEOWNERS
+.github/github-governance.yaml
+.github/PULL_REQUEST_TEMPLATE.md
+.github/ISSUE_TEMPLATE/bug-task.yml
+.github/ISSUE_TEMPLATE/chore-task.yml
+.github/ISSUE_TEMPLATE/config.yml
+.github/ISSUE_TEMPLATE/feature-task.yml
+.github/instructions/agents.instructions.md
+.github/instructions/docs.instructions.md
+.github/project-governance.md
+.github/workflows/pr-governance.yml
+.github/agents/CONTEXT_ZONE_DIVIDER.txt
+.github/agents/identity/backend-developer.md
+.github/agents/identity/devops-release-engineer.md
+.github/agents/identity/frontend-developer.md
+.github/agents/identity/pm-orchestrator.md
+.github/agents/identity/product-owner.md
+.github/agents/identity/qa-lead.md
+.github/agents/identity/software-architect.md
+.github/agents/identity/tech-lead.md
+.github/agents/identity/ux-designer.md
+docs/project/handoffs.yaml
+docs/project/findings.yaml
+docs/project/releases.yaml
+.state/memory-schema.sql
+#

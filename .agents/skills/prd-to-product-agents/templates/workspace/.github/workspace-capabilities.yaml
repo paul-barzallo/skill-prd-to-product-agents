@@ -1,0 +1,50 @@
+schema_version: 1
+environment:
+  host: unknown
+  os: unknown
+capabilities:
+  git:
+    detected:
+      installed: false
+      identity_configured: false
+    policy:
+      enabled: false
+      mode: local-only
+  gh:
+    detected:
+      installed: false
+      authenticated: false
+    policy:
+      enabled: false
+  sqlite:
+    detected:
+      installed: false
+      db_initialized: false
+    policy:
+      enabled: false
+      mode: spool-only
+  node:
+    detected:
+      installed: false
+      npm_installed: false
+      native_linux: false
+  markdownlint:
+    detected:
+      installed: false
+      native_linux: false
+    policy:
+      enabled: false
+  local_history:
+    policy:
+      enabled: true
+      format: markdown+json
+      path: .state/local-history
+  reporting:
+    detected:
+      ui_available: false
+      xlsx_export_ready: false
+      pdf_export_ready: false
+    policy:
+      enabled: true
+      visibility_mode: auto
+last_updated: 1970-01-01T00:00:00Z

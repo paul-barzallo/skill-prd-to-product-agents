@@ -1,0 +1,167 @@
+name: Workspace CI
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - '.github/agents/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/project-governance.md'
+      - '.github/CODEOWNERS'
+      - '.github/prompts/**'
+      - '.github/workflows/**'
+      - '.github/instructions/**'
+      - '.github/copilot-instructions.md'
+      - '.instructions.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - '.github/agents/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - '.github/project-governance.md'
+      - '.github/CODEOWNERS'
+      - '.github/prompts/**'
+      - '.github/workflows/**'
+      - '.github/instructions/**'
+      - '.github/copilot-instructions.md'
+      - '.instructions.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: Validate (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup workspace runtime CLI
+        uses: ./.github/actions/setup-cli
+
+      - name: Governance pre-commit validator
+        run: prdtp-agents-functions-cli validate ci pre-commit-fixtures
+
+      - name: Verify agent assembly
+        run: prdtp-agents-functions-cli agents assemble --verify
+
+      - name: YAML lint
+        run: prdtp-agents-functions-cli validate ci yaml-tabs
+
+      - name: YAML schema structural validation
+        run: prdtp-agents-functions-cli validate ci yaml-schemas
+
+      - name: No raw SQL in prompts
+        run: prdtp-agents-functions-cli validate ci raw-sql-prompts
+
+      - name: Template state is clean
+        run: prdtp-agents-functions-cli validate ci template-state
+
+      - name: Prompt tool contracts
+        run: prdtp-agents-functions-cli validate ci prompt-tool-contracts
+
+      - name: No BOM or mojibake in prompts, agents, or skills
+        run: prdtp-agents-functions-cli validate encoding
+
+      - name: Prompt label contracts
+        run: prdtp-agents-functions-cli validate ci prompt-label-contracts
+
+      - name: Secrets scan — gitleaks (Bash)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION="8.18.2"
+          case "$(uname -s)" in
+            Darwin) GITLEAKS_OS="darwin"; GITLEAKS_ARCH="arm64" ;;
+            *)      GITLEAKS_OS="linux";  GITLEAKS_ARCH="x64"   ;;
+          esac
+          TMP_DIR="$(mktemp -d)"
+          trap 'rm -rf "${TMP_DIR}"' EXIT
+          curl -LSsf \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${GITLEAKS_OS}_${GITLEAKS_ARCH}.tar.gz" \
+            -o "${TMP_DIR}/gitleaks.tar.gz"
+          tar -xzf "${TMP_DIR}/gitleaks.tar.gz" -C "${TMP_DIR}" gitleaks
+          chmod +x "${TMP_DIR}/gitleaks"
+          "${TMP_DIR}/gitleaks" detect --source . --no-banner -q
+
+      - name: Secrets scan — gitleaks (PowerShell)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $gitleaksVersion = '8.18.2'
+          $tmpDir = Join-Path $env:RUNNER_TEMP ("gitleaks-$(New-Guid)")
+          New-Item -ItemType Directory -Path $tmpDir | Out-Null
+          try {
+            $zipPath = Join-Path $tmpDir 'gitleaks.zip'
+            Invoke-WebRequest `
+              "https://github.com/gitleaks/gitleaks/releases/download/v$gitleaksVersion/gitleaks_${gitleaksVersion}_windows_x64.zip" `
+              -OutFile $zipPath
+            Expand-Archive $zipPath -DestinationPath $tmpDir
+            $gitleaks = Join-Path $tmpDir 'gitleaks.exe'
+            & $gitleaks detect --source . --no-banner -q
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item -Path $tmpDir -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Contract consistency
+        run: prdtp-agents-functions-cli validate workspace
+
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: Integration (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup workspace runtime CLI
+        uses: ./.github/actions/setup-cli
+
+      - name: Operational state validation
+        run: prdtp-agents-functions-cli validate ci operational-state
+
+  degraded:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: Degraded (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup workspace runtime CLI
+        uses: ./.github/actions/setup-cli
+
+      - name: Degraded runtime validation
+        run: prdtp-agents-functions-cli validate ci degraded-runtime
+
+  reporting:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    name: Reporting (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup workspace runtime CLI
+        uses: ./.github/actions/setup-cli
+
+      - name: Reporting validation
+        run: prdtp-agents-functions-cli validate ci reporting
+

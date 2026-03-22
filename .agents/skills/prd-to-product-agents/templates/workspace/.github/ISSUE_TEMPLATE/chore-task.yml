@@ -1,0 +1,56 @@
+name: Chore or configuration task
+description: Capture configuration, tooling, CI, release, or maintenance work.
+title: "[Chore] "
+labels:
+  - needs-triage
+  - kind:chore
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: Describe the maintenance or configuration change.
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Owning role
+      options:
+        - qa
+        - ops
+        - techlead
+        - product
+        - arch
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - p0
+        - p1
+        - p2
+        - p3
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: Release or milestone
+      placeholder: R1
+  - type: textarea
+    id: change_scope
+    attributes:
+      label: Change scope
+      placeholder: Which scripts, workflows, configs, or docs are expected to change?
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan
+      placeholder: Which checks prove the change is safe?
+    validations:
+      required: true

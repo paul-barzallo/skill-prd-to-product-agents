@@ -1,0 +1,44 @@
+# OS and editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# Environment and local secrets
+.env
+.env.*
+
+# Python caches
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node and frontend caches
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Rust build outputs
+**/target/
+**/target-staging/
+
+# Local staging and release scratch space
+staging/
+collected/
+dist/
+coverage/
+htmlcov/
+*.zip
+*.7z

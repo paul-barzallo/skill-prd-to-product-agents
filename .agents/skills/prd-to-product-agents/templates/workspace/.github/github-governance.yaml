@@ -1,0 +1,46 @@
+schema_version: 1
+readiness:
+  status: template
+  notes: Template defaults are copied during bootstrap. A generated workspace starts as bootstrapped and remains not ready until repository identifiers, reviewers, CODEOWNERS, and governance settings are configured locally.
+github:
+  repository:
+    owner: REPLACE_ME_GITHUB_OWNER
+    name: REPLACE_ME_GITHUB_REPOSITORY
+    default_branch: main
+    develop_branch: develop
+  reviewers:
+    product: "@team-product"
+    architecture: "@team-arch"
+    tech_lead: "@team-tech-lead"
+    qa: "@team-qa"
+    devops: "@team-devops"
+    infra: "@team-infra"
+  release_gate:
+    required: true
+    reviewer_handles: "@team-devops"
+    reviewer_logins: "REPLACE_ME_DEVOPS_LOGIN"
+  labels:
+    role: "role:backend,role:frontend,role:qa,role:arch,role:ux,role:product,role:ops,role:techlead"
+    kind: "kind:feature,kind:bug,kind:chore,kind:docs"
+    priority: "priority:p0,priority:p1,priority:p2,priority:p3"
+    status: "status:backlog,status:ready,status:in-progress,status:in-review,status:blocked"
+    criticality: "criticality:critical"
+  project:
+    enabled: false
+    title: Product Delivery Board
+    owner: REPLACE_ME_GITHUB_OWNER
+    number: 0
+    fields:
+      status: "Backlog,Ready,In Progress,In Review,Blocked,Done"
+      priority: "P0,P1,P2,P3"
+      role: "backend,frontend,qa,arch,ux,product,ops,techlead"
+      type: "feature,bug,chore,docs,investigation"
+      criticality: "critical,normal"
+      release: "free-text"
+  branch_protection:
+    enabled: false
+    require_pull_request: true
+    require_code_owner_review: true
+    require_resolved_conversations: true
+    require_release_gate_approval: true
+    protected_branches: "main,develop"

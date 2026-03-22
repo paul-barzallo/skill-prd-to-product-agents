@@ -1,0 +1,55 @@
+#CODEOWNERS - Agent-role governance for workspace files.
+#Replace @team-* placeholders with actual GitHub teams or users.
+#
+#Agent-role mapping:
+#@team-product    = product-owner
+#@team-arch       = software-architect
+#@team-tech-lead  = tech-lead
+#@team-qa         = qa-lead
+#@team-devops     = devops-release-engineer
+#@team-infra      = pm-orchestrator (infrastructure)
+
+#=== Immutable after bootstrap - require explicit approval ===
+.github/CODEOWNERS                        @team-infra @team-devops
+.github/agents/identity/                @team-infra
+.github/agents/CONTEXT_ZONE_DIVIDER.txt @team-infra
+.github/copilot-instructions.md         @team-infra
+.github/PULL_REQUEST_TEMPLATE.md        @team-infra @team-devops
+.github/ISSUE_TEMPLATE/                 @team-infra @team-product @team-tech-lead
+.github/prompts/clarify-prd.prompt.md  @team-infra @team-product
+.github/instructions/                   @team-infra
+.github/project-governance.md           @team-infra @team-devops @team-tech-lead @team-product
+.github/github-governance.yaml          @team-infra @team-devops
+.github/workflows/pr-governance.yml     @team-infra @team-devops
+.instructions.md                        @team-infra
+AGENTS.md                              @team-infra @team-product
+
+#=== Schema ===
+.state/memory-schema.sql                @team-infra
+
+#=== Agent context (mutable via enrich prompts) ===
+.github/agents/context/                 @team-arch @team-tech-lead
+
+#=== Canonical documentation ===
+docs/project/vision.md                  @team-product
+docs/project/scope.md                   @team-product
+docs/project/backlog.yaml               @team-product
+docs/project/risks.md                   @team-product
+docs/project/stakeholders.md            @team-product
+docs/project/glossary.md                @team-product
+docs/project/refined-stories.yaml       @team-tech-lead
+docs/project/architecture/              @team-arch
+docs/project/decisions/                 @team-arch
+docs/project/quality-gates.yaml         @team-qa
+docs/project/qa/                        @team-qa
+docs/project/releases.md                @team-devops
+docs/project/releases.yaml              @team-devops
+docs/project/board.md                   @team-infra @team-tech-lead
+docs/project/management-dashboard.md    @team-infra @team-tech-lead @team-devops
+
+#=== Operational YAML (multi-owner) ===
+docs/project/handoffs.yaml              @team-infra
+docs/project/findings.yaml              @team-qa
+
+#=== Infrastructure ===
+reporting-ui/                           @team-devops @team-infra @team-tech-lead

@@ -1,0 +1,186 @@
+name: PR Governance
+
+on:
+  pull_request:
+    branches: [develop, main]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate PR metadata
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const head = pr.head.ref;
+            const base = pr.base.ref;
+            const title = pr.title || '';
+            const body = pr.body || '';
+            const labels = pr.labels.map(label => label.name);
+            const errors = [];
+
+            const taskBranch = /^(backend|frontend|qa|arch|ux|product|ops|techlead)\/((gh-\d+)|(\d+))-[a-z0-9][a-z0-9._-]*$/;
+            const releasePromotion = head === 'develop' && base === 'main';
+            const allowedBases = new Set(['develop', 'main']);
+            const issueRef = /(GH-\d+|#\d+)/i;
+            const normalTitle = /^(feat|fix|chore|docs|refactor|test|ci|build|perf|revert)\((backend|frontend|qa|arch|ux|product|ops|techlead)\): (GH-\d+|#\d+)\b.+/;
+            const releaseTitle = /^release\(ops\): (GH-\d+|#\d+)\b.+/;
+            const requiredSections = [
+              '## Functional summary',
+              '## Linked issue',
+              '## Branches',
+              '## Canonical docs touched',
+              '## Validations run',
+              '## Risks',
+              '## Rollback',
+              '## Handoffs / findings'
+            ];
+            const roleLabels = new Set(['role:backend', 'role:frontend', 'role:qa', 'role:arch', 'role:ux', 'role:product', 'role:ops', 'role:techlead']);
+            const kindLabels = new Set(['kind:feature', 'kind:bug', 'kind:chore', 'kind:docs']);
+            const priorityLabels = new Set(['priority:p0', 'priority:p1', 'priority:p2', 'priority:p3']);
+
+            if (!allowedBases.has(base)) {
+              errors.push(`Base branch '${base}' is not allowed. Use develop for task PRs or main for release promotion.`);
+            }
+
+            if (!releasePromotion && !taskBranch.test(head)) {
+              errors.push(`Head branch '${head}' must match <role>/<issue-id>-slug.`);
+            }
+
+            if (base === 'main' && !releasePromotion) {
+              errors.push(`PRs targeting main must come from develop. Received '${head}' -> '${base}'.`);
+            }
+
+            if (releasePromotion) {
+              if (!releaseTitle.test(title)) {
+                errors.push('Release promotion PR title must match: release(ops): GH-123 short summary');
+              }
+            } else if (!normalTitle.test(title)) {
+              errors.push('PR title must follow Conventional Commits with role scope and issue reference.');
+            }
+
+            if (!issueRef.test(`${title}\n${body}`)) {
+              errors.push('PR title or body must reference a linked issue, for example GH-123 or Closes #123.');
+            }
+
+            for (const section of requiredSections) {
+              if (!body.includes(section)) {
+                errors.push(`PR body is missing required section '${section}'.`);
+              }
+            }
+
+            if (!labels.some(label => roleLabels.has(label))) {
+              errors.push('PR is missing a role:* label.');
+            }
+            if (!labels.some(label => kindLabels.has(label))) {
+              errors.push('PR is missing a kind:* label.');
+            }
+            if (!labels.some(label => priorityLabels.has(label))) {
+              errors.push('PR is missing a priority:* label.');
+            }
+
+            if (errors.length > 0) {
+              core.setFailed(errors.join('\n'));
+            }
+
+      - name: Validate commit subjects
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if [[ "${HEAD_REF}" == "develop" && "${BASE_REF}" == "main" ]]; then
+            echo "Release promotion PR detected -- skipping per-commit task branch validation."
+            exit 0
+          fi
+
+          git fetch origin "${BASE_REF}" --depth=200
+          mapfile -t subjects < <(git log --format=%s "origin/${BASE_REF}..HEAD")
+
+          if [[ ${#subjects[@]} -eq 0 ]]; then
+            echo "No commits found between HEAD and origin/${BASE_REF}" >&2
+            exit 1
+          fi
+
+          regex='^(feat|fix|chore|docs|refactor|test|ci|build|perf|revert)\((backend|frontend|qa|arch|ux|product|ops|techlead)\): (GH-[0-9]+|#[0-9]+) .+'
+          for subject in "${subjects[@]}"; do
+            if [[ ! "${subject}" =~ ${regex} ]]; then
+              echo "Invalid commit subject: ${subject}" >&2
+              exit 1
+            fi
+          done
+
+      - name: Encoding gate via workspace runtime CLI
+        run: prdtp-agents-functions-cli --workspace . validate encoding
+
+      - name: Verify agent assembly
+        run: prdtp-agents-functions-cli --workspace . agents assemble --verify
+
+      - name: Validate final release gate approval
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const governancePath = '.github/github-governance.yaml';
+            if (!fs.existsSync(governancePath)) {
+              core.setFailed('Missing .github/github-governance.yaml');
+              return;
+            }
+
+            const raw = fs.readFileSync(governancePath, 'utf8');
+            const readinessMatch = raw.match(/readiness:\s*\r?\n\s{2}status:\s*([^\r\n]+)/m);
+            const releaseGateLoginsMatch = raw.match(/release_gate:\s*\r?\n(?:\s{4}[^\r\n]*\r?\n)*\s{4}reviewer_logins:\s*"?([^"\r\n]+)"?/m);
+            const branchProtectionMatch = raw.match(/branch_protection:\s*\r?\n\s{4}enabled:\s*(true|false)/m);
+
+            const readiness = readinessMatch ? readinessMatch[1].trim() : '';
+            if (readiness !== 'production-ready') {
+              core.info(`Readiness is '${readiness || 'unknown'}'; final release gate approval is not enforced yet.`);
+              return;
+            }
+
+            if (!branchProtectionMatch || branchProtectionMatch[1] !== 'true') {
+              core.setFailed('Workspace is marked production-ready but github.branch_protection.enabled is not true.');
+              return;
+            }
+
+            const reviewerLogins = (releaseGateLoginsMatch ? releaseGateLoginsMatch[1] : '')
+              .split(',')
+              .map(value => value.trim().replace(/^@/, ''))
+              .filter(Boolean);
+
+            if (reviewerLogins.length === 0 || reviewerLogins.some(value => /REPLACE_ME|team-/.test(value))) {
+              core.setFailed('production-ready requires real github.release_gate.reviewer_logins values in .github/github-governance.yaml');
+              return;
+            }
+
+            const pr = context.payload.pull_request;
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number
+            });
+
+            const latestByReviewer = new Map();
+            for (const review of reviews) {
+              const login = review.user && review.user.login ? review.user.login : '';
+              if (!login) {
+                continue;
+              }
+              latestByReviewer.set(login, review.state);
+            }
+
+            const hasApprovedGate = reviewerLogins.some(login => latestByReviewer.get(login) === 'APPROVED');
+            if (!hasApprovedGate) {
+              core.setFailed(`production-ready requires final release gate approval from one of: ${reviewerLogins.join(', ')}`);
+            }

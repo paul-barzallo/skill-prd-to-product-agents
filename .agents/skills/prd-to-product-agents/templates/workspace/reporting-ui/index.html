@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reporting Dashboard</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Project reporting</p>
+      <h1>Executive Dashboard</h1>
+      <p id="hero-summary" class="hero-copy">Loading snapshot...</p>
+    </div>
+    <div class="hero-actions">
+      <button id="download-json" type="button">Download JSON</button>
+      <button id="export-csv" type="button">Export CSV</button>
+      <button id="export-xlsx" type="button">Export XLSX</button>
+      <button id="print-dashboard" type="button">Print / PDF</button>
+    </div>
+  </header>
+
+  <main class="page-grid">
+    <section class="panel">
+      <h2>Readiness</h2>
+      <div id="readiness-card" class="metric-grid"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Capabilities</h2>
+      <div id="capability-badges" class="badge-grid"></div>
+    </section>
+
+    <section class="panel panel-wide">
+      <h2>Delivery Snapshot</h2>
+      <div id="delivery-bars" class="delivery-bars"></div>
+      <div id="delivery-table"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Critical Findings</h2>
+      <div id="critical-findings"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Pending Handoffs</h2>
+      <div id="pending-handoffs"></div>
+    </section>
+
+    <section class="panel panel-wide">
+      <h2>Agent Health</h2>
+      <div id="agent-health"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Release Status</h2>
+      <div id="release-status"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Risks and Decisions</h2>
+      <div id="risks-decisions"></div>
+    </section>
+
+    <section class="panel panel-wide">
+      <h2>Visibility Notes</h2>
+      <ul id="visibility-notes" class="note-list"></ul>
+    </section>
+  </main>
+
+  <script src="./vendor/xlsx.mini.min.js"
+         integrity="sha384-6fBkVFQw1YKyYpZpKf7bguegzeJqso45fTePEWGNuVaGy70fxEhICA/yswrPjW4+"
+         crossorigin="anonymous"></script>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

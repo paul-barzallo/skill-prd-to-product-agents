@@ -1,0 +1,18 @@
+gates:
+  - id: GATE-01
+    name: Product Ready
+    status: pending
+    owner_roles: [product-owner]
+    pass_conditions:
+      - vision defined
+      - scope defined
+      - backlog exists
+
+  - id: GATE-02
+    name: Definition of Ready
+    status: pending
+    owner_roles: [product-owner, tech-lead]
+    pass_conditions:
+      - acceptance criteria defined
+      - implementation map defined
+      - dependencies resolved

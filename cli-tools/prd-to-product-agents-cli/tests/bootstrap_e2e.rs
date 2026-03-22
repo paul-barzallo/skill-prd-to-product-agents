@@ -1,0 +1,257 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+fn skill_root() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not resolve skill root from CARGO_MANIFEST_DIR")
+        .join(".agents")
+        .join("skills")
+        .join("prd-to-product-agents")
+}
+
+fn cli_binary() -> PathBuf {
+    let path = PathBuf::from(env!("CARGO_BIN_EXE_prd-to-product-agents-cli"));
+    assert!(path.exists(), "CLI binary not found at {}", path.display());
+    path
+}
+
+fn copy_dir_recursive(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).expect("failed to create destination directory");
+    for entry in fs::read_dir(src).expect("failed to read source directory") {
+        let entry = entry.expect("failed to read directory entry");
+        let source = entry.path();
+        let target = dst.join(entry.file_name());
+        if source.is_dir() {
+            copy_dir_recursive(&source, &target);
+        } else {
+            fs::copy(&source, &target).unwrap_or_else(|error| {
+                panic!(
+                    "failed to copy '{}' to '{}': {error}",
+                    source.display(),
+                    target.display()
+                )
+            });
+        }
+    }
+}
+
+#[test]
+fn bootstrap_creates_valid_workspace() {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let target = tmp.path();
+
+    let output = Command::new(cli_binary())
+        .args([
+            "--skill-root",
+            &skill_root().to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &target.to_string_lossy(),
+            "--project-name",
+            "E2E Test Project",
+            "--github-owner",
+            "test-org",
+            "--github-repo",
+            "test-repo",
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
+    assert!(
+        output.status.success(),
+        "bootstrap failed (exit {:?}):\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}",
+        output.status.code()
+    );
+
+    let mut missing_files = Vec::new();
+    for file in prdtp_agents_shared::workspace_paths::REQUIRED_FILES {
+        if !target.join(file).exists() {
+            missing_files.push(file.to_string());
+        }
+    }
+    assert!(
+        missing_files.is_empty(),
+        "Missing required files after bootstrap:\n  {}",
+        missing_files.join("\n  ")
+    );
+
+    let agents_dir = target.join(".github").join("agents");
+    let mut missing_agents = Vec::new();
+    for name in prdtp_agents_shared::workspace_paths::AGENT_NAMES {
+        let agent_file = agents_dir.join(format!("{name}.agent.md"));
+        if !agent_file.exists() {
+            missing_agents.push(format!("{name}.agent.md"));
+        }
+    }
+    assert!(
+        missing_agents.is_empty(),
+        "Missing agent files after bootstrap:\n  {}",
+        missing_agents.join("\n  ")
+    );
+
+    let vision = fs::read_to_string(target.join("docs/project/vision.md"))
+        .expect("vision.md should exist");
+    assert!(!vision.contains("{{PROJECT_NAME}}"));
+    assert!(!vision.contains("REPLACE_ME_GITHUB_OWNER"));
+
+    let state_dir = target.join(".state");
+    assert!(state_dir.join("bootstrap-manifest.txt").exists());
+    assert!(state_dir.join("bootstrap-report.md").exists());
+
+    let manifest_content =
+        fs::read_to_string(state_dir.join("bootstrap-manifest.txt")).expect("manifest should be readable");
+    let data_lines: Vec<&str> = manifest_content
+        .lines()
+        .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
+        .collect();
+    assert!(!data_lines.is_empty(), "Manifest has no data lines");
+    for line in &data_lines {
+        let cols: Vec<&str> = line.split('\t').collect();
+        assert_eq!(cols.len(), 4, "Manifest line has wrong column count: {line}");
+    }
+
+    assert!(
+        target.join(".github/workspace-capabilities.yaml").exists(),
+        "workspace-capabilities.yaml not generated"
+    );
+
+    let extensions = ["md", "yaml", "yml", "json", "txt"];
+    let mut encoding_issues = Vec::new();
+    for entry in walkdir::WalkDir::new(target)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+    {
+        let path = entry.path();
+        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if !extensions.contains(&ext) {
+            continue;
+        }
+        let bytes = fs::read(path).unwrap();
+        if bytes.len() >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF {
+            encoding_issues.push(format!("BOM: {}", path.display()));
+        }
+        let text = String::from_utf8_lossy(&bytes);
+        if text.contains("\r\n") {
+            encoding_issues.push(format!("CRLF: {}", path.display()));
+        }
+    }
+    assert!(
+        encoding_issues.is_empty(),
+        "Encoding issues in generated workspace:\n  {}",
+        encoding_issues.join("\n  ")
+    );
+
+    let report =
+        fs::read_to_string(state_dir.join("bootstrap-report.md")).expect("report should be readable");
+    assert!(report.contains("Status: FULL") || report.contains("Status: DEGRADED"));
+    assert!(report.contains("## Binary Bundle Integrity"));
+    assert!(report.contains("Workspace State: bootstrapped"));
+    assert!(report.contains("Governance status: pending_configuration"));
+    assert!(report.contains("Readiness status: not_ready"));
+    assert!(report.contains("governance configure"));
+}
+
+#[test]
+fn bootstrap_rerun_preserves_observable_stability() {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let target = tmp.path();
+
+    let sr = skill_root();
+    let sr_str = sr.to_string_lossy();
+    let tgt_str = target.to_string_lossy();
+    let common_args = [
+        "--skill-root",
+        &*sr_str,
+        "bootstrap",
+        "workspace",
+        "--target",
+        &*tgt_str,
+        "--project-name",
+        "Idempotent Test",
+        "--skip-git",
+        "--skip-db-init",
+    ];
+
+    let first = Command::new(cli_binary())
+        .args(&common_args)
+        .output()
+        .expect("first bootstrap failed to execute");
+    assert!(
+        first.status.success(),
+        "First bootstrap failed:\n{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let count_first: usize = walkdir::WalkDir::new(target)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count();
+
+    let second = Command::new(cli_binary())
+        .args(&common_args)
+        .output()
+        .expect("second bootstrap failed to execute");
+    assert!(
+        second.status.success(),
+        "Second bootstrap failed:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+
+    let count_second: usize = walkdir::WalkDir::new(target)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .count();
+
+    assert!(
+        count_second <= count_first + 2,
+        "File count grew unexpectedly: first={count_first}, second={count_second}"
+    );
+}
+
+#[test]
+fn bootstrap_fails_when_binary_bundle_checksum_is_invalid() {
+    let skill_copy_root = tempfile::tempdir().expect("failed to create skill copy dir");
+    let copied_skill = skill_copy_root.path().join("prd-to-product-agents");
+    copy_dir_recursive(&skill_root(), &copied_skill);
+
+    let checksum_path = copied_skill.join("bin/checksums.sha256");
+    let checksum = fs::read_to_string(&checksum_path).expect("failed to read checksum manifest");
+    let broken = checksum.replacen("79983f6deb831d545543614915f3aa58ee9cf44d4d12a1fdf24bc12d74f13f07", "0000000000000000000000000000000000000000000000000000000000000000", 1);
+    fs::write(&checksum_path, broken).expect("failed to corrupt checksum manifest");
+
+    let workspace = tempfile::tempdir().expect("failed to create target dir");
+    let output = Command::new(cli_binary())
+        .args([
+            "--skill-root",
+            &copied_skill.to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &workspace.path().to_string_lossy(),
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    assert!(!output.status.success(), "bootstrap unexpectedly succeeded with invalid checksum manifest");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("skill bootstrap bundle integrity failed")
+            || stderr.contains("checksum mismatch"),
+        "unexpected stderr: {stderr}"
+    );
+}

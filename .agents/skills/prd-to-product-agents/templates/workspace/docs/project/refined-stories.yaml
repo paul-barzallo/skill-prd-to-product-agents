@@ -1,0 +1,23 @@
+stories:
+  - id: US-001
+    title: Example user story
+    status: draft
+    priority: high
+    owner_role: product-owner
+    acceptance_ref: docs/project/acceptance-criteria.md#us-001
+    refined_by:
+      - product-owner
+      - tech-lead
+    dependencies: []
+    functional_notes:
+      - Replace with product notes.
+    tech_notes:
+      - Replace with technical notes.
+    edge_cases:
+      - Replace with edge cases.
+    qa_notes:
+      - Replace with QA notes.
+    implementation_map:
+      - action: create
+        path: src/example/path.ext
+        description: Replace with a real implementation item.

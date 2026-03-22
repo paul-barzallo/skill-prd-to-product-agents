@@ -1,0 +1,15 @@
+# Schema reference for docs/project/releases.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+releases: list(include('release'), required=False)
+
+---
+release:
+  id: str(matches=r'^R\d+$')
+  name: str(min=1)
+  target_date: str(matches=r'^\d{4}-\d{2}-\d{2}$')
+  agent_role: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer', required=False)
+  created: str(matches=r'^\d{4}-\d{2}-\d{2}$')
+  status: enum('planning', 'ready', 'approved', 'deployed', 'rolled_back', required=False)
+  stories: list(str(), required=False)
+  notes: str(required=False)

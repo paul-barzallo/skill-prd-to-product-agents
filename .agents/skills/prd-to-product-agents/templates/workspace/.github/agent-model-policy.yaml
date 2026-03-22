@@ -1,0 +1,88 @@
+version: 1
+policy_name: agent-model-routing
+scope:
+  ide_runtime: VS Code Chat / custom agents
+  github_com: ignored
+official_ga_models:
+  - Claude Opus 4.5
+  - GPT-4.1
+  - Gemini 2.5 Pro
+  - Claude Haiku 4.5
+disallowed_aliases:
+  - GPT-4
+  - Gemini 3.1 Pro
+  - Gemini 3 Flash
+agents:
+  pm-orchestrator:
+    default_models:
+      - Claude Opus 4.5
+      - GPT-4.1
+      - Claude Haiku 4.5
+  product-owner:
+    default_models:
+      - Claude Haiku 4.5
+      - GPT-4.1
+      - Gemini 2.5 Pro
+  ux-designer:
+    default_models:
+      - Claude Haiku 4.5
+      - Gemini 2.5 Pro
+      - GPT-4.1
+  software-architect:
+    default_models:
+      - GPT-4.1
+      - Claude Opus 4.5
+      - Claude Haiku 4.5
+  tech-lead:
+    default_models:
+      - GPT-4.1
+      - Claude Opus 4.5
+      - Claude Haiku 4.5
+  backend-developer:
+    default_models:
+      - Claude Opus 4.5
+      - GPT-4.1
+      - Claude Haiku 4.5
+  frontend-developer:
+    default_models:
+      - Claude Opus 4.5
+      - Gemini 2.5 Pro
+      - GPT-4.1
+      - Claude Haiku 4.5
+  qa-lead:
+    default_models:
+      - GPT-4.1
+      - Claude Haiku 4.5
+  devops-release-engineer:
+    default_models:
+      - GPT-4.1
+      - Claude Haiku 4.5
+      - Claude Opus 4.5
+prompt_overrides:
+  small-backend-change.prompt.md:
+    models:
+      - Claude Haiku 4.5
+      - GPT-4.1
+      - Claude Opus 4.5
+    rationale: Prefer the lightweight path for well-scoped backend fixes.
+  small-frontend-change.prompt.md:
+    models:
+      - Claude Haiku 4.5
+      - Gemini 2.5 Pro
+      - Claude Opus 4.5
+    rationale: Prefer the lightweight path for well-scoped frontend changes.
+  deep-architecture-analysis.prompt.md:
+    models:
+      - Claude Opus 4.5
+      - GPT-4.1
+    rationale: Use the deep-reasoning path for architecture tradeoffs.
+  release-incident-analysis.prompt.md:
+    models:
+      - Claude Opus 4.5
+      - GPT-4.1
+    rationale: Use the deep-reasoning path for release incidents.
+  small-doc-update.prompt.md:
+    models:
+      - Claude Haiku 4.5
+      - GPT-4.1
+    rationale: Prefer the lightweight path for bounded documentation work.

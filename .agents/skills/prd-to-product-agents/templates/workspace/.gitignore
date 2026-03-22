@@ -1,0 +1,25 @@
+# SQLite runtime database (binary, regenerated from schema)
+# Regenerate with: prdtp-agents-functions-cli database init
+.state/project_memory.db
+.state/project_memory.db-journal
+.state/project_memory.db-wal
+.state/project_memory.db-shm
+
+# Bootstrap overlays (review and merge manually)
+.bootstrap-overlays/
+
+# Pending markers
+.state/sqlite-bootstrap.pending.md
+.state/workspace-validation.md
+.state/bootstrap-report.md
+.state/bootstrap-manifest.txt
+.state/bootstrap-rerun-report.md
+.state/sqlite-bootstrap.report.md
+.state/local-history/
+
+# OS artifacts
+Thumbs.db
+.DS_Store
+
+# Node (if used later)
+node_modules/

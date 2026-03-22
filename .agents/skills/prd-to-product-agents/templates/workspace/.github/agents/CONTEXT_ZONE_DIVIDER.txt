@@ -1,0 +1,5 @@
+<!-- ═══════════════════════════════════════════════════════════════════════
+     CONTEXT ZONE — managed by enrich-agents prompts (Layers 1–3).
+     Identity sections above this line are IMMUTABLE after bootstrap.
+     Do NOT edit identity sections during context injection.
+     ═══════════════════════════════════════════════════════════════════════ -->

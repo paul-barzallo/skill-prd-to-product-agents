@@ -1,0 +1,72 @@
+name: Bug task
+description: Capture a bug fix or regression for the governed delivery flow.
+title: "[Bug] "
+labels:
+  - needs-triage
+  - kind:bug
+body:
+  - type: textarea
+    id: impact
+    attributes:
+      label: Observed impact
+      placeholder: What is failing and who is affected?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: What should happen instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: role
+    attributes:
+      label: Owning role
+      options:
+        - backend
+        - frontend
+        - qa
+        - arch
+        - ux
+        - product
+        - ops
+        - techlead
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - p0
+        - p1
+        - p2
+        - p3
+    validations:
+      required: true
+  - type: dropdown
+    id: criticality
+    attributes:
+      label: Criticality
+      options:
+        - normal
+        - critical
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction and evidence
+      placeholder: |
+        Steps to reproduce
+        Logs, screenshots, or failing checks
+    validations:
+      required: true
+  - type: textarea
+    id: canonical_refs
+    attributes:
+      label: Canonical refs
+      placeholder: docs/project/findings.yaml or the story/acceptance docs that prove the regression.
+    validations:
+      required: true

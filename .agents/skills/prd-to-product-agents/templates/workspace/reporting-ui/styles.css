@@ -1,0 +1,265 @@
+:root {
+  --bg: #f4f1eb;
+  --panel: #fffdf8;
+  --ink: #1d2733;
+  --muted: #5c6977;
+  --accent: #0f766e;
+  --accent-2: #0f4c81;
+  --warn: #b45309;
+  --danger: #b42318;
+  --border: #d7d0c5;
+  --shadow: 0 12px 30px rgba(32, 43, 54, 0.08);
+  --radius: 18px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.12), transparent 28%),
+    radial-gradient(circle at top right, rgba(15, 76, 129, 0.14), transparent 26%),
+    var(--bg);
+  color: var(--ink);
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 2.5rem 2rem 1.5rem;
+  align-items: flex-start;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--accent-2);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.hero h1 {
+  margin: 0 0 0.5rem;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.hero-copy {
+  max-width: 60rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  padding: 0.8rem 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  filter: brightness(1.06);
+}
+
+.page-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1rem;
+  padding: 0 2rem 2rem;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.2rem;
+  grid-column: span 6;
+}
+
+.panel-wide {
+  grid-column: span 12;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.metric-grid,
+.badge-grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.metric-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.metric-card,
+.badge-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.metric-card .label,
+.badge-card .label {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.metric-card .value {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.badge-pill,
+.status-pill {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-top: 0.45rem;
+}
+
+.ok {
+  background: rgba(15, 118, 110, 0.12);
+  color: var(--accent);
+}
+
+.warn {
+  background: rgba(180, 83, 9, 0.15);
+  color: var(--warn);
+}
+
+.danger {
+  background: rgba(180, 35, 24, 0.14);
+  color: var(--danger);
+}
+
+.delivery-bars {
+  display: grid;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 140px 1fr 80px;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.stack {
+  display: flex;
+  width: 100%;
+  min-height: 1rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ebe5da;
+}
+
+.segment {
+  min-width: 0;
+}
+
+.segment.backlog {
+  background: #577590;
+}
+
+.segment.progress {
+  background: #277da1;
+}
+
+.segment.blocked {
+  background: #f94144;
+}
+
+.segment.done {
+  background: #43aa8b;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.note-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.empty-state {
+  color: var(--muted);
+  font-style: italic;
+}
+
+@media (max-width: 960px) {
+  .hero,
+  .page-grid {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .hero {
+    flex-direction: column;
+  }
+
+  .panel,
+  .panel-wide {
+    grid-column: span 12;
+  }
+
+  .bar-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  .hero-actions {
+    display: none;
+  }
+
+  .panel {
+    box-shadow: none;
+    break-inside: avoid;
+  }
+}

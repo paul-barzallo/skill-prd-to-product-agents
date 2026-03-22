@@ -1,0 +1,17 @@
+# Findings register - operational state (source of truth)
+# Primary steward: qa-lead
+# Authority: qa-lead, software-architect, tech-lead, and devops-release-engineer may create entries; qa-lead, pm-orchestrator, or the current target role may transition status
+# Schema: see docs.instructions.md for field definitions
+
+findings: []
+
+# Example entry:
+#   - id: fi-001
+#     source: qa-lead
+#     target: tech-lead
+#     type: bug             # bug | risk | ambiguity | security | ux | architecture
+#     severity: high        # critical | high | medium | low
+#     entity: US-003        # reference to story/artifact
+#     title: "Login flow fails on expired tokens"
+#     status: open          # open | triaged | in_progress | resolved | wont_fix
+#     created: 2026-03-09

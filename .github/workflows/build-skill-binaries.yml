@@ -1,0 +1,198 @@
+name: Build Scoped CLI Binaries
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli-tools/**'
+      - '.github/workflows/build-skill-binaries.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cli-tools/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            suffix: linux-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            suffix: darwin-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            suffix: windows-x64
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.suffix }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build skill CLI (prd-to-product-agents-cli)
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
+
+      - name: Build project CLI (skill-dev-cli)
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/skill-dev-cli/Cargo.toml
+
+      - name: Build workspace runtime CLI (prdtp-agents-functions-cli)
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+
+      - name: Stage scoped binaries (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p staging
+          cp "cli-tools/prd-to-product-agents-cli/target/${{ matrix.target }}/release/prd-to-product-agents-cli" \
+             "staging/prd-to-product-agents-cli-${{ matrix.suffix }}"
+           cp "cli-tools/skill-dev-cli/target/${{ matrix.target }}/release/skill-dev-cli" \
+             "staging/skill-dev-cli-${{ matrix.suffix }}"
+          cp "cli-tools/prdtp-agents-functions-cli/target/${{ matrix.target }}/release/prdtp-agents-functions-cli" \
+             "staging/prdtp-agents-functions-cli-${{ matrix.suffix }}"
+
+      - name: Stage scoped binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path staging -Force | Out-Null
+          Copy-Item "cli-tools\prd-to-product-agents-cli\target\${{ matrix.target }}\release\prd-to-product-agents-cli.exe" `
+            "staging\prd-to-product-agents-cli-${{ matrix.suffix }}.exe"
+          Copy-Item "cli-tools\skill-dev-cli\target\${{ matrix.target }}\release\skill-dev-cli.exe" `
+            "staging\skill-dev-cli-${{ matrix.suffix }}.exe"
+          Copy-Item "cli-tools\prdtp-agents-functions-cli\target\${{ matrix.target }}\release\prdtp-agents-functions-cli.exe" `
+            "staging\prdtp-agents-functions-cli-${{ matrix.suffix }}.exe"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.suffix }}
+          path: staging/
+          retention-days: 30
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test skill CLI
+        run: cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
+
+      - name: Test project CLI
+        run: cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
+
+      - name: Test workspace runtime CLI
+        run: cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+
+  release-gate:
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: ubuntu-latest
+            suffix: linux-x64
+          - os: macos-latest
+            suffix: darwin-arm64
+          - os: windows-latest
+            suffix: windows-x64
+    runs-on: ${{ matrix.os }}
+    name: Release Gate (${{ matrix.os }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          path: collected
+          pattern: binaries-${{ matrix.suffix }}
+          merge-multiple: true
+
+      - name: Run release gate (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          chmod +x collected/skill-dev-cli-${{ matrix.suffix }}
+          collected/skill-dev-cli-${{ matrix.suffix }} --skill-root .agents/skills/prd-to-product-agents test release-gate
+
+      - name: Run release gate (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          collected\skill-dev-cli-${{ matrix.suffix }}.exe --skill-root .agents\skills\prd-to-product-agents test release-gate
+
+  publish:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [build, test, release-gate]
+    runs-on: ubuntu-latest
+    name: Publish scoped binaries
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected
+          pattern: binaries-*
+          merge-multiple: true
+
+      - name: List collected binaries
+        run: ls -lh collected/
+
+      - name: Commit scoped binaries to root and skill bins
+        run: |
+          set -euo pipefail
+          ROOT_BIN_DIR="bin"
+          SKILL_BIN_DIR=".agents/skills/prd-to-product-agents/bin"
+          WORKSPACE_RUNTIME_BIN_DIR=".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents"
+          mkdir -p "${ROOT_BIN_DIR}" "${SKILL_BIN_DIR}" "${WORKSPACE_RUNTIME_BIN_DIR}"
+          rm -f "${SKILL_BIN_DIR}"/prdtp-agents-functions-cli-*
+          rm -f "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-*
+          # Project-scope tool: stays only in the repository root bin/.
+          cp collected/skill-dev-cli-* "${ROOT_BIN_DIR}/"
+          # Skill-scope bootstrap tool: shipped with the skill package.
+          cp collected/prd-to-product-agents-cli-* "${SKILL_BIN_DIR}/"
+          # Workspace runtime tool: shipped inside the generated workspace template.
+          cp collected/prdtp-agents-functions-cli-* "${WORKSPACE_RUNTIME_BIN_DIR}/"
+          chmod +x "${ROOT_BIN_DIR}"/skill-dev-cli-linux-x64 \
+                    "${ROOT_BIN_DIR}"/skill-dev-cli-darwin-arm64 \
+                    "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-linux-x64 \
+                    "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-darwin-arm64 \
+                    "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-linux-x64 \
+                    "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-darwin-arm64
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${ROOT_BIN_DIR}" "${SKILL_BIN_DIR}" "${WORKSPACE_RUNTIME_BIN_DIR}"
+          if git diff --cached --quiet; then
+            echo "No binary changes to commit."
+          else
+            git commit -m "chore(bin): update scoped prebuilt binaries for all platforms [skip ci]"
+            git push
+          fi

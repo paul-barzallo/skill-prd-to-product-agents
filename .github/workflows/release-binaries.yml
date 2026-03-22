@@ -1,0 +1,43 @@
+name: Release Scoped Binaries
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    name: Publish project-scoped binary artifacts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Stage packaged binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_BIN_DIR="bin"
+          SKILL_BIN_DIR=".agents/skills/prd-to-product-agents/bin"
+          WORKSPACE_RUNTIME_BIN_DIR=".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents"
+          mkdir -p staging
+          cp "${PROJECT_BIN_DIR}"/skill-dev-cli-* staging/
+          cp "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-* staging/
+          cp "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-* staging/
+          ls -lh staging/
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: scoped-binaries
+          path: staging/
+          retention-days: 7
+
+      - name: Publish release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: staging/*

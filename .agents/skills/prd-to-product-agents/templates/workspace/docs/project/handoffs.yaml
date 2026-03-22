@@ -1,0 +1,17 @@
+# Handoff queue - operational state (source of truth)
+# Primary steward: pm-orchestrator
+# Authority: any agent may create entries; assignees may claim / complete; pm-orchestrator may reconcile routing state
+# Schema: see docs.instructions.md for field definitions
+
+handoffs: []
+
+# Example entry:
+#   - id: ho-001
+#     from: pm-orchestrator
+#     to: tech-lead
+#     type: normal          # normal | escalation | rework | approval
+#     entity: US-001        # reference to story/artifact/finding
+#     reason: new_work
+#     status: pending       # pending | claimed | done | cancelled
+#     created: 2026-03-09
+#     details: "Review refined stories for Sprint 1"

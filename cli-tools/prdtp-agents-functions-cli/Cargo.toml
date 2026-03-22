@@ -1,0 +1,55 @@
+[workspace]
+members = [".", "crates/prdtp-agents-shared"]
+resolver = "2"
+
+[workspace.dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = "0.4"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
+regex = "1"
+anyhow = "1"
+sha2 = "0.10"
+colored = "2"
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2"] }
+
+[package]
+name = "prdtp-agents-functions-cli"
+version = "1.0.0"
+edition = "2021"
+description = "Product agents workspace CLI — workspace/agent operations"
+
+[dependencies]
+prdtp-agents-shared = { path = "crates/prdtp-agents-shared" }
+clap.workspace = true
+serde.workspace = true
+serde_yaml.workspace = true
+serde_json.workspace = true
+rusqlite.workspace = true
+git2.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+walkdir.workspace = true
+regex.workspace = true
+anyhow.workspace = true
+colored.workspace = true
+sha2.workspace = true
+rust_xlsxwriter = "0.79"
+tiny_http = "0.12"
+rust-embed = "8"
+open = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+tracing-appender = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
+opt-level = "z"
