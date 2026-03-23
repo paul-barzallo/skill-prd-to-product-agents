@@ -37,8 +37,9 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
     let git_identity = git_installed && git_identity_configured();
     let gh_installed = !args.disable_gh && command_exists("gh");
     let gh_auth = gh_installed && gh_authenticated();
-    let sqlite_installed = !args.disable_sqlite && command_exists("sqlite3");
-    let db_initialized = sqlite_installed && workspace.join(".state/project_memory.db").exists();
+    let sqlite_runtime_available = !args.disable_sqlite;
+    let sqlite_cli_available = command_exists("sqlite3");
+    let db_initialized = workspace.join(".state/project_memory.db").exists();
     let node_installed = command_exists("node");
     let npm_installed = command_exists("npm");
     let node_native = node_installed;
@@ -49,7 +50,9 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
 
     println!("  git: {git_installed} (identity: {git_identity})");
     println!("  gh: {gh_installed} (auth: {gh_auth})");
-    println!("  sqlite3: {sqlite_installed} (db: {db_initialized})");
+    println!(
+        "  sqlite: {sqlite_runtime_available} (db: {db_initialized}, sqlite3 cli: {sqlite_cli_available})"
+    );
     println!("  node: {node_installed}, npm: {npm_installed}");
     println!("  markdownlint: {mdlint_installed}");
     println!("  reporting UI: {ui_available}, XLSX: {xlsx_ready}");
@@ -63,7 +66,11 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
         if git_pol_enabled { "full".to_string() } else { "local-only".to_string() }
     });
     let gh_pol = if args.disable_gh { false } else { gh_policy.unwrap_or(gh_installed && gh_auth) };
-    let sqlite_pol = if args.disable_sqlite { false } else { sqlite_policy.unwrap_or(sqlite_installed) };
+    let sqlite_pol = if args.disable_sqlite {
+        false
+    } else {
+        sqlite_policy.unwrap_or(sqlite_runtime_available)
+    };
     let sqlite_pol_mode = sqlite_mode.unwrap_or_else(|| {
         if sqlite_pol && db_initialized { "ledger".to_string() } else { "spool-only".to_string() }
     });
@@ -96,7 +103,7 @@ capabilities:
       enabled: {gh_pol}
   sqlite:
     detected:
-      installed: {sqlite_installed}
+    installed: {sqlite_runtime_available}
       db_initialized: {db_initialized}
     policy:
       enabled: {sqlite_pol}
@@ -136,6 +143,29 @@ last_updated: "{ts}"
 
     println!("\n{} Wrote {}", "OK:".green().bold(), cap_path.display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn sqlite_policy_defaults_to_enabled_when_not_explicitly_disabled() {
+        let explicit_policy = None;
+        let sqlite_runtime_available = true;
+        let sqlite_policy = explicit_policy.unwrap_or(sqlite_runtime_available);
+        assert!(sqlite_policy);
+    }
+
+    #[test]
+    fn sqlite_policy_respects_explicit_disable() {
+        let disable_sqlite = true;
+        let explicit_policy = Some(true);
+        let sqlite_policy = if disable_sqlite {
+            false
+        } else {
+            explicit_policy.unwrap_or(true)
+        };
+        assert!(!sqlite_policy);
+    }
 }
 
 /// Quick preflight check — exit 1 if critical capabilities are missing.

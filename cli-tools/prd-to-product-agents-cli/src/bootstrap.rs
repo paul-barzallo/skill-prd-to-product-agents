@@ -134,6 +134,65 @@ fn template_compare_sha256(path: &Path) -> Result<String> {
     }
 }
 
+fn packaged_runtime_cli_path(target_root: &Path) -> Option<PathBuf> {
+    let base = target_root.join(".agents").join("bin").join("prd-to-product-agents");
+    let candidates = if cfg!(target_os = "windows") {
+        vec![base.join("prdtp-agents-functions-cli-windows-x64.exe")]
+    } else if cfg!(target_os = "macos") {
+        vec![base.join("prdtp-agents-functions-cli-darwin-arm64")]
+    } else {
+        vec![base.join("prdtp-agents-functions-cli-linux-x64")]
+    };
+
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
+fn initialize_sqlite_with_runtime_cli(target_root: &Path) -> Result<()> {
+    let runtime_cli = packaged_runtime_cli_path(target_root).with_context(|| {
+        format!(
+            "runtime CLI not found under {}",
+            target_root
+                .join(".agents")
+                .join("bin")
+                .join("prd-to-product-agents")
+                .display()
+        )
+    })?;
+
+    let output = std::process::Command::new(&runtime_cli)
+        .arg("--workspace")
+        .arg(target_root)
+        .arg("database")
+        .arg("init")
+        .current_dir(target_root)
+        .output()
+        .with_context(|| format!("running {}", runtime_cli.display()))?;
+
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let detail = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("STDOUT:\n{stdout}\nSTDERR:\n{stderr}")
+    };
+
+    bail!(
+        "runtime database init failed with exit code {:?}{}",
+        output.status.code(),
+        if detail.is_empty() {
+            String::new()
+        } else {
+            format!(":\n{detail}")
+        }
+    )
+}
+
 // ── Bootstrap workspace ──────────────────────────────────────────
 
 pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
@@ -315,13 +374,13 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
                 tracing::info!(path = %file_path.display(), "applying transactional token replacement");
                 let temp_path = file_path.with_extension("tmp");
                 util::write_utf8_lf(&temp_path, &content)?;
-                
+
                 let read_back = fs::read_to_string(&temp_path)?;
                 if read_back != content {
                     let _ = fs::remove_file(&temp_path);
                     anyhow::bail!("Failed to verify token replacement on {}", file_path.display());
                 }
-                
+
                 fs::rename(&temp_path, &file_path)?;
 
                 if !touched.contains(&token_file.to_string()) {
@@ -424,49 +483,39 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
     );
     manifest.write(&manifest_path)?;
 
-    // ── SQLite init (via sqlite3 CLI) ─────────────────────────
+    // ── SQLite init (via bundled runtime CLI) ────────────────
     let mut bootstrap_status = "FULL";
+    let mut bootstrap_reason: Option<String> = None;
     if !args.skip_db_init {
-        if util::command_exists("sqlite3") {
-            let db_path = target_root.join(".state").join("project_memory.db");
-            if !db_path.exists() {
-                let schema_path = target_root.join(".state").join("memory-schema.sql");
-                if schema_path.exists() {
-                    let status = std::process::Command::new("sqlite3")
-                        .arg(db_path.to_string_lossy().as_ref())
-                        .arg(format!(".read \"{}\"", schema_path.to_string_lossy().replace('\\', "/")))
-                        .status();
-                    match status {
-                        Ok(s) if s.success() => {
-                            tracing::info!(database_path = %db_path.display(), "sqlite database initialized during bootstrap");
-                            println!("  {} SQLite DB initialized", "OK:".green());
-                        }
-                        _ => {
-                            tracing::warn!(database_path = %db_path.display(), "sqlite database initialization failed during bootstrap");
-                            eprintln!("  {} SQLite DB init failed", "WARN:".yellow());
-                            bootstrap_status = "DEGRADED";
-                        }
-                    }
+        let db_path = target_root.join(".state").join("project_memory.db");
+        let schema_path = target_root.join(".state").join("memory-schema.sql");
+        if !db_path.exists() && schema_path.exists() {
+            match initialize_sqlite_with_runtime_cli(&target_root) {
+                Ok(()) => {
+                    tracing::info!(database_path = %db_path.display(), "sqlite database initialized during bootstrap");
+                    println!("  {} SQLite DB initialized", "OK:".green());
+                }
+                Err(error) => {
+                    tracing::warn!(database_path = %db_path.display(), error = %error, "sqlite database initialization failed during bootstrap");
+                    eprintln!("  {} SQLite DB init failed", "WARN:".yellow());
+                    bootstrap_status = "DEGRADED";
+                    bootstrap_reason = Some(error.to_string());
                 }
             }
-        } else {
-            tracing::warn!("sqlite3 not found; bootstrap database initialization deferred");
-            eprintln!(
-                "  {} sqlite3 not found -- DB init deferred",
-                "WARN:".yellow()
-            );
-            bootstrap_status = "DEGRADED";
         }
     }
 
     // Append bootstrap status to report
+    let degraded_status_details = if bootstrap_status == "DEGRADED" {
+        format!(
+            "\n- Reason: {}\n- Action: Rerun `prdtp-agents-functions-cli --workspace . database init` manually once the workspace capability policy is intentional",
+            bootstrap_reason.unwrap_or_else(|| "runtime database init was deferred".to_string())
+        )
+    } else {
+        String::new()
+    };
     let status_section = format!(
-        "\n## Bootstrap Status\n\n- Status: {bootstrap_status}{}\n",
-        if bootstrap_status == "DEGRADED" {
-            "\n- Reason: sqlite3 not available -- DB init deferred\n- Action: Install sqlite3 and run `prdtp-agents-functions-cli database init` manually"
-        } else {
-            ""
-        }
+        "\n## Bootstrap Status\n\n- Status: {bootstrap_status}{degraded_status_details}\n"
     );
     util::append_utf8_lf(&report_path, &status_section)?;
 
@@ -1100,7 +1149,7 @@ fn write_capabilities_yaml(target_root: &Path, caps_path: &Path) -> Result<()> {
     } else {
         false
     };
-    let sqlite_installed = util::command_exists("sqlite3");
+    let sqlite_installed = util::sqlite_runtime_available();
     let db_initialized = target_root
         .join(".state")
         .join("project_memory.db")
@@ -1196,7 +1245,7 @@ last_updated: {ts}
         sqlite_installed = b(sqlite_installed),
         db_init = b(db_initialized),
         sqlite_enabled = b(sqlite_enabled),
-        sqlite_mode = if sqlite_enabled { "ledger" } else { "spool-only" },
+        sqlite_mode = if sqlite_enabled && db_initialized { "ledger" } else { "spool-only" },
         node_installed = b(node_installed),
         npm_installed = b(npm_installed),
         node_native = b(node_installed), // simplified
@@ -1420,7 +1469,7 @@ fn collect_manual_next_steps(
         steps.push("rerun `prdtp-agents-functions-cli --workspace . validate readiness` once governance and capabilities are intentional".to_string());
     }
     if !target.join(".state").join("project_memory.db").exists() {
-        steps.push("install sqlite3 and run prdtp-agents-functions-cli --workspace . database init if you want the SQLite mirror".to_string());
+        steps.push("run prdtp-agents-functions-cli --workspace . database init if you want to initialize the SQLite mirror".to_string());
     }
     steps
 }

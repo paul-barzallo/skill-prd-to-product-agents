@@ -178,6 +178,16 @@ pub fn command_exists(name: &str) -> bool {
     }
 }
 
+/// SQLite runtime support is bundled into the packaged CLI via rusqlite.
+pub fn sqlite_runtime_available() -> bool {
+    true
+}
+
+/// Standalone sqlite3 CLI availability is optional.
+pub fn sqlite_cli_available() -> bool {
+    command_exists("sqlite3")
+}
+
 /// Run a command and capture stdout/stderr and exit status.
 pub fn command_capture(name: &str, args: &[&str], cwd: Option<&Path>) -> Result<CommandResult> {
     let mut command = std::process::Command::new(name);

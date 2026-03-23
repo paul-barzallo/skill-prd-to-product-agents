@@ -44,7 +44,7 @@ If `capabilities.sqlite.policy.enabled=false`:
 
 - `prdtp-agents-functions-cli database init`, `database migrate`, `audit sync`, and `audit replay-spool` are out of contract.
 - `state *` commands still mutate canonical YAML and infrastructure may spool degraded audit evidence locally.
-- Re-enable later by installing SQLite, setting `capabilities.sqlite.policy.enabled=true`, running `prdtp-agents-functions-cli database init`, and then `prdtp-agents-functions-cli audit replay-spool`.
+- Re-enable later by setting `capabilities.sqlite.policy.enabled=true`, running `prdtp-agents-functions-cli database init`, and then `prdtp-agents-functions-cli audit replay-spool`.
 
 ## Reporting-disabled mode
 

@@ -646,7 +646,12 @@ pub fn smoke(skill_root: &Path, args: SmokeArgs) -> Result<()> {
             println!("{}", "PASS".green());
             passed += 1;
         } else {
-            println!("{} (exit {})", "FAIL".red(), format_status(result.code));
+            println!(
+                "{} (exit {})\n{}",
+                "FAIL".red(),
+                format_status(result.code),
+                result.combined_output()
+            );
             failed += 1;
         }
 

@@ -36,7 +36,7 @@ fn pending_marker_path(workspace: &Path) -> std::path::PathBuf {
 
 fn pending_marker_body() -> String {
     format!(
-        "# SQLite Bootstrap Pending\n\n- Mode: DEGRADED\n- Reason: SQLite initialization was deferred\n- Recovery: Install sqlite3 if required and rerun `prdtp-agents-functions-cli database init`\n"
+        "# SQLite Bootstrap Pending\n\n- Mode: DEGRADED\n- Reason: SQLite initialization was deferred\n- Recovery: Re-enable SQLite policy if needed and rerun `prdtp-agents-functions-cli database init`\n"
     )
 }
 

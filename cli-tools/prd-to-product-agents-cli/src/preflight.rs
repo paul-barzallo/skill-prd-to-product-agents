@@ -66,7 +66,8 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     } else {
         false
     };
-    let sqlite_installed = util::command_exists("sqlite3");
+    let sqlite_runtime_available = util::sqlite_runtime_available();
+    let sqlite_cli_available = util::sqlite_cli_available();
     let db_initialized = target
         .join(".state")
         .join("project_memory.db")
@@ -88,8 +89,20 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
         if gh_authenticated { "(authenticated)" } else { "(not authenticated)" }
     );
     println!(
-        "  sqlite3:       {}",
-        if sqlite_installed { "installed".green() } else { "missing".yellow() }
+        "  SQLite:        {}",
+        if sqlite_runtime_available {
+            "embedded runtime available".green()
+        } else {
+            "runtime unavailable".red()
+        }
+    );
+    println!(
+        "  sqlite3 CLI:   {}",
+        if sqlite_cli_available {
+            "installed (optional)".green()
+        } else {
+            "missing (optional)".yellow()
+        }
     );
     println!(
         "  DB:            {}",
@@ -129,9 +142,13 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
         gh_installed && gh_authenticated && git_enabled
     };
     let sqlite_enabled = if preserve {
-        util::yaml_bool(&caps_path, "capabilities.sqlite.policy.enabled", sqlite_installed)
+        util::yaml_bool(
+            &caps_path,
+            "capabilities.sqlite.policy.enabled",
+            sqlite_runtime_available,
+        )
     } else {
-        sqlite_installed
+        sqlite_runtime_available
     };
     let mdlint_enabled = if preserve {
         util::yaml_bool(&caps_path, "capabilities.markdownlint.policy.enabled", markdownlint_installed)
@@ -207,10 +224,10 @@ last_updated: {ts}
         gh_installed = b(gh_installed),
         gh_auth = b(gh_authenticated),
         gh_enabled = b(gh_enabled),
-        sqlite_installed = b(sqlite_installed),
+        sqlite_installed = b(sqlite_runtime_available),
         db_init = b(db_initialized),
         sqlite_enabled = b(sqlite_enabled),
-        sqlite_mode = if sqlite_enabled { "ledger" } else { "spool-only" },
+        sqlite_mode = if sqlite_enabled && db_initialized { "ledger" } else { "spool-only" },
         node_installed = b(node_installed),
         npm_installed = b(npm_installed),
         node_native = b(node_installed),
@@ -472,7 +489,7 @@ fn configure_git_identity(target: &Path, scope: &str, name: &str, email: &str) -
     let name_ok = std::process::Command::new("git")
         .args(&name_args)
         .current_dir(target)
-        
+
         .output()
         .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
         .unwrap_or(false);
@@ -480,7 +497,7 @@ fn configure_git_identity(target: &Path, scope: &str, name: &str, email: &str) -
     let email_ok = std::process::Command::new("git")
         .args(&email_args)
         .current_dir(target)
-        
+
         .output()
         .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
         .unwrap_or(false);
@@ -513,7 +530,7 @@ fn try_install(tool_name: &str) -> bool {
             if util::command_exists("npm") {
                 std::process::Command::new("npm")
                     .args(["install", "-g", "markdownlint-cli"])
-                    
+
                     .output()
                     .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
                     .unwrap_or(false)
@@ -536,7 +553,7 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
                 "install", "--id", winget_id, "-e", "--silent",
                 "--accept-package-agreements", "--accept-source-agreements",
             ])
-            
+
             .output()
             .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
             .unwrap_or(false);
@@ -547,7 +564,7 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if util::command_exists("choco") {
         let ok = std::process::Command::new("choco")
             .args(["install", choco_pkg, "-y"])
-            
+
             .output()
             .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
             .unwrap_or(false);
@@ -558,7 +575,7 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if util::command_exists("scoop") {
         let ok = std::process::Command::new("scoop")
             .args(["install", scoop_pkg])
-            
+
             .output()
             .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
             .unwrap_or(false);
@@ -574,7 +591,7 @@ fn apt_install(packages: &[&str]) -> bool {
     args.extend_from_slice(packages);
     std::process::Command::new("sudo")
         .args(&args)
-        
+
         .output()
         .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
         .unwrap_or(false)
@@ -585,7 +602,7 @@ fn brew_install(packages: &[&str]) -> bool {
     args.extend(packages.iter().copied());
     std::process::Command::new("brew")
         .args(&args)
-        
+
         .output()
         .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
         .unwrap_or(false)
@@ -606,5 +623,3 @@ fn has_git_identity(target: &Path) -> bool {
         .unwrap_or(false);
     name && email
 }
-
-
