@@ -47,14 +47,16 @@ Run the aggregated release-blocking validation chain. The command stops at the
 first failure and runs, in order:
 
 1. `test unit`
-2. `validate version-metadata` for package `VERSION` metadata
-3. `validate package-hygiene`
-4. `validate platform-claims`
-5. `test smoke`
+2. `cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml --test runtime_contract`
+3. `validate version-metadata` for package `VERSION` metadata
+4. `validate package-hygiene`
+5. `validate platform-claims`
+6. `test smoke`
 
 The effective blocking intent is:
 
 - repository contract integrity
+- runtime workspace contract parity with CI
 - package hygiene
 - template encoding
 - assembled agent consistency

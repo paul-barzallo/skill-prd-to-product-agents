@@ -5,14 +5,49 @@ use std::process::{Command, Output};
 use prdtp_agents_shared::enums::{HandoffReason, Role};
 use serde_yaml::Value;
 use tempfile::TempDir;
+use walkdir::WalkDir;
 
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
+    let candidate = manifest
         .parent()
         .and_then(Path::parent)
         .expect("could not resolve repo root from CARGO_MANIFEST_DIR")
-        .to_path_buf()
+        .to_path_buf();
+
+    if is_repo_root(&candidate) {
+        return candidate;
+    }
+
+    find_repo_root_from(std::env::current_dir().ok())
+        .or_else(|| find_repo_root_from(std::env::current_exe().ok()))
+        .unwrap_or_else(|| {
+            panic!(
+                "could not resolve repo root; compile-time path '{}' is stale and no runtime fallback matched",
+                candidate.display()
+            )
+        })
+}
+
+fn is_repo_root(path: &Path) -> bool {
+    path.join("AGENTS.md").is_file()
+        && path
+            .join(".agents")
+            .join("skills")
+            .join("prd-to-product-agents")
+            .join("templates")
+            .join("workspace")
+            .is_dir()
+}
+
+fn find_repo_root_from(path: Option<PathBuf>) -> Option<PathBuf> {
+    let path = path?;
+    for ancestor in path.ancestors() {
+        if is_repo_root(ancestor) {
+            return Some(ancestor.to_path_buf());
+        }
+    }
+    None
 }
 
 fn template_root() -> PathBuf {
@@ -26,21 +61,51 @@ fn template_root() -> PathBuf {
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).expect("failed to create destination directory");
-    for entry in fs::read_dir(src).expect("failed to read source directory") {
-        let entry = entry.expect("failed to read directory entry");
+    for entry in WalkDir::new(src) {
+        let entry = entry.unwrap_or_else(|error| {
+            panic!("failed to walk source directory '{}': {error}", src.display())
+        });
         let source = entry.path();
-        let target = dst.join(entry.file_name());
-        if source.is_dir() {
-            copy_dir_recursive(&source, &target);
-        } else {
-            fs::copy(&source, &target).unwrap_or_else(|error| {
+        let relative = source.strip_prefix(src).unwrap_or_else(|error| {
+            panic!(
+                "failed to strip source prefix '{}' from '{}': {error}",
+                src.display(),
+                source.display()
+            )
+        });
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+
+        let target = dst.join(relative);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target).unwrap_or_else(|error| {
                 panic!(
-                    "failed to copy '{}' to '{}': {error}",
-                    source.display(),
+                    "failed to create destination directory '{}' from '{}': {error}",
+                    target.display(),
+                    source.display()
+                )
+            });
+            continue;
+        }
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).unwrap_or_else(|error| {
+                panic!(
+                    "failed to create destination parent '{}' for '{}': {error}",
+                    parent.display(),
                     target.display()
                 )
             });
         }
+
+        fs::copy(source, &target).unwrap_or_else(|error| {
+            panic!(
+                "failed to copy '{}' to '{}': {error}",
+                source.display(),
+                target.display()
+            )
+        });
     }
 }
 

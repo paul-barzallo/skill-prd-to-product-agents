@@ -713,6 +713,34 @@ pub fn unit(_skill_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn runtime_contract_tests(skill_root: &Path) -> Result<()> {
+    let repo_root = repo_root_for_skill(skill_root);
+    let args = vec![
+        "test".to_string(),
+        "--manifest-path".to_string(),
+        "cli-tools/prdtp-agents-functions-cli/Cargo.toml".to_string(),
+        "--test".to_string(),
+        "runtime_contract".to_string(),
+    ];
+    let result = run_command("cargo", &args, Some(&repo_root))?;
+
+    if !result.stdout.is_empty() {
+        println!("{}", result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        eprintln!("{}", result.stderr);
+    }
+
+    if !result.success {
+        bail!(
+            "runtime contract tests failed with exit code {}",
+            format_status(result.code)
+        );
+    }
+
+    Ok(())
+}
+
 // ── Release Gate ─────────────────────────────────────────────────
 
 #[derive(Args)]
@@ -724,8 +752,9 @@ pub struct ReleaseGateArgs {
 
 /// Aggregated release-blocking validation chain.
 ///
-/// Runs in order: unit → version-metadata → package-hygiene → platform-claims
-/// → smoke (bootstrap + validate + encoding + assembly).
+/// Runs in order: unit → runtime-contract → version-metadata
+/// → package-hygiene → platform-claims → smoke
+/// (bootstrap + validate + encoding + assembly).
 /// Fails immediately on the first error so CI gets a clear signal.
 pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
     println!("{}", "═══════════════════════════════════════".cyan());
@@ -750,7 +779,21 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         }
     }
 
-    // Step 2: version-metadata
+    // Step 2: runtime contract integration tests
+    step += 1;
+    print!("  [{step}] Runtime contract tests... ");
+    match runtime_contract_tests(skill_root) {
+        Ok(()) => {
+            println!("{}", "PASS".green());
+            passed += 1;
+        }
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Release gate blocked at step {step} (runtime contract tests): {e}");
+        }
+    }
+
+    // Step 3: version-metadata
     step += 1;
     print!("  [{step}] Package version metadata... ");
     let version_args = vec![
@@ -766,7 +809,7 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         bail!("Release gate blocked at step {step} (package version metadata):\n{}", result.combined_output());
     }
 
-    // Step 3: package hygiene
+    // Step 4: package hygiene
     step += 1;
     print!("  [{step}] Package hygiene... ");
     let hygiene_args = vec![
@@ -782,7 +825,7 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         bail!("Release gate blocked at step {step} (package-hygiene):\n{}", result.combined_output());
     }
 
-    // Step 4: platform claims
+    // Step 5: platform claims
     step += 1;
     print!("  [{step}] Platform claims... ");
     let claims_args = vec![
@@ -798,7 +841,7 @@ pub fn release_gate(skill_root: &Path, args: ReleaseGateArgs) -> Result<()> {
         bail!("Release gate blocked at step {step} (platform-claims):\n{}", result.combined_output());
     }
 
-    // Step 5: smoke (bootstrap + validate + encoding + assembly)
+    // Step 6: smoke (bootstrap + validate + encoding + assembly)
     step += 1;
     print!("  [{step}] Smoke tests (bootstrap → validate → assembly)... ");
     match smoke(skill_root, SmokeArgs { target: args.target }) {

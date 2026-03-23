@@ -17,6 +17,7 @@ the `prd-to-product-agents` skill.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test release-gate` for
   the aggregated blocking chain before release tagging.
 - Ensure `test release-gate` fails on:
+  - runtime workspace contract regressions
   - stale `.agent.md` files
   - prompt encoding issues
   - orphan/legacy tracked artifacts
