@@ -190,6 +190,14 @@ jobs:
           cp collected/prd-to-product-agents-cli-* "${SKILL_BIN_DIR}/"
           # Workspace runtime tool: shipped inside the generated workspace template.
           cp collected/prdtp-agents-functions-cli-* "${WORKSPACE_RUNTIME_BIN_DIR}/"
+          (
+            cd "${SKILL_BIN_DIR}"
+            sha256sum prd-to-product-agents-cli-* > checksums.sha256
+          )
+          (
+            cd "${WORKSPACE_RUNTIME_BIN_DIR}"
+            sha256sum prdtp-agents-functions-cli-* > checksums.sha256
+          )
           chmod +x "${ROOT_BIN_DIR}"/skill-dev-cli-linux-x64 \
                     "${ROOT_BIN_DIR}"/skill-dev-cli-darwin-arm64 \
                     "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-linux-x64 \

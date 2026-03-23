@@ -368,7 +368,18 @@ fn bootstrap_fails_when_binary_bundle_checksum_is_invalid() {
 
     let checksum_path = copied_skill.join("bin/checksums.sha256");
     let checksum = fs::read_to_string(&checksum_path).expect("failed to read checksum manifest");
-    let broken = checksum.replacen("79983f6deb831d545543614915f3aa58ee9cf44d4d12a1fdf24bc12d74f13f07", "0000000000000000000000000000000000000000000000000000000000000000", 1);
+    let first_line = checksum
+        .lines()
+        .next()
+        .expect("checksum manifest should contain at least one entry");
+    let (hash, _) = first_line
+        .split_once("  ")
+        .expect("checksum manifest line should contain a hash and file name");
+    let broken = checksum.replacen(
+        hash,
+        "0000000000000000000000000000000000000000000000000000000000000000",
+        1,
+    );
     fs::write(&checksum_path, broken).expect("failed to corrupt checksum manifest");
 
     let workspace = tempfile::tempdir().expect("failed to create target dir");

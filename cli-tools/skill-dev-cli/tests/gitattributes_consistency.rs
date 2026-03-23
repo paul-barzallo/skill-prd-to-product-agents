@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use walkdir::WalkDir;
 
-const LF_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "jsonc", "sql", "sh"];
+const LF_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "jsonc", "sql", "sha256", "sh"];
 
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));

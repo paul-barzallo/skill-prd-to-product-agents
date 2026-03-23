@@ -1,6 +1,18 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const ALL_PUBLISHED_BINARIES: &[&str] = &[
+    ".agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-linux-x64",
+    ".agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-darwin-arm64",
+    ".agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-windows-x64.exe",
+    ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-linux-x64",
+    ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-darwin-arm64",
+    ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-windows-x64.exe",
+    "bin/skill-dev-cli-linux-x64",
+    "bin/skill-dev-cli-darwin-arm64",
+    "bin/skill-dev-cli-windows-x64.exe",
+];
+
 const UNIX_PUBLISHED_BINARIES: &[&str] = &[
     ".agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-linux-x64",
     ".agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-darwin-arm64",
@@ -49,6 +61,41 @@ fn unix_published_binaries_are_tracked_as_executable() {
         missing.is_empty(),
         "Published Unix binaries must be executable in git index:\n  {}",
         missing.join("\n  ")
+    );
+}
+
+#[test]
+fn published_binaries_are_tracked_as_binary() {
+    let output = Command::new("git")
+        .current_dir(repo_root())
+        .args(["ls-files", "--eol", "--"])
+        .args(ALL_PUBLISHED_BINARIES)
+        .output()
+        .expect("failed to inspect git attributes for published binaries");
+
+    assert!(
+        output.status.success(),
+        "git ls-files --eol failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut wrong = Vec::new();
+
+    for path in ALL_PUBLISHED_BINARIES {
+        let line = stdout.lines().find(|line| line.ends_with(path));
+        match line {
+            Some(line) if line.contains("attr/-text") || line.contains("attr/text=unset") => {}
+            Some(line) => wrong.push(format!("{path}: expected attr/-text, found '{line}'")),
+            None => wrong.push(format!("{path}: not tracked in git index")),
+        }
+    }
+
+    assert!(
+        wrong.is_empty(),
+        "Published binaries must be tracked as binary with -text attributes:\n  {}",
+        wrong.join("\n  ")
     );
 }
 
@@ -155,6 +202,34 @@ fn build_workflow_keeps_windows_linux_and_macos_matrix_entries() {
     assert!(
         missing.is_empty(),
         "Build workflow must keep Linux, macOS, and Windows matrix entries:\n  {}",
+        missing.join("\n  ")
+    );
+}
+
+#[test]
+fn build_workflow_publish_refreshes_checksum_manifests() {
+    let workflow = repo_root()
+        .join(".github")
+        .join("workflows")
+        .join("build-skill-binaries.yml");
+    let content = std::fs::read_to_string(&workflow)
+        .expect("failed to read build-skill-binaries workflow");
+
+    let expected_entries = [
+        "sha256sum prd-to-product-agents-cli-* > checksums.sha256",
+        "sha256sum prdtp-agents-functions-cli-* > checksums.sha256",
+    ];
+
+    let mut missing = Vec::new();
+    for entry in expected_entries {
+        if !content.contains(entry) {
+            missing.push(entry);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Build workflow publish step must refresh checksum manifests when it updates binaries:\n  {}",
         missing.join("\n  ")
     );
 }
