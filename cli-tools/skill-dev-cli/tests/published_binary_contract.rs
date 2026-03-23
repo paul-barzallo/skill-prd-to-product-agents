@@ -80,3 +80,81 @@ fn unix_release_gate_workflow_sets_execute_bits_for_collected_binaries() {
         missing.join("\n  ")
     );
 }
+
+#[test]
+fn build_workflow_tracks_multi_os_relevant_paths() {
+    let workflow = repo_root()
+        .join(".github")
+        .join("workflows")
+        .join("build-skill-binaries.yml");
+    let content = std::fs::read_to_string(&workflow)
+        .expect("failed to read build-skill-binaries workflow");
+
+    let expected_entries = [
+        "- '.agents/skills/prd-to-product-agents/**'",
+        "- 'cli-tools/**'",
+        "- 'bin/**'",
+        "- '.github/workflows/**'",
+    ];
+
+    let mut missing = Vec::new();
+    for entry in expected_entries {
+        if !content.contains(entry) {
+            missing.push(entry);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Build workflow must track all multi-OS-relevant paths:\n  {}",
+        missing.join("\n  ")
+    );
+}
+
+#[test]
+fn build_workflow_release_gate_runs_before_merge() {
+    let workflow = repo_root()
+        .join(".github")
+        .join("workflows")
+        .join("build-skill-binaries.yml");
+    let content = std::fs::read_to_string(&workflow)
+        .expect("failed to read build-skill-binaries workflow");
+    let normalized = content.replace("\r\n", "\n");
+
+    let release_gate_push_only = "release-gate:\n    needs: [build, test]\n    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'";
+    let publish_main_only = "publish:\n    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'";
+
+    assert!(
+        !normalized.contains(release_gate_push_only),
+        "Release gate must not be restricted to post-merge execution only"
+    );
+    assert!(
+        normalized.contains(publish_main_only),
+        "Publish job must remain restricted to push on main"
+    );
+}
+
+#[test]
+fn build_workflow_keeps_windows_linux_and_macos_matrix_entries() {
+    let workflow = repo_root()
+        .join(".github")
+        .join("workflows")
+        .join("build-skill-binaries.yml");
+    let content = std::fs::read_to_string(&workflow)
+        .expect("failed to read build-skill-binaries workflow");
+
+    let expected_entries = ["- os: ubuntu-latest", "- os: macos-latest", "- os: windows-latest"];
+
+    let mut missing = Vec::new();
+    for entry in expected_entries {
+        if !content.contains(entry) {
+            missing.push(entry);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Build workflow must keep Linux, macOS, and Windows matrix entries:\n  {}",
+        missing.join("\n  ")
+    );
+}

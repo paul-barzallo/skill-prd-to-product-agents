@@ -4,12 +4,18 @@ on:
   push:
     branches: [main]
     paths:
+      - '.agents/skills/prd-to-product-agents/**'
       - 'cli-tools/**'
+      - 'bin/**'
+      - '.github/workflows/**'
       - '.github/workflows/build-skill-binaries.yml'
   pull_request:
     branches: [main]
     paths:
+      - '.agents/skills/prd-to-product-agents/**'
       - 'cli-tools/**'
+      - 'bin/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -111,7 +117,6 @@ jobs:
 
   release-gate:
     needs: [build, test]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     strategy:
       fail-fast: true
       matrix:

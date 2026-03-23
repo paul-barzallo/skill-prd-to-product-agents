@@ -107,6 +107,10 @@ cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . t
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate
 ```
 
+- `test repo-validation` es el atajo local canonico alineado con `Repository Validation` y con la simulacion local del gate del workflow de binarios.
+- GitHub ejecuta `Repository Validation` en Ubuntu y el workflow `Build Scoped CLI Binaries` valida build, test y release-gate en Windows, Linux y macOS para cambios relevantes antes del merge.
+- `test workflow-release-gate` solo simula el gate del workflow en la plataforma actual; no sustituye la cobertura remota multi-OS.
+
 ## Publicacion y artefactos
 
 - `bin/` contiene binarios publicables de alcance proyecto.
