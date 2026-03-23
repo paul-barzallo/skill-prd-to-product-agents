@@ -40,7 +40,7 @@ jobs:
     name: Build (${{ matrix.suffix }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -80,7 +80,7 @@ jobs:
             "staging\prdtp-agents-functions-cli-${{ matrix.suffix }}.exe"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.suffix }}
           path: staging/
@@ -101,7 +101,7 @@ jobs:
     name: Test (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -131,10 +131,10 @@ jobs:
     name: Release Gate (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: collected
           pattern: binaries-${{ matrix.suffix }}
@@ -163,10 +163,10 @@ jobs:
     name: Publish scoped binaries
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: collected
           pattern: binaries-*

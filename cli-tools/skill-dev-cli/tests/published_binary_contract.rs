@@ -29,6 +29,11 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
+fn read_repo_file(relative_path: &str) -> String {
+    std::fs::read_to_string(repo_root().join(relative_path))
+        .unwrap_or_else(|error| panic!("failed to read {relative_path}: {error}"))
+}
+
 #[test]
 fn unix_published_binaries_are_tracked_as_executable() {
     let output = Command::new("git")
@@ -231,5 +236,75 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
         missing.is_empty(),
         "Build workflow publish step must refresh checksum manifests when it updates binaries:\n  {}",
         missing.join("\n  ")
+    );
+}
+
+#[test]
+fn workflows_use_node24_ready_action_pins() {
+    let workflow_checks = [
+        (
+            ".github/workflows/repo-validation.yml",
+            ["actions/checkout@v6", "actions/setup-node@v6"].as_slice(),
+            ["actions/checkout@v4", "actions/setup-node@v4"].as_slice(),
+        ),
+        (
+            ".github/workflows/build-skill-binaries.yml",
+            [
+                "actions/checkout@v6",
+                "actions/upload-artifact@v7",
+                "actions/download-artifact@v8",
+            ]
+            .as_slice(),
+            [
+                "actions/checkout@v4",
+                "actions/upload-artifact@v4",
+                "actions/download-artifact@v4",
+            ]
+            .as_slice(),
+        ),
+        (
+            ".github/workflows/release-binaries.yml",
+            ["actions/checkout@v6", "actions/upload-artifact@v7"].as_slice(),
+            ["actions/checkout@v4", "actions/upload-artifact@v4"].as_slice(),
+        ),
+        (
+            ".agents/skills/prd-to-product-agents/templates/workspace/.github/workflows/smoke-tests.yml",
+            ["actions/checkout@v6"].as_slice(),
+            ["actions/checkout@v4"].as_slice(),
+        ),
+        (
+            ".agents/skills/prd-to-product-agents/templates/workspace/.github/workflows/pr-governance.yml",
+            ["actions/checkout@v6"].as_slice(),
+            ["actions/checkout@v4"].as_slice(),
+        ),
+    ];
+
+    let mut missing = Vec::new();
+    let mut forbidden = Vec::new();
+
+    for (path, expected, disallowed) in workflow_checks {
+        let content = read_repo_file(path);
+
+        for entry in expected {
+            if !content.contains(entry) {
+                missing.push(format!("{path}: missing '{entry}'"));
+            }
+        }
+
+        for entry in disallowed {
+            if content.contains(entry) {
+                forbidden.push(format!("{path}: still contains deprecated '{entry}'"));
+            }
+        }
+    }
+
+    assert!(
+        missing.is_empty() && forbidden.is_empty(),
+        "Workflow action pins must stay on Node24-ready majors:\n  {}",
+        missing
+            .into_iter()
+            .chain(forbidden)
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
 }
