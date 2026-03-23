@@ -14,6 +14,7 @@ the `prd-to-product-agents` skill.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test unit`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test markdown`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test smoke`.
+- Run `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` to simulate the build workflow release-gate on your current platform.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test release-gate` for
   the aggregated blocking chain before release tagging.
 - Ensure `test release-gate` fails on:

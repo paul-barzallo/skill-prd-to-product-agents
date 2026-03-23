@@ -53,12 +53,15 @@ Run:
 
 ```bash
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation
+cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test workflow-release-gate
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate
 ```
 
 Use `test repo-validation` before commit or push when the touched paths overlap
-the repository validation workflow. Treat `test release-gate` as the blocking
-repository release command inside that broader local check.
+the repository validation workflow. Use `test workflow-release-gate` when you
+need the current-platform equivalent of the build workflow gate. Treat
+`test release-gate` as the blocking repository release command inside that
+broader local check.
 
 Also ensure local hooks are installed:
 

@@ -133,7 +133,134 @@ fn candidate_roots(skill_root: &Path) -> Vec<PathBuf> {
     roots
 }
 
+fn staged_binary_suffix() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "windows-x64"
+    } else if cfg!(target_os = "macos") {
+        "darwin-arm64"
+    } else {
+        "linux-x64"
+    }
+}
+
+fn cargo_target_triple() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "x86_64-pc-windows-msvc"
+    } else if cfg!(target_os = "macos") {
+        "aarch64-apple-darwin"
+    } else {
+        "x86_64-unknown-linux-gnu"
+    }
+}
+
+fn binary_extension() -> &'static str {
+    if cfg!(target_os = "windows") {
+        ".exe"
+    } else {
+        ""
+    }
+}
+
+fn staged_binary_name(prefix: &str) -> String {
+    format!("{prefix}-{}{}", staged_binary_suffix(), binary_extension())
+}
+
+fn set_executable_if_needed(_path: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let metadata = fs::metadata(_path)
+            .with_context(|| format!("reading metadata for {}", _path.display()))?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(_path, permissions)
+            .with_context(|| format!("setting executable permissions on {}", _path.display()))?;
+    }
+
+    Ok(())
+}
+
+fn copy_binary(source: &Path, target: &Path) -> Result<()> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .with_context(|| format!("creating parent directory {}", parent.display()))?;
+    }
+    fs::copy(source, target).with_context(|| {
+        format!("copying binary from {} to {}", source.display(), target.display())
+    })?;
+    set_executable_if_needed(target)?;
+    Ok(())
+}
+
+fn stage_release_binary(
+    repo_root: &Path,
+    manifest_path: &str,
+    crate_name: &str,
+    staged_prefix: &str,
+    collected_dir: &Path,
+) -> Result<PathBuf> {
+    let args = vec![
+        "build".to_string(),
+        "--release".to_string(),
+        "--target".to_string(),
+        cargo_target_triple().to_string(),
+        "--manifest-path".to_string(),
+        manifest_path.to_string(),
+    ];
+    let result = run_command("cargo", &args, Some(repo_root))?;
+    if !result.stdout.is_empty() {
+        println!("{}", result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        eprintln!("{}", result.stderr);
+    }
+    if !result.success {
+        bail!(
+            "cargo build failed for {manifest_path} with exit code {}",
+            format_status(result.code)
+        );
+    }
+
+    let source = repo_root
+        .join(manifest_path)
+        .parent()
+        .context("manifest path has no parent directory")?
+        .join("target")
+        .join(cargo_target_triple())
+        .join("release")
+        .join(format!("{crate_name}{}", binary_extension()));
+    if !source.is_file() {
+        bail!("release binary not found after build: {}", source.display());
+    }
+
+    let target = collected_dir.join(staged_binary_name(staged_prefix));
+    copy_binary(&source, &target)?;
+    Ok(target)
+}
+
+fn find_staged_binary(skill_root: &Path, prefix: &str) -> Option<PathBuf> {
+    let staged_name = staged_binary_name(prefix);
+    for root in candidate_roots(skill_root) {
+        let direct = root.join(&staged_name);
+        if direct.is_file() {
+            return Some(direct);
+        }
+
+        let collected = root.join("collected").join(&staged_name);
+        if collected.is_file() {
+            return Some(collected);
+        }
+    }
+
+    None
+}
+
 fn find_runtime_cli(skill_root: &Path) -> Option<PathBuf> {
+    if let Some(staged) = find_staged_binary(skill_root, "prdtp-agents-functions-cli") {
+        return Some(staged);
+    }
+
     let (build_binaries, packaged_binaries) = if cfg!(target_os = "windows") {
         (
             vec![
@@ -187,6 +314,10 @@ fn find_runtime_cli(skill_root: &Path) -> Option<PathBuf> {
 }
 
 fn find_skill_cli(skill_root: &Path) -> Option<PathBuf> {
+    if let Some(staged) = find_staged_binary(skill_root, "prd-to-product-agents-cli") {
+        return Some(staged);
+    }
+
     let (build_binaries, packaged_binaries) = if cfg!(target_os = "windows") {
         (
             vec![
@@ -628,7 +759,10 @@ pub fn unit(_skill_root: &Path) -> Result<()> {
     print!("  [2] YAML bool parsing... ");
     {
         let yaml = "enabled: true\ndisabled: false\n";
-        let tmp = std::env::temp_dir().join("skill-dev-cli-test-yaml-bool.yaml");
+        let tmp = std::env::temp_dir().join(format!(
+            "skill-dev-cli-test-yaml-bool-{}.yaml",
+            Uuid::new_v4().simple()
+        ));
         std::fs::write(&tmp, yaml)?;
         let v1 = util::yaml_bool(&tmp, "enabled", false);
         let v2 = util::yaml_bool(&tmp, "disabled", true);
@@ -757,6 +891,13 @@ pub struct RepoValidationArgs {
     pub target: Option<PathBuf>,
 }
 
+#[derive(Args)]
+pub struct WorkflowReleaseGateArgs {
+    /// Target workspace directory for bootstrap + validate cycle
+    #[arg(long)]
+    pub target: Option<PathBuf>,
+}
+
 fn cargo_test(repo_root: &Path, manifest_path: &str) -> Result<()> {
     let args = vec![
         "test".to_string(),
@@ -779,7 +920,78 @@ fn cargo_test(repo_root: &Path, manifest_path: &str) -> Result<()> {
     Ok(())
 }
 
-/// Run the same repository validation chain used by `.github/workflows/repo-validation.yml`.
+pub fn workflow_release_gate(skill_root: &Path, args: WorkflowReleaseGateArgs) -> Result<()> {
+    println!("{}", "═══════════════════════════════════════".cyan());
+    println!("{}", "  Workflow Release Gate — skill-dev-cli".cyan());
+    println!("{}", "═══════════════════════════════════════".cyan());
+
+    let repo_root = repo_root_for_skill(skill_root);
+    let skill_root_str = skill_root.display().to_string();
+    let target = args.target.unwrap_or_else(|| {
+        std::env::temp_dir().join("prd-to-product-agents-workflow-release-gate")
+    });
+
+    let collected_dir = std::env::temp_dir().join(format!(
+        "prd-to-product-agents-collected-{}",
+        Uuid::new_v4().simple()
+    ));
+    fs::create_dir_all(&collected_dir)
+        .with_context(|| format!("creating staged binary directory {}", collected_dir.display()))?;
+
+    let _skill_cli = stage_release_binary(
+        &repo_root,
+        "cli-tools/prd-to-product-agents-cli/Cargo.toml",
+        "prd-to-product-agents-cli",
+        "prd-to-product-agents-cli",
+        &collected_dir,
+    )?;
+    let _runtime_cli = stage_release_binary(
+        &repo_root,
+        "cli-tools/prdtp-agents-functions-cli/Cargo.toml",
+        "prdtp-agents-functions-cli",
+        "prdtp-agents-functions-cli",
+        &collected_dir,
+    )?;
+    let staged_skill_dev_cli = stage_release_binary(
+        &repo_root,
+        "cli-tools/skill-dev-cli/Cargo.toml",
+        "skill-dev-cli",
+        "skill-dev-cli",
+        &collected_dir,
+    )?;
+
+    println!("  Collected dir: {}", collected_dir.display());
+    println!("  Target:        {}", target.display());
+
+    let args = vec![
+        "--skill-root".to_string(),
+        skill_root_str,
+        "test".to_string(),
+        "release-gate".to_string(),
+        "--target".to_string(),
+        target.display().to_string(),
+    ];
+    let result = run_executable(&staged_skill_dev_cli, &args, Some(&collected_dir))?;
+
+    if !result.stdout.is_empty() {
+        println!("{}", result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        eprintln!("{}", result.stderr);
+    }
+
+    if !result.success {
+        bail!(
+            "workflow release-gate failed with exit code {}",
+            format_status(result.code)
+        );
+    }
+
+    println!("{}", "PASS: workflow release-gate (current platform)".green());
+    Ok(())
+}
+
+/// Run the repository validation workflow chain plus current-platform build workflow release-gate simulation.
 pub fn repo_validation(skill_root: &Path, args: RepoValidationArgs) -> Result<()> {
     println!("{}", "═══════════════════════════════════════".cyan());
     println!("{}", "  Repo Validation — skill-dev-cli".cyan());
@@ -862,6 +1074,16 @@ pub fn repo_validation(skill_root: &Path, args: RepoValidationArgs) -> Result<()
         Err(e) => {
             println!("{}", "FAIL".red());
             bail!("Repo validation blocked at step {step} (release gate): {e}");
+        }
+    }
+
+    step += 1;
+    print!("  [{step}] Workflow release-gate (current platform)... ");
+    match workflow_release_gate(skill_root, WorkflowReleaseGateArgs { target: None }) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (workflow release-gate): {e}");
         }
     }
 

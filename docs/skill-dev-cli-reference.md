@@ -41,11 +41,23 @@ skill-dev-cli --skill-root <repo-or-skill-root> test markdown
 skill-dev-cli --skill-root <repo-or-skill-root> test markdown --path "references/**/*.md"
 ```
 
+### `test workflow-release-gate`
+
+Build the three CLIs for the current platform, stage them into a temporary
+`collected/`-style directory, and run `test release-gate` from the staged
+`skill-dev-cli` binary. This simulates the `release-gate` job from
+`.github/workflows/build-skill-binaries.yml` on the current platform.
+
+```bash
+skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate
+skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate --target <temp-workspace>
+```
+
 ### `test repo-validation`
 
-Run the same validation chain used by `.github/workflows/repo-validation.yml`.
-This is the closest local equivalent to the repository validation workflow and
-is the command that local hooks should call before commit or push.
+Run the repository validation workflow chain plus the current-platform release-gate
+simulation from `.github/workflows/build-skill-binaries.yml`. This is the command
+that local hooks should call before commit or push.
 
 It runs, in order:
 
@@ -55,6 +67,7 @@ It runs, in order:
 4. `test markdown`
 5. `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all`
 6. `test release-gate`
+7. `test workflow-release-gate`
 
 ```bash
 skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation

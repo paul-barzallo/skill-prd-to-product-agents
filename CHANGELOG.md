@@ -18,6 +18,7 @@ validation, packaging, and release behavior.
 - Repository guidance was narrowed to the project root scope instead of mixing packaged or generated surfaces by default.
 - `skill-dev-cli test release-gate` is now explicitly documented as the blocking repository release command.
 - Repository local validation now has a GitHub-aligned `skill-dev-cli test repo-validation` entrypoint, and Unix published binaries are explicitly guarded for executable permissions.
+- `skill-dev-cli` now includes `test workflow-release-gate` to simulate the build workflow gate on the current platform using staged `collected` binaries.
 
 ### Notes
 

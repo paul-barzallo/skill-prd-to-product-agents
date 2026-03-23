@@ -38,6 +38,8 @@ enum TestCommands {
     Unit,
     /// Run markdownlint-cli against the skill markdown files
     Markdown(test_cmd::MarkdownArgs),
+    /// Simulate the build workflow release-gate job on the current platform
+    WorkflowReleaseGate(test_cmd::WorkflowReleaseGateArgs),
     /// Run the same repository validation chain used by GitHub validation workflow
     RepoValidation(test_cmd::RepoValidationArgs),
     /// Run full release-blocking validation chain (fails on first error)
@@ -59,6 +61,9 @@ fn main() {
             TestCommands::Smoke(args) => test_cmd::smoke(&skill_root, args),
             TestCommands::Unit => test_cmd::unit(&skill_root),
             TestCommands::Markdown(args) => test_cmd::markdown(&skill_root, args),
+            TestCommands::WorkflowReleaseGate(args) => {
+                test_cmd::workflow_release_gate(&skill_root, args)
+            }
             TestCommands::RepoValidation(args) => test_cmd::repo_validation(&skill_root, args),
             TestCommands::ReleaseGate(args) => test_cmd::release_gate(&skill_root, args),
         },
