@@ -51,3 +51,32 @@ fn unix_published_binaries_are_tracked_as_executable() {
         missing.join("\n  ")
     );
 }
+
+#[test]
+fn unix_release_gate_workflow_sets_execute_bits_for_collected_binaries() {
+    let workflow = repo_root()
+        .join(".github")
+        .join("workflows")
+        .join("build-skill-binaries.yml");
+    let content = std::fs::read_to_string(&workflow)
+        .expect("failed to read build-skill-binaries workflow");
+
+    let expected_entries = [
+        "collected/skill-dev-cli-${{ matrix.suffix }}",
+        "collected/prd-to-product-agents-cli-${{ matrix.suffix }}",
+        "collected/prdtp-agents-functions-cli-${{ matrix.suffix }}",
+    ];
+
+    let mut missing = Vec::new();
+    for entry in expected_entries {
+        if !content.contains(entry) {
+            missing.push(entry);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Unix release-gate workflow must chmod all collected binaries before execution:\n  {}",
+        missing.join("\n  ")
+    );
+}
