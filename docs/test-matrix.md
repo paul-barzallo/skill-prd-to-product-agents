@@ -11,6 +11,7 @@ when each one should be used.
 | `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test markdown` | changing docs or markdown contracts | No, by itself | repository markdown quality and drift control | fastest required docs check |
 | `cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all` | changing packaged artifacts, templates, prompts, bundles, or packaging claims | No, by itself | packaged artifact integrity | only required when current repo work affects packaged artifacts |
 | `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test smoke` | changing bootstrap-sensitive paths or wanting broader confidence | Indirectly | end-to-end repository smoke coverage | included inside release gate |
+| `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation` | changing any path covered by `.github/workflows/repo-validation.yml` or wanting the GitHub-equivalent local check | No, by itself | parity with repository validation workflow plus release-gate coverage | recommended local command before commit/push |
 | `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate` | changing structure, release behavior, packaging, or other release-sensitive areas | Yes | aggregated release confidence | canonical blocking release command |
 
 ## Coverage notes
@@ -23,5 +24,5 @@ when each one should be used.
 ## Current gaps in coverage
 
 - No single document currently maps validator coverage to specific failure modes beyond this matrix.
-- CI validates main repository paths, but local execution still depends on maintainer discipline.
+- Published Unix binaries still need explicit git executable bits and workflow hygiene to stay runnable across Unix CI jobs.
 - The repository still lacks a dedicated remediation tracker for audit findings.

@@ -20,6 +20,7 @@ release quality, and operational discipline.
 
 - Support and escalation guidance for maintainers is still minimal.
 - Release workflow behavior and release documentation still need periodic drift review.
+- Published Unix binaries still need periodic verification that git executable bits remain intact across repository updates.
 - The relationship between issue templates and audit follow-up process is not yet documented in `docs/audits/`.
 
 ## Priority 2

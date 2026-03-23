@@ -139,6 +139,8 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           chmod +x collected/skill-dev-cli-${{ matrix.suffix }}
+          chmod +x .agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-* \
+                    .agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-*
           collected/skill-dev-cli-${{ matrix.suffix }} --skill-root .agents/skills/prd-to-product-agents test release-gate
 
       - name: Run release gate (Windows)

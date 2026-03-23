@@ -17,6 +17,7 @@ validation, packaging, and release behavior.
 - Repository maintainer docs moved from `docs/project/` to `docs/`.
 - Repository guidance was narrowed to the project root scope instead of mixing packaged or generated surfaces by default.
 - `skill-dev-cli test release-gate` is now explicitly documented as the blocking repository release command.
+- Repository local validation now has a GitHub-aligned `skill-dev-cli test repo-validation` entrypoint, and Unix published binaries are explicitly guarded for executable permissions.
 
 ### Notes
 

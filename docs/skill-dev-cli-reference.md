@@ -41,6 +41,26 @@ skill-dev-cli --skill-root <repo-or-skill-root> test markdown
 skill-dev-cli --skill-root <repo-or-skill-root> test markdown --path "references/**/*.md"
 ```
 
+### `test repo-validation`
+
+Run the same validation chain used by `.github/workflows/repo-validation.yml`.
+This is the closest local equivalent to the repository validation workflow and
+is the command that local hooks should call before commit or push.
+
+It runs, in order:
+
+1. `cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml`
+2. `cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml`
+3. `cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml`
+4. `test markdown`
+5. `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all`
+6. `test release-gate`
+
+```bash
+skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation
+skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation --target <temp-workspace>
+```
+
 ### `test release-gate`
 
 Run the aggregated release-blocking validation chain. The command stops at the

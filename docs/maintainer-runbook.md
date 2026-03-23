@@ -52,10 +52,19 @@ cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --sk
 Run:
 
 ```bash
+cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate
 ```
 
-Treat this as the blocking repository release command.
+Use `test repo-validation` before commit or push when the touched paths overlap
+the repository validation workflow. Treat `test release-gate` as the blocking
+repository release command inside that broader local check.
+
+Also ensure local hooks are installed:
+
+```bash
+pre-commit install --hook-type pre-commit --hook-type pre-push
+```
 
 ## 3. Packaging and binary hygiene
 

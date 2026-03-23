@@ -16,27 +16,12 @@ repos:
 
   - repo: local
     hooks:
-      - id: repo-markdown-contract
-        name: repo markdown contract
-        entry: cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test markdown
+      - id: repo-workflow-validation
+        name: repo workflow validation
+        entry: cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation
         language: system
         pass_filenames: false
-        files: (^README\.md$|^AGENTS\.md$|^docs/|^\.agents/skills/prd-to-product-agents/.*\.md$|^\.github/.*\.md$)
-
-      - id: skill-package-validate-all
-        name: skill package validate all
-        entry: cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all
-        language: system
-        pass_filenames: false
-        files: ^(cli-tools/prd-to-product-agents-cli/|cli-tools/prdtp-agents-functions-cli/|\.agents/skills/prd-to-product-agents/|\.github/workflows/)
+        files: ^(\.agents/skills/prd-to-product-agents/|cli-tools/|docs/|bin/|\.github/workflows/|\.pre-commit-config\.yaml$|\.editorconfig$|\.markdownlint\.json$|AGENTS\.md$|README\.md$)
         stages:
-          - pre-push
-
-      - id: repo-release-gate
-        name: repo release gate
-        entry: cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate
-        language: system
-        pass_filenames: false
-        files: ^(cli-tools/|\.agents/skills/prd-to-product-agents/|docs/|bin/|\.github/workflows/)
-        stages:
+          - pre-commit
           - pre-push

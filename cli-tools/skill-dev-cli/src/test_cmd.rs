@@ -750,6 +750,130 @@ pub struct ReleaseGateArgs {
     pub target: Option<PathBuf>,
 }
 
+#[derive(Args)]
+pub struct RepoValidationArgs {
+    /// Target workspace directory for the embedded release-gate step
+    #[arg(long)]
+    pub target: Option<PathBuf>,
+}
+
+fn cargo_test(repo_root: &Path, manifest_path: &str) -> Result<()> {
+    let args = vec![
+        "test".to_string(),
+        "--manifest-path".to_string(),
+        manifest_path.to_string(),
+    ];
+    let result = run_command("cargo", &args, Some(repo_root))?;
+    if !result.stdout.is_empty() {
+        println!("{}", result.stdout);
+    }
+    if !result.stderr.is_empty() {
+        eprintln!("{}", result.stderr);
+    }
+    if !result.success {
+        bail!(
+            "cargo test failed for {manifest_path} with exit code {}",
+            format_status(result.code)
+        );
+    }
+    Ok(())
+}
+
+/// Run the same repository validation chain used by `.github/workflows/repo-validation.yml`.
+pub fn repo_validation(skill_root: &Path, args: RepoValidationArgs) -> Result<()> {
+    println!("{}", "═══════════════════════════════════════".cyan());
+    println!("{}", "  Repo Validation — skill-dev-cli".cyan());
+    println!("{}", "═══════════════════════════════════════".cyan());
+
+    let repo_root = repo_root_for_skill(skill_root);
+    let skill_root_str = skill_root.display().to_string();
+    let target = args.target.unwrap_or_else(|| {
+        std::env::temp_dir().join("prd-to-product-agents-repo-validation-release-gate")
+    });
+    let target_str = target.display().to_string();
+
+    let mut step = 0u32;
+
+    step += 1;
+    print!("  [{step}] Test project CLI... ");
+    match cargo_test(&repo_root, "cli-tools/skill-dev-cli/Cargo.toml") {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (project CLI tests): {e}");
+        }
+    }
+
+    step += 1;
+    print!("  [{step}] Test skill CLI... ");
+    match cargo_test(&repo_root, "cli-tools/prd-to-product-agents-cli/Cargo.toml") {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (skill CLI tests): {e}");
+        }
+    }
+
+    step += 1;
+    print!("  [{step}] Test runtime CLI... ");
+    match cargo_test(&repo_root, "cli-tools/prdtp-agents-functions-cli/Cargo.toml") {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (runtime CLI tests): {e}");
+        }
+    }
+
+    step += 1;
+    print!("  [{step}] Markdown contract... ");
+    match markdown(skill_root, MarkdownArgs {
+        config: None,
+        paths: Vec::new(),
+    }) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (markdown contract): {e}");
+        }
+    }
+
+    step += 1;
+    print!("  [{step}] Skill package validation... ");
+    let validate_args = vec![
+        "--skill-root".to_string(),
+        skill_root_str.clone(),
+        "validate".to_string(),
+        "all".to_string(),
+    ];
+    let skill_cli = find_skill_cli(skill_root)
+        .context("skill CLI not found; build prd-to-product-agents-cli first")?;
+    let result = run_executable(&skill_cli, &validate_args, Some(&repo_root))?;
+    if result.success {
+        println!("{}", "PASS".green());
+    } else {
+        println!("{}", "FAIL".red());
+        bail!("Repo validation blocked at step {step} (skill package validation):\n{}", result.combined_output());
+    }
+
+    step += 1;
+    print!("  [{step}] Release gate... ");
+    match release_gate(skill_root, ReleaseGateArgs { target: Some(target) }) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (release gate): {e}");
+        }
+    }
+
+    println!();
+    println!("{}", "═══════════════════════════════════════".green());
+    println!("  {} All {step}/{step} repository validation checks passed", "REPO VALIDATION: PASS".green().bold());
+    println!("  Release gate target: {}", target_str);
+    println!("{}", "═══════════════════════════════════════".green());
+
+    Ok(())
+}
+
 /// Aggregated release-blocking validation chain.
 ///
 /// Runs in order: unit → runtime-contract → version-metadata

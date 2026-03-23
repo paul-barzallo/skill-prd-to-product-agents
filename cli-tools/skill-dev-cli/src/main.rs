@@ -38,18 +38,20 @@ enum TestCommands {
     Unit,
     /// Run markdownlint-cli against the skill markdown files
     Markdown(test_cmd::MarkdownArgs),
+    /// Run the same repository validation chain used by GitHub validation workflow
+    RepoValidation(test_cmd::RepoValidationArgs),
     /// Run full release-blocking validation chain (fails on first error)
     ReleaseGate(test_cmd::ReleaseGateArgs),
 }
 
 fn main() {
     let cli = Cli::parse();
-    
+
     let raw_skill_root = cli.skill_root.unwrap_or_else(|| {
         eprintln!("{} --skill-root must be explicitly provided", "ERROR:".red().bold());
         process::exit(1);
     });
-    
+
     let skill_root = util::resolve_skill_root(&raw_skill_root);
 
     let result = match cli.command {
@@ -57,6 +59,7 @@ fn main() {
             TestCommands::Smoke(args) => test_cmd::smoke(&skill_root, args),
             TestCommands::Unit => test_cmd::unit(&skill_root),
             TestCommands::Markdown(args) => test_cmd::markdown(&skill_root, args),
+            TestCommands::RepoValidation(args) => test_cmd::repo_validation(&skill_root, args),
             TestCommands::ReleaseGate(args) => test_cmd::release_gate(&skill_root, args),
         },
     };

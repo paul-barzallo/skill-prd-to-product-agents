@@ -7,7 +7,7 @@ Update it when priorities, blockers, or key repository risks change.
 
 - Repository maturity: v1 presentable / hardened prototype
 - Current publication goal: prepare the repository for clean GitHub publication and controlled maintenance
-- Validation posture: repository CI, release gate, and pre-commit scaffolding exist; full local verification still depends on running the Cargo commands explicitly
+- Validation posture: repository CI, release gate, and pre-commit/pre-push hooks now have a single GitHub-aligned local validation command; published Unix binaries still require executable-bit discipline
 
 ## What is already in place
 
@@ -29,11 +29,11 @@ Update it when priorities, blockers, or key repository risks change.
 2. the legacy empty `docs/project/` path still needs cleanup if still present in all environments
 3. repository support and escalation flow is still minimal
 4. changelog discipline now exists but still needs ongoing maintainer use
-5. release workflow and documentation drift still need periodic review
+5. release workflow and documentation drift still need periodic review, especially around published binary permissions
 
 ## Current blockers or risks
 
-- the repo can still drift if maintainers change docs without checking the code path that enforces the claim
+- the repo can still drift if maintainers bypass hooks or skip the GitHub-aligned local validation chain before pushing
 - local build outputs under `cli-tools/*/target/` remain easy to confuse with shipped artifacts if hygiene slips
 - security and governance expectations can still be overstated unless limitations are kept visible in docs
 
@@ -43,7 +43,7 @@ Update it when priorities, blockers, or key repository risks change.
 2. keep `CHANGELOG.md` updated when repository contracts or release behavior change
 3. strengthen maintainer escalation/support guidance if needed
 4. remove the empty legacy `docs/project/` path where still present
-5. review whether release workflows need a documentation sync check
+5. review whether release workflows need a documentation sync check and whether published binary permissions remain stable
 
 ## Last repository housekeeping changes
 
