@@ -40,3 +40,4 @@ Keep titles short and stable.
 
 - `ADR-0001-repository-docs-live-under-docs.md`
 - `ADR-0002-release-gate-blocks-repository-release.md`
+- `ADR-0003-scope-boundaries-between-repo-skill-and-workspace.md`

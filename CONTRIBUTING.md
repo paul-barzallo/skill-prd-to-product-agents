@@ -49,6 +49,7 @@ cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --sk
 cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml
 ```
 
 ### Antes de cerrar cambios estructurales o de release

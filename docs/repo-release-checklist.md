@@ -17,6 +17,7 @@ Shorthand:
 - Use `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` when you specifically need the current-platform simulation of the build workflow gate.
 
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test unit`.
+- Run `cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml` when the current release work touches `project-memory-cli`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test markdown`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test smoke`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` to simulate the build workflow release-gate on your current platform.

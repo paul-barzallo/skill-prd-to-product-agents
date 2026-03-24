@@ -1,3 +1,4 @@
+use std::env;
 use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
@@ -16,12 +17,20 @@ fn is_skill_root(path: &Path) -> bool {
 }
 
 fn skill_root() -> PathBuf {
-    let repo_root = repo_root();
-    if is_skill_root(&repo_root) {
-        return repo_root;
+    if let Some(explicit) = env::var_os("PRDTP_SKILL_ROOT").or_else(|| env::var_os("SKILL_ROOT")) {
+        return normalize_skill_root(PathBuf::from(explicit));
     }
 
-    let nested = repo_root
+    let repo_root = repo_root();
+    normalize_skill_root(repo_root)
+}
+
+fn normalize_skill_root(candidate: PathBuf) -> PathBuf {
+    if is_skill_root(&candidate) {
+        return candidate;
+    }
+
+    let nested = candidate
         .join(".agents")
         .join("skills")
         .join("prd-to-product-agents");
@@ -29,7 +38,10 @@ fn skill_root() -> PathBuf {
         return nested;
     }
 
-    panic!("could not resolve skill root from {}", repo_root.display());
+    panic!(
+        "could not resolve skill root from {}; set PRDTP_SKILL_ROOT to the repo root or skill root",
+        candidate.display()
+    );
 }
 
 fn template_root() -> PathBuf {

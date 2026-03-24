@@ -15,6 +15,9 @@ For these instructions, the active root is the repository root.
 - `cli-tools/skill-dev-cli/` is the project maintenance CLI area.
 - `.github/` contains repository automation and review scaffolding.
 
+These instructions do not govern the packaged skill surface or a bootstrapped
+workspace unless the current repository task explicitly targets those scopes.
+
 Do not expand these instructions into packaged or generated surfaces unless the
 user explicitly asks for that scope.
 
@@ -68,6 +71,7 @@ Run tests for each affected crate:
 cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml
 ```
 
 ### Structural or release-sensitive changes

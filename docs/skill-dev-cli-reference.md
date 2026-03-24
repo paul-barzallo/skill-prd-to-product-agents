@@ -4,6 +4,10 @@
 
 **Scope**: Project-only development checks. This binary owns smoke, unit, and markdown checks. It is not shipped in the skill package and it is not part of generated workspace deployment or workspace runtime operation.
 
+The repository may still validate packaged skill sources because those sources
+live here, but that does not make `skill-dev-cli` part of the packaged skill or
+the deployed workspace runtime.
+
 **Binary**: `skill-dev-cli` in the project root `bin/` directory.
 
 **Global flag**: `--skill-root <path>` is required. The CLI accepts either the skill root itself or the repository root that contains the skill.
@@ -67,15 +71,21 @@ It is aligned with the Ubuntu repository validation workflow and adds the local
 current-platform simulation of the build workflow release gate. It does not
 replace GitHub's real multi-OS coverage.
 
+The GitHub workflow runs when repository-maintenance paths or skill-package
+source paths change because both are maintained in this repository. That trigger
+scope is about source ownership, not about runtime dependency of the deployed
+workspace.
+
 It runs, in order:
 
 1. `cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml`
 2. `cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml`
 3. `cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml`
-4. `test markdown`
-5. `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all`
-6. `test release-gate`
-7. `test workflow-release-gate`
+4. `cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml`
+5. `test markdown`
+6. `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all`
+7. `test release-gate`
+8. `test workflow-release-gate`
 
 ```bash
 skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation

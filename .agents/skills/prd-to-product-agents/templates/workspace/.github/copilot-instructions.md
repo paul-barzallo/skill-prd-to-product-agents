@@ -1,6 +1,9 @@
 
 # Copilot Workspace Instructions
 
+These instructions apply to the deployed workspace only. They do not describe
+the maintenance rules of the source repository that produced the package.
+
 ## Mission
 
 This repository uses a product-development automation architecture built around:
@@ -296,7 +299,7 @@ These git operations are **dangerous** and require explicit user confirmation wi
 | Handoffs (`agents:` frontmatter) | Routed via UI | Silently ignored |
 | Context injection (enrich prompts) | Full layered injection | Not available -- context must be in `copilot-instructions.md` |
 | Tool restrictions (per agent) | Enforced per agent frontmatter | Single tool set for entire session |
-| CLI execution | Local workspace binary under `.agents/bin/prd-to-product-agents/` | GitHub Actions runner (installed from workspace-local binary) |
+| CLI execution | Local workspace binary under `.agents/bin/prd-to-product-agents/` | GitHub Actions runner (installed from the same workspace-local runtime binary) |
 | Canonical file I/O | Direct file read/write | Branch-based via PR workflow |
 | Audit ledger (`.state/`) | Infrastructure-managed, local SQLite | Not available -- no persistent `.state/` |
 

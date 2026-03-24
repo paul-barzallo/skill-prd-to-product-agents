@@ -1,16 +1,39 @@
 use std::fs;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn skill_root() -> PathBuf {
+    if let Some(explicit) = env::var_os("PRDTP_SKILL_ROOT").or_else(|| env::var_os("SKILL_ROOT")) {
+        return normalize_skill_root(PathBuf::from(explicit));
+    }
+
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
+    let repo_root = manifest
         .parent()
         .and_then(|p| p.parent())
-        .expect("could not resolve skill root from CARGO_MANIFEST_DIR")
+        .expect("could not resolve repository root from CARGO_MANIFEST_DIR");
+
+    normalize_skill_root(repo_root.to_path_buf())
+}
+
+fn normalize_skill_root(candidate: PathBuf) -> PathBuf {
+    if candidate.join("SKILL.md").is_file() {
+        return candidate;
+    }
+
+    let nested = candidate
         .join(".agents")
         .join("skills")
-        .join("prd-to-product-agents")
+        .join("prd-to-product-agents");
+    if nested.join("SKILL.md").is_file() {
+        return nested;
+    }
+
+    panic!(
+        "could not resolve skill root from {}; set PRDTP_SKILL_ROOT to the repo root or skill root",
+        candidate.display()
+    );
 }
 
 fn cli_binary() -> PathBuf {

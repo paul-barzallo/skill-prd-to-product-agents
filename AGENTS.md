@@ -15,6 +15,10 @@ El ambito activo es el repositorio actual.
 - `cli-tools/skill-dev-cli/` es el area del CLI de mantenimiento del proyecto.
 - `.github/` contiene la automatizacion y las plantillas de revision del repo.
 
+Estas reglas no gobiernan por defecto la skill empaquetada ni un workspace ya
+desplegado. Esos ambitos tienen sus propios contratos y solo deben tratarse
+desde aqui cuando la tarea del repositorio lo pida de forma explicita.
+
 No mezcles en estos documentos contenido de otros ambitos si la tarea actual no
 lo requiere de forma explicita.
 

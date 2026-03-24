@@ -10,9 +10,14 @@ This workspace separates four concerns:
 
 ## Internal skills layer
 
-The `.agents/skills/` tree is a packaged capability layer, not an extra agent pool.
-It holds reusable workflow knowledge and release-time checks that must ship coherently with agents, prompts, and scripts.
-This matters operationally because packaging drift in this layer can break real bootstrap and validation paths even when the top-level agent set is unchanged.
+The `.agents/skills/` tree is a workspace-local capability layer, not an extra agent pool.
+It is copied into the workspace as part of bootstrap so the deployed workspace
+can carry its own reusable workflow knowledge together with agents, prompts,
+and scripts.
+
+After bootstrap, this layer is part of the workspace contract. Runtime
+operation must not depend on the original skill source repository continuing to
+exist nearby.
 
 ## Base agents
 

@@ -24,6 +24,11 @@ Three scopes must stay aligned:
 | Skill package | ship the bootstrap CLI, template, and package docs |
 | Deployed workspace | run the agents and operational tooling in client projects |
 
+The source repository maintains all three, but the deployed workspace must be
+able to live on its own after bootstrap. Runtime operation must not require the
+project repo, and day-to-day workspace execution must not require knowledge of
+the skill-maintenance surface.
+
 ## Current bootstrap contract
 
 Bootstrap creates a local workspace and preserves existing user files by using overlays for collisions.
@@ -40,6 +45,10 @@ Freshly generated workspaces should be described as:
 - `bootstrapped` once copied into a target repo
 - `configured` only after local governance placeholders are replaced
 - `production-ready` only after the stricter governance expectations are intentionally enabled
+
+After bootstrap, the generated workspace uses its own runtime docs and local
+runtime binaries. The skill package remains the delivery source, not an
+operational dependency for normal workspace execution.
 
 ## Support matrix
 

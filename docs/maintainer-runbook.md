@@ -2,6 +2,10 @@
 
 This runbook is the practical operating guide for maintaining the repository.
 
+These instructions are for the repository maintenance scope only. They do not
+replace the operational guidance shipped inside the packaged skill or the
+generated workspace.
+
 ## 1. Before changing anything
 
 Read these first:
@@ -39,6 +43,7 @@ Run tests for each affected crate:
 cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml
 ```
 
 If the change affects packaging, prompts, templates, or bundles, also run:
@@ -46,6 +51,12 @@ If the change affects packaging, prompts, templates, or bundles, also run:
 ```bash
 cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all
 ```
+
+Scope reminder:
+
+- `skill-dev-cli` and `project-memory-cli` are repository-only tools.
+- `prd-to-product-agents-cli` validates the packaged skill surface.
+- `prdtp-agents-functions-cli` validates the deployed-workspace runtime contract from the repository side.
 
 ### Structural or release-sensitive change
 

@@ -25,6 +25,8 @@ repo-level release or validation task explicitly requires that reference.
 | `audits/README.md` | Entry point for repository-level audits and review history. |
 | `audits/index.md` | Status tracker for finalized repository audits and their follow-up. |
 | `decisions/README.md` | Entry point for repository ADRs and long-lived choices. |
+| `project-memory/README.md` | Planning baseline, roadmap, and issue specs for the proposed `project-memory-cli` initiative. |
+| `project-memory-cli-reference.md` | Command reference for the repository-side `project-memory-cli`. |
 | `skill-dev-cli-reference.md` | Reference for the project-only development CLI. |
 | `repo-release-checklist.md` | Release checklist for publishing and validating the skill repository. |
 
@@ -34,6 +36,23 @@ repo-level release or validation task explicitly requires that reference.
 - `skill-dev-cli` is the project maintenance CLI documented here.
 - Do not use this directory to document unrelated packaged or generated content.
 - Historical or future audits should live under `docs/audits/`.
+
+## Directory ownership by scope
+
+| Area | Primary scope | Notes |
+| --- | --- | --- |
+| `docs/` | project repo | maintainer docs only; may reference other scopes when the repository task explicitly needs that context |
+| `.github/` | project repo | repository automation and review scaffolding |
+| `cli-tools/skill-dev-cli/` | project repo | repository validation and release tooling |
+| `cli-tools/project-memory-cli/` | project repo | local repository indexing and traceability tooling |
+| `.agents/skills/prd-to-product-agents/` | skill package | packaged bootstrap surface and package references |
+| `.agents/skills/prd-to-product-agents/templates/workspace/` | deployed workspace | runtime template copied into client repositories |
+| `bin/` | project repo | published project-scope binaries only |
+
+The repository owns the source tree for all of these areas, but ownership of
+source files is not the same as runtime dependency. The deployed workspace must
+remain operable without requiring the repository-maintenance surface after
+bootstrap.
 
 ## Build artifacts
 

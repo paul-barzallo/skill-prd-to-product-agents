@@ -167,6 +167,18 @@ Important:
 - `markdownlint` is optional and may be disabled by policy.
 - Missing `sqlite3` is degraded mode, not a hard stop.
 
+## Post-bootstrap independence
+
+After bootstrap succeeds, treat the generated workspace as its own operational
+surface.
+
+- Runtime work should use the deployed workspace docs and runtime CLI.
+- The source repository and the skill-maintenance surface are not required for
+  normal day-to-day workspace operation.
+- If a task is about repository maintenance or package publication, that is a
+  different scope and should be named explicitly instead of being inferred from
+  runtime work.
+
 ## Platform contract
 
 | Surface | VS Code + GitHub Copilot | GitHub.com |

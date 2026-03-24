@@ -40,5 +40,6 @@ collected/
 dist/
 coverage/
 htmlcov/
+.project-memory/
 *.zip
 *.7z
