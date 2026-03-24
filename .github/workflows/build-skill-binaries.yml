@@ -23,6 +23,7 @@ permissions:
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +88,7 @@ jobs:
           retention-days: 30
 
   test:
+    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -116,6 +118,7 @@ jobs:
         run: cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
 
   release-gate:
+    if: github.actor != 'github-actions[bot]'
     needs: [build, test]
     strategy:
       fail-fast: true
@@ -157,7 +160,7 @@ jobs:
           collected\skill-dev-cli-${{ matrix.suffix }}.exe --skill-root .agents\skills\prd-to-product-agents test release-gate
 
   publish:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'github-actions[bot]'
     needs: [build, test, release-gate]
     runs-on: ubuntu-latest
     name: Publish scoped binaries
