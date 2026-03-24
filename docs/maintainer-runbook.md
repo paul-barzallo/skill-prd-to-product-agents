@@ -63,6 +63,11 @@ need the current-platform equivalent of the build workflow gate. Treat
 `test release-gate` as the blocking repository release command inside that
 broader local check.
 
+For changes under `cli-tools/**`, `.agents/skills/prd-to-product-agents/**`,
+`bin/**`, or `.github/workflows/**`, GitHub now runs the multi-OS build and
+release-gate workflow before merge in addition to the Ubuntu repository
+validation workflow.
+
 Also ensure local hooks are installed:
 
 ```bash

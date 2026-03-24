@@ -11,6 +11,11 @@ the `prd-to-product-agents` skill.
 
 ## 2. Project CLI validation
 
+Shorthand:
+
+- Run `skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation` as the GitHub-aligned local validation command before release work.
+- Use `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` when you specifically need the current-platform simulation of the build workflow gate.
+
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test unit`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test markdown`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test smoke`.

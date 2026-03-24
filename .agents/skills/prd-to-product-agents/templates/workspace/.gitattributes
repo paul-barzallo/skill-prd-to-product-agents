@@ -9,6 +9,7 @@
 *.json text eol=lf
 *.jsonc text eol=lf
 *.sql text eol=lf
+*.sha256 text eol=lf
 
 # Shell scripts: LF
 *.sh text eol=lf
@@ -19,3 +20,6 @@
 # Binary files: never diff or merge
 *.db binary
 *.sqlite binary
+
+# Published binaries: never apply text conversion on checkout
+.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-* binary

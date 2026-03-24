@@ -48,6 +48,10 @@ Build the three CLIs for the current platform, stage them into a temporary
 `skill-dev-cli` binary. This simulates the `release-gate` job from
 `.github/workflows/build-skill-binaries.yml` on the current platform.
 
+This command is included inside `test repo-validation`. Use it standalone when
+you need to isolate the current-platform simulation of the GitHub build
+workflow gate.
+
 ```bash
 skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate
 skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate --target <temp-workspace>
@@ -58,6 +62,10 @@ skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate --tar
 Run the repository validation workflow chain plus the current-platform release-gate
 simulation from `.github/workflows/build-skill-binaries.yml`. This is the command
 that local hooks should call before commit or push.
+
+It is aligned with the Ubuntu repository validation workflow and adds the local
+current-platform simulation of the build workflow release gate. It does not
+replace GitHub's real multi-OS coverage.
 
 It runs, in order:
 

@@ -41,7 +41,7 @@ jobs:
     name: Validate (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup workspace runtime CLI
         uses: ./.github/actions/setup-cli
@@ -123,7 +123,7 @@ jobs:
     name: Integration (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup workspace runtime CLI
         uses: ./.github/actions/setup-cli
@@ -140,7 +140,7 @@ jobs:
     name: Degraded (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup workspace runtime CLI
         uses: ./.github/actions/setup-cli
@@ -157,11 +157,10 @@ jobs:
     name: Reporting (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup workspace runtime CLI
         uses: ./.github/actions/setup-cli
 
       - name: Reporting validation
         run: prdtp-agents-functions-cli validate ci reporting
-

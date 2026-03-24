@@ -9,6 +9,7 @@
 *.json text eol=lf
 *.jsonc text eol=lf
 *.sql text eol=lf
+*.sha256 text eol=lf
 
 # Source code: LF
 *.rs text eol=lf
@@ -23,3 +24,8 @@
 # Binary files: never diff or merge
 *.db binary
 *.sqlite binary
+
+# Published binaries: never apply text conversion on checkout
+.agents/skills/prd-to-product-agents/bin/prd-to-product-agents-cli-* binary
+.agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-* binary
+bin/skill-dev-cli-* binary

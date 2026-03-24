@@ -4,12 +4,18 @@ on:
   push:
     branches: [main]
     paths:
+      - '.agents/skills/prd-to-product-agents/**'
       - 'cli-tools/**'
+      - 'bin/**'
+      - '.github/workflows/**'
       - '.github/workflows/build-skill-binaries.yml'
   pull_request:
     branches: [main]
     paths:
+      - '.agents/skills/prd-to-product-agents/**'
       - 'cli-tools/**'
+      - 'bin/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -17,6 +23,7 @@ permissions:
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -34,7 +41,7 @@ jobs:
     name: Build (${{ matrix.suffix }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -74,13 +81,14 @@ jobs:
             "staging\prdtp-agents-functions-cli-${{ matrix.suffix }}.exe"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binaries-${{ matrix.suffix }}
           path: staging/
           retention-days: 30
 
   test:
+    if: github.actor != 'github-actions[bot]'
     strategy:
       fail-fast: false
       matrix:
@@ -95,7 +103,7 @@ jobs:
     name: Test (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -110,8 +118,8 @@ jobs:
         run: cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
 
   release-gate:
+    if: github.actor != 'github-actions[bot]'
     needs: [build, test]
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     strategy:
       fail-fast: true
       matrix:
@@ -126,10 +134,10 @@ jobs:
     name: Release Gate (${{ matrix.os }})
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: collected
           pattern: binaries-${{ matrix.suffix }}
@@ -152,16 +160,16 @@ jobs:
           collected\skill-dev-cli-${{ matrix.suffix }}.exe --skill-root .agents\skills\prd-to-product-agents test release-gate
 
   publish:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'github-actions[bot]'
     needs: [build, test, release-gate]
     runs-on: ubuntu-latest
     name: Publish scoped binaries
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: collected
           pattern: binaries-*
@@ -185,6 +193,14 @@ jobs:
           cp collected/prd-to-product-agents-cli-* "${SKILL_BIN_DIR}/"
           # Workspace runtime tool: shipped inside the generated workspace template.
           cp collected/prdtp-agents-functions-cli-* "${WORKSPACE_RUNTIME_BIN_DIR}/"
+          (
+            cd "${SKILL_BIN_DIR}"
+            sha256sum prd-to-product-agents-cli-* > checksums.sha256
+          )
+          (
+            cd "${WORKSPACE_RUNTIME_BIN_DIR}"
+            sha256sum prdtp-agents-functions-cli-* > checksums.sha256
+          )
           chmod +x "${ROOT_BIN_DIR}"/skill-dev-cli-linux-x64 \
                     "${ROOT_BIN_DIR}"/skill-dev-cli-darwin-arm64 \
                     "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-linux-x64 \

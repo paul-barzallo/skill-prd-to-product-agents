@@ -33,6 +33,7 @@ Segun el tipo de cambio, ejecuta y reporta como minimo:
 - Artefactos empaquetados del repo: `cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all`
 - Cambios de Rust: `cargo test --manifest-path <crate>/Cargo.toml` para cada crate afectado
 - Antes de publicar o cerrar cambios estructurales: `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test release-gate`
+- Como atajo local alineado con GitHub y con los hooks: `cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation`
 
 Si no puedes ejecutar una validacion requerida, dilo de forma explicita y no afirmes que el cambio esta verificado.
 
