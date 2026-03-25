@@ -15,7 +15,8 @@ Update it when priorities, blockers, or key repository risks change.
 - repo-level `.gitignore`, `.editorconfig`, PR template, and validation workflow
 - explicit `AGENTS.md` rules for repository maintenance, packaging, and minimum validation
 - release checklist in `docs/repo-release-checklist.md`
-- `project-memory-cli` MVP foundation with ingest, query, trace, impact, and validate commands backed by `.project-memory/snapshot.json`
+- `project-memory-cli` MVP foundation with ingest, chunk-aware query, chunk-first retrieve, trace, impact, and validate commands backed by `.project-memory/snapshot.json` plus `.project-memory/project-memory.db`
+- `project-memory-cli` now also persists deterministic local chunk embeddings in SQLite and uses them in hybrid retrieve scoring
 
 ## Active strengths
 
@@ -33,6 +34,7 @@ Update it when priorities, blockers, or key repository risks change.
 3. repository support and escalation flow is still minimal
 4. release workflow and documentation drift still need periodic review, especially around path filters, published binary permissions, and multi-OS gate scope
 5. decide whether `project-memory-cli` should stay as repository-only tooling or eventually become part of a broader product workflow story
+6. replace or complement the local hashed embedding provider with a real external semantic backend
 
 ## Current blockers or risks
 
@@ -60,6 +62,9 @@ Update it when priorities, blockers, or key repository risks change.
 - added `project-memory-cli` foundation, its planning backlog, and repository validation coverage for the new crate
 - added bounded polling watch mode for `project-memory-cli` on top of the snapshot-based incremental refresh path
 - added Rust structural enrichment for `project-memory-cli` queries through persisted symbols and imports
+- added SQLite-backed snapshot mirroring, deterministic chunk persistence, and chunk-aware query results for `project-memory-cli`
+- added an explicit `retrieve` command as the forward-looking chunk retrieval contract for future hybrid semantic ranking
+- added deterministic local chunk embeddings plus hybrid retrieve scoring so the retrieval pipeline now exercises stored vectors end to end
 - added an ADR, workspace portability test coverage, and less rigid skill-root resolution in repo and package tests to keep scope boundaries enforceable
 
 ## Update rule

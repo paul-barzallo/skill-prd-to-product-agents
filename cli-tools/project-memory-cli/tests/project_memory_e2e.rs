@@ -1,4 +1,5 @@
 use serde_json::Value;
+use rusqlite::Connection;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -71,6 +72,9 @@ fn ingest_query_trace_impact_and_validate_round_trip() {
     assert!(status.success(), "query should succeed");
     assert_eq!(query_json["data"]["total_matches"], 1);
     assert_eq!(query_json["data"]["results"][0]["path"], "docs/prd.md");
+    assert_eq!(query_json["data"]["results"][0]["chunk_kind"], "section");
+    assert!(query_json["data"]["results"][0]["chunk_id"].is_string());
+    assert_eq!(query_json["data"]["results"][0]["start_line"], 1);
 
     let (status, trace_json) = run_cli(project.path(), &["trace", "--requirement", "REQ-001"]);
     assert!(status.success(), "trace should succeed");
@@ -145,6 +149,98 @@ fn repeated_ingest_reuses_snapshot_entries_and_refreshes_changed_files() {
     assert!(status.success(), "third ingest should succeed");
     assert_eq!(third_ingest["data"]["changed_files"], 1);
     assert_eq!(third_ingest["data"]["reused_files"], 4);
+}
+
+#[test]
+fn ingest_creates_sqlite_store_with_file_rows() {
+    let project = build_fixture_project();
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+    assert_eq!(ingest_json["data"]["files_indexed"], 5);
+
+    let database = project
+        .path()
+        .join(".project-memory")
+        .join("project-memory.db");
+    assert!(database.is_file(), "ingest should create a SQLite mirror store");
+
+    let connection = Connection::open(&database).expect("open SQLite store");
+    let file_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM files", [], |row| row.get(0))
+        .expect("count files");
+    let requirement_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM file_requirements", [], |row| row.get(0))
+        .expect("count requirements");
+    let chunk_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM chunks", [], |row| row.get(0))
+        .expect("count chunks");
+    let embedding_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM chunk_embeddings", [], |row| row.get(0))
+        .expect("count chunk embeddings");
+
+    assert_eq!(file_count, 5, "SQLite store should mirror indexed files");
+    assert!(requirement_count >= 3, "SQLite store should mirror requirement links");
+    assert!(chunk_count >= file_count, "SQLite store should persist chunk rows for retrieval");
+    assert_eq!(embedding_count, chunk_count, "SQLite store should persist one embedding per chunk");
+}
+
+#[test]
+fn ingest_persists_deterministic_chunks_in_snapshot_and_sqlite() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(
+        project.path(),
+        "docs/architecture.md",
+        "# Architecture\n\n## Overview\n\nThis section explains the overall architecture.\n\n## Storage\n\nSQLite stores files and chunks.\n\n## Retrieval\n\nHybrid retrieval combines FTS and vectors.\n",
+    );
+    write_file(
+        project.path(),
+        "src/module.rs",
+        &(1..=90)
+            .map(|index| format!("pub fn handler_{index}() {{}}"))
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+
+    let (status, _ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+
+    let snapshot = fs::read_to_string(project.path().join(".project-memory").join("snapshot.json"))
+        .expect("read snapshot");
+    let snapshot_json: Value = serde_json::from_str(&snapshot).expect("parse snapshot JSON");
+    let files = snapshot_json["files"].as_array().expect("files array");
+    let architecture = files
+        .iter()
+        .find(|file| file["path"] == "docs/architecture.md")
+        .expect("architecture file present");
+    let module = files
+        .iter()
+        .find(|file| file["path"] == "src/module.rs")
+        .expect("module file present");
+
+    assert!(architecture["chunks"].as_array().expect("architecture chunks").len() >= 3);
+    assert!(module["chunks"].as_array().expect("module chunks").len() >= 3);
+
+    let connection = Connection::open(project.path().join(".project-memory").join("project-memory.db"))
+        .expect("open SQLite store");
+    let markdown_chunks: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM chunks WHERE file_path = 'docs/architecture.md'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count markdown chunks");
+    let code_chunks: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM chunks WHERE file_path = 'src/module.rs'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count code chunks");
+
+    assert!(markdown_chunks >= 3, "markdown headings should produce section chunks");
+    assert!(code_chunks >= 3, "long code files should produce window chunks");
 }
 
 #[test]
@@ -254,6 +350,97 @@ fn query_can_use_rust_symbol_and_import_metadata() {
             .any(|result| result["path"] == "src/checkout.rs"),
         "import query should find src/checkout.rs"
     );
+}
+
+#[test]
+fn query_text_returns_chunk_level_provenance_for_windowed_code() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(
+        project.path(),
+        "src/large.rs",
+        &(1..=95)
+            .map(|index| {
+                if index == 67 {
+                    "pub fn semantic_target() {\n    let marker = \"semantic retrieval anchor\";\n}".to_string()
+                } else {
+                    format!("pub fn handler_{index}() {{}}")
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+    assert_eq!(ingest_json["data"]["files_indexed"], 1);
+
+    let (status, query_json) = run_cli(project.path(), &["query", "--text", "semantic retrieval anchor"]);
+    assert!(status.success(), "query should succeed");
+    assert_eq!(query_json["data"]["total_matches"], 1);
+    assert_eq!(query_json["data"]["results"][0]["path"], "src/large.rs");
+    assert_eq!(query_json["data"]["results"][0]["chunk_kind"], "window");
+    assert!(query_json["data"]["results"][0]["chunk_id"]
+        .as_str()
+        .expect("chunk id")
+        .contains("#chunk-"));
+    assert_eq!(query_json["data"]["results"][0]["line_number"], 68);
+    assert_eq!(query_json["data"]["results"][0]["start_line"], 41);
+    assert_eq!(query_json["data"]["results"][0]["end_line"], 80);
+}
+
+#[test]
+fn retrieve_returns_ranked_chunk_results_for_lexical_recall() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(
+        project.path(),
+        "docs/ops.md",
+        "# Ops\n\n## Alerting\n\nThe on-call workflow uses semantic chunk recall for incident triage.\n\n## Follow-up\n\nPager escalation stays documented here.\n",
+    );
+
+    let (status, _ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+
+    let (status, retrieve_json) = run_cli(
+        project.path(),
+        &["retrieve", "--text", "semantic chunk recall", "--limit", "3"],
+    );
+    assert!(status.success(), "retrieve should succeed");
+    assert_eq!(retrieve_json["command"], "retrieve");
+    assert_eq!(retrieve_json["data"]["retrieval_mode"], "hybrid_lexical_local_embedding");
+    assert_eq!(retrieve_json["data"]["embedding_provider"], "local_hashed_v1");
+    assert_eq!(retrieve_json["data"]["total_matches"], 1);
+    assert_eq!(retrieve_json["data"]["results"][0]["path"], "docs/ops.md");
+    assert_eq!(retrieve_json["data"]["results"][0]["chunk_kind"], "section");
+    assert!(retrieve_json["data"]["results"][0]["chunk_id"].is_string());
+    assert!(retrieve_json["data"]["results"][0]["semantic_score"].as_f64().is_some());
+}
+
+#[test]
+fn retrieve_can_recall_chunk_without_exact_phrase_match() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(
+        project.path(),
+        "docs/incidents.md",
+        "# Incidents\n\n## Triage\n\nThe workflow for incidents uses queue review and team escalation.\n",
+    );
+
+    let (status, _ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+
+    let (status, retrieve_json) = run_cli(
+        project.path(),
+        &["retrieve", "--text", "incident workflow escalation", "--limit", "5"],
+    );
+    assert!(status.success(), "retrieve should succeed");
+    assert_eq!(retrieve_json["data"]["results"][0]["path"], "docs/incidents.md");
+    assert_eq!(retrieve_json["data"]["results"][0]["lexical_score"], 0.0);
+    assert!(retrieve_json["data"]["results"][0]["semantic_score"]
+        .as_f64()
+        .expect("semantic score")
+        > 0.18);
 }
 
 #[test]

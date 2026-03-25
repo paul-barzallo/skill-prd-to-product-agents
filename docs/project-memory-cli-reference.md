@@ -6,6 +6,10 @@
 
 **Snapshot location**: `.project-memory/snapshot.json` under the indexed project root.
 
+**SQLite mirror store**: `.project-memory/project-memory.db` under the indexed project root. This currently mirrors persisted ingest state, chunk rows, and deterministic local chunk embeddings while the CLI migrates toward stronger semantic retrieval.
+
+**Chunking model**: ingest now persists deterministic chunks for indexed files. Markdown-like documents split into section-oriented chunks, while code and other text split into fixed line windows.
+
 **Global flag**: `--project-root <path>` points to the repository or project tree being indexed. If omitted, the current directory is used.
 
 ---
@@ -25,12 +29,23 @@ project-memory-cli --project-root <project-root> ingest --force
 
 Search the persisted snapshot without rescanning the repository.
 
+Text queries rank deterministic chunks and include chunk provenance in each result: `chunk_id`, `chunk_kind`, `chunk_title`, `start_line`, and `end_line`. Symbol-only and import-only queries continue to return file-level matches when no text query is present.
+
 ```bash
 project-memory-cli --project-root <project-root> query --text "REQ-001"
 project-memory-cli --project-root <project-root> query --symbol calculate_total
 project-memory-cli --project-root <project-root> query --import crate::pricing
 project-memory-cli --project-root <project-root> query --file-type prd --limit 5
 project-memory-cli --project-root <project-root> query --path-contains docs/
+```
+
+### `retrieve`
+
+Return ranked chunk matches for hybrid local recall over the persisted snapshot. This command is chunk-first by design and is intended to become the stable retrieval contract for later semantic ranking.
+
+```bash
+project-memory-cli --project-root <project-root> retrieve --text "incident triage"
+project-memory-cli --project-root <project-root> retrieve --text "checkout totals" --file-type prd --limit 5
 ```
 
 ### `watch`
@@ -83,3 +98,6 @@ project-memory-cli --project-root <project-root> validate --fail-on-warnings
 - watch mode is a bounded single-command workflow backed by polling; it is not a background daemon or a multi-repository watcher
 - fenced code examples and Rust string literals are excluded from trace extraction so repository docs and tests do not create false broken-reference findings
 - structural enrichment currently supports Rust only, and it relies on conservative regex extraction for symbols and `use` imports
+- `retrieve` is the preferred command when the caller wants chunk-level recall rather than the broader legacy `query` surface
+- `retrieve` now emits both `lexical_score` and `semantic_score` for each result
+- the current semantic component uses the deterministic local provider `local_hashed_v1`; it is useful for infrastructure and fallback ranking but should not be described as equivalent to an external embedding model

@@ -24,6 +24,8 @@ pub enum Commands {
     Watch(WatchArgs),
     /// Search indexed files and return relevant fragments
     Query(QueryArgs),
+    /// Retrieve ranked chunks for lexical project-memory recall
+    Retrieve(RetrieveArgs),
     /// Show requirement and artifact trace links from the persisted snapshot
     Trace(TraceArgs),
     /// Show reverse reachability for a requirement or artifact node
@@ -62,6 +64,25 @@ pub struct QueryArgs {
     pub path_contains: Option<String>,
 
     /// Maximum number of results to return
+    #[arg(long, default_value_t = 10)]
+    pub limit: usize,
+}
+
+#[derive(Args, Debug)]
+pub struct RetrieveArgs {
+    /// Text fragment to retrieve from indexed chunks
+    #[arg(long)]
+    pub text: String,
+
+    /// Filter results by file type (for example: prd, rust_source, markdown, yaml)
+    #[arg(long)]
+    pub file_type: Option<String>,
+
+    /// Filter results to paths containing this fragment
+    #[arg(long)]
+    pub path_contains: Option<String>,
+
+    /// Maximum number of chunks to return
     #[arg(long, default_value_t = 10)]
     pub limit: usize,
 }

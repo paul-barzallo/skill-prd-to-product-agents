@@ -100,6 +100,45 @@ pub struct SymbolRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChunkKind {
+    Section,
+    Window,
+}
+
+impl fmt::Display for ChunkKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            Self::Section => "section",
+            Self::Window => "window",
+        };
+
+        write!(f, "{value}")
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkRecord {
+    pub chunk_id: String,
+    pub kind: ChunkKind,
+    pub ordinal: usize,
+    pub title: Option<String>,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub content: String,
+    pub content_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChunkEmbeddingRecord {
+    pub chunk_id: String,
+    pub provider: String,
+    pub dimensions: usize,
+    pub content_hash: String,
+    pub vector: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileRecord {
     pub path: String,
     pub file_type: FileType,
@@ -108,6 +147,8 @@ pub struct FileRecord {
     pub hash: String,
     pub title: Option<String>,
     pub content: String,
+    #[serde(default)]
+    pub chunks: Vec<ChunkRecord>,
     pub requirement_ids: Vec<String>,
     #[serde(default)]
     pub requirement_references: BTreeMap<String, Vec<String>>,
@@ -199,6 +240,20 @@ pub struct QueryMatch {
     pub path: String,
     pub file_type: FileType,
     pub score: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lexical_score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub semantic_score: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_kind: Option<ChunkKind>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chunk_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_line: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_line: Option<usize>,
     pub line_number: Option<usize>,
     pub snippet: String,
     pub requirement_ids: Vec<String>,
@@ -211,6 +266,18 @@ pub struct QueryReport {
     pub query: Option<String>,
     pub symbol: Option<String>,
     pub import: Option<String>,
+    pub file_type: Option<String>,
+    pub path_contains: Option<String>,
+    pub total_matches: usize,
+    pub returned_matches: usize,
+    pub results: Vec<QueryMatch>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RetrieveReport {
+    pub query: String,
+    pub retrieval_mode: &'static str,
+    pub embedding_provider: &'static str,
     pub file_type: Option<String>,
     pub path_contains: Option<String>,
     pub total_matches: usize,

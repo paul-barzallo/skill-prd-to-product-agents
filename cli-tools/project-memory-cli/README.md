@@ -17,11 +17,16 @@ This CLI is not a packaged skill binary and it is not part of generated workspac
 
 The CLI persists its local snapshot under `.project-memory/snapshot.json` inside the indexed project root.
 
+It also maintains a SQLite mirror store at `.project-memory/project-memory.db` as the foundation for chunked and semantic retrieval. The JSON snapshot remains the compatibility contract for the current command set during the migration.
+
 That snapshot stores:
 
 - indexed file content and metadata
+- deterministic chunks with provenance metadata
 - file hashes for incremental refresh
 - derived trace edges
+
+The SQLite mirror additionally stores one local embedding per chunk using the deterministic `local_hashed_v1` provider. This is retrieval infrastructure, not a claim of production-grade semantic embeddings.
 
 ## Commands
 
@@ -37,13 +42,21 @@ cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-r
 
 ### `query`
 
-Search indexed content without rescanning the repository.
+Search indexed content without rescanning the repository. Text queries now rank deterministic chunks and return chunk provenance, while symbol/import-only queries keep the file-level fallback.
 
 ```bash
 cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-root . query --text "REQ-001"
 cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-root . query --file-type prd --limit 5
 cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-root . query --symbol calculate_total
 cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-root . query --import crate::pricing
+```
+
+### `retrieve`
+
+Retrieve ranked chunk matches for hybrid local recall. This is the chunk-first retrieval contract that future external semantic ranking will build on.
+
+```bash
+cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-root . retrieve --text "incident triage" --limit 5
 ```
 
 ### `watch`
@@ -86,3 +99,7 @@ cargo run --manifest-path cli-tools/project-memory-cli/Cargo.toml -- --project-r
 - `watch` is a single-invocation polling workflow, not a daemon. It exits after `max-events` or `timeout-ms`.
 - Fenced code samples and Rust string literals are intentionally ignored for trace extraction so examples do not become false validation failures.
 - structural enrichment is currently limited to Rust symbols and `use` imports extracted with conservative regex-based parsing.
+- chunking is deterministic today: markdown-like files split by sections and large sections, while code and other text split into fixed line windows.
+- query text retrieval is now chunk-aware: results include `chunk_id`, chunk type, and line-span provenance for the ranked match.
+- `retrieve` now combines exact lexical evidence with a deterministic local embedding score persisted in SQLite.
+- the current embedding provider is `local_hashed_v1`, intended as infrastructure and fallback behavior rather than a production semantic model.

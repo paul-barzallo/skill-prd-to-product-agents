@@ -1,5 +1,5 @@
 use crate::cli::IngestArgs;
-use crate::model::{FileRecord, FileType, IngestReport, Snapshot, SnapshotStats, SymbolKind, SymbolRecord};
+use crate::model::{ChunkKind, ChunkRecord, FileRecord, FileType, IngestReport, Snapshot, SnapshotStats, SymbolKind, SymbolRecord};
 use crate::{store, trace, util, validate};
 use anyhow::{Context, Result};
 use chrono::Utc;
@@ -10,7 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-const SNAPSHOT_SCHEMA_VERSION: &str = "pmem.snapshot.v2";
+const SNAPSHOT_SCHEMA_VERSION: &str = "pmem.snapshot.v3";
+const MAX_SECTION_CHARS: usize = 1_200;
+const MAX_WINDOW_LINES: usize = 40;
 
 pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, IngestReport)> {
     let previous_snapshot = if args.force {
@@ -67,6 +69,7 @@ pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, In
         let requirement_references = extract_requirement_references(&reference_text, &path, project_root);
         let referenced_paths = extract_referenced_paths(&reference_text, &path, project_root);
         let (symbols, imports) = extract_structural_metadata(&file_type, &content);
+        let chunks = extract_chunks(&relative_path, &file_type, &content);
         let lines = content.lines().count();
 
         files.push(FileRecord {
@@ -77,6 +80,7 @@ pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, In
             hash,
             title,
             content,
+            chunks,
             requirement_ids,
             requirement_references,
             referenced_paths,
@@ -232,6 +236,129 @@ fn extract_title(content: &str) -> Option<String> {
     }
 
     None
+}
+
+fn extract_chunks(path: &str, file_type: &FileType, content: &str) -> Vec<ChunkRecord> {
+    if content.trim().is_empty() {
+        return Vec::new();
+    }
+
+    match file_type {
+        FileType::Prd
+        | FileType::Readme
+        | FileType::Adr
+        | FileType::Spec
+        | FileType::Prompt
+        | FileType::Skill
+        | FileType::Markdown => extract_markdown_chunks(path, content),
+        _ => extract_window_chunks(path, content),
+    }
+}
+
+fn extract_markdown_chunks(path: &str, content: &str) -> Vec<ChunkRecord> {
+    let mut chunks = Vec::new();
+    let mut current_lines: Vec<(usize, &str)> = Vec::new();
+    let mut current_title: Option<String> = None;
+
+    for (line_index, line) in content.lines().enumerate() {
+        let line_number = line_index + 1;
+        let trimmed = line.trim();
+        let is_heading = trimmed.starts_with('#');
+
+        if is_heading && !current_lines.is_empty() {
+            flush_markdown_section(path, &mut chunks, &current_lines, current_title.take());
+            current_lines.clear();
+        }
+
+        if is_heading {
+            let title = trimmed.trim_start_matches('#').trim();
+            current_title = Some(util::truncate(title, 160));
+        }
+
+        current_lines.push((line_number, line));
+    }
+
+    if !current_lines.is_empty() {
+        flush_markdown_section(path, &mut chunks, &current_lines, current_title.take());
+    }
+
+    chunks
+}
+
+fn flush_markdown_section(
+    path: &str,
+    chunks: &mut Vec<ChunkRecord>,
+    section_lines: &[(usize, &str)],
+    title: Option<String>,
+) {
+    let mut bucket: Vec<(usize, &str)> = Vec::new();
+    let mut bucket_chars = 0usize;
+
+    for (index, line) in section_lines {
+        let projected = bucket_chars + line.len() + 1;
+        let split_at_blank = line.trim().is_empty() && !bucket.is_empty();
+        if projected > MAX_SECTION_CHARS && !bucket.is_empty() {
+            push_chunk(path, chunks, ChunkKind::Section, title.clone(), &bucket);
+            bucket.clear();
+            bucket_chars = 0;
+        } else if split_at_blank && bucket_chars >= MAX_SECTION_CHARS / 2 {
+            push_chunk(path, chunks, ChunkKind::Section, title.clone(), &bucket);
+            bucket.clear();
+            bucket_chars = 0;
+        }
+
+        bucket.push((*index, *line));
+        bucket_chars += line.len() + 1;
+    }
+
+    if !bucket.is_empty() {
+        push_chunk(path, chunks, ChunkKind::Section, title, &bucket);
+    }
+}
+
+fn extract_window_chunks(path: &str, content: &str) -> Vec<ChunkRecord> {
+    let lines: Vec<(usize, &str)> = content.lines().enumerate().map(|(index, line)| (index + 1, line)).collect();
+    let mut chunks = Vec::new();
+    let mut start = 0usize;
+
+    while start < lines.len() {
+        let end = (start + MAX_WINDOW_LINES).min(lines.len());
+        push_chunk(path, &mut chunks, ChunkKind::Window, None, &lines[start..end]);
+        start = end;
+    }
+
+    chunks
+}
+
+fn push_chunk(
+    path: &str,
+    chunks: &mut Vec<ChunkRecord>,
+    kind: ChunkKind,
+    title: Option<String>,
+    lines: &[(usize, &str)],
+) {
+    let start_line = lines.first().map(|(line, _)| *line).unwrap_or(1);
+    let end_line = lines.last().map(|(line, _)| *line).unwrap_or(start_line);
+    let content = lines.iter().map(|(_, line)| *line).collect::<Vec<_>>().join("\n");
+
+    if content.trim().is_empty() {
+        return;
+    }
+
+    let ordinal = chunks.len();
+    let content_hash = util::sha256_hex(content.as_bytes());
+    let chunk_id = format!("{path}#chunk-{ordinal:04}");
+
+    chunks.push(ChunkRecord {
+        chunk_id,
+        kind,
+        ordinal,
+        title,
+        start_line,
+        end_line,
+        content,
+        content_hash,
+    });
 }
 
 fn extract_requirement_text(file_type: &FileType, content: &str) -> String {

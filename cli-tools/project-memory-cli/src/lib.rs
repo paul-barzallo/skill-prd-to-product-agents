@@ -1,4 +1,5 @@
 mod cli;
+mod embeddings;
 mod model;
 mod output;
 mod query;
@@ -38,6 +39,12 @@ pub fn run(cli: Cli) -> Result<RunOutcome> {
             let snapshot = store::load_snapshot(&project_root)?;
             let (warnings, report) = query::run(&snapshot, &args)?;
             output::print_json("query", &project_root, warnings, &report)?;
+            Ok(RunOutcome { exit_code: 0 })
+        }
+        cli::Commands::Retrieve(args) => {
+            let snapshot = store::load_snapshot(&project_root)?;
+            let (warnings, report) = query::run_retrieve(&project_root, &snapshot, &args)?;
+            output::print_json("retrieve", &project_root, warnings, &report)?;
             Ok(RunOutcome { exit_code: 0 })
         }
         cli::Commands::Trace(args) => {
