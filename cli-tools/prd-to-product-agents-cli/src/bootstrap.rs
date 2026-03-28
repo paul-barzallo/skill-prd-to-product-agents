@@ -205,7 +205,8 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
         "starting workspace bootstrap"
     );
 
-    let version = util::read_version(skill_root)?;
+    let version = util::read_version_if_present(skill_root)?
+        .unwrap_or_else(|| "unavailable outside repository root".to_string());
 
     let template_root = skill_root.join("templates").join("workspace");
     if !template_root.is_dir() {
@@ -412,7 +413,7 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
     let mut report = vec![
         "# Bootstrap Report".to_string(),
         String::new(),
-        "## Package Version".to_string(),
+        "## Project Version".to_string(),
         format!("- Version: {version}"),
         String::new(),
         "## Preflight".to_string(),

@@ -140,7 +140,6 @@ pub fn detect_os() -> &'static str {
 
 fn is_skill_root(path: &Path) -> bool {
     path.join("SKILL.md").is_file()
-        && path.join("VERSION").is_file()
         && path.join("templates").join("workspace").is_dir()
 }
 

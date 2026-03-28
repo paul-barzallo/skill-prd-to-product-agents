@@ -32,6 +32,7 @@ validation, packaging, and release behavior.
 - `project-memory-cli` now chunks YAML and GitHub workflow files by structural anchors such as top-level keys, jobs, and steps to improve retrieval quality on repository automation.
 - `project-memory-cli` now persists recomputed retrieve embeddings back into SQLite so cache invalidation converges to reusable provider/model-aligned cache state.
 - Packaged-skill docs and deployed-workspace docs now enforce cleaner scope boundaries, and the workspace runtime docs now include a dedicated files-first context-system guide for agents.
+- Release version ownership now lives only in the repository root `VERSION` file, while packaged-skill detection and standalone bootstrap no longer require skill-scoped `VERSION` metadata.
 
 ### Notes
 

@@ -82,7 +82,7 @@ prd-to-product-agents-cli --skill-root <skill-root> validate platform-claims
 
 ### `validate version-metadata`
 
-Verify `VERSION` is present and readable for the packaged skill.
+Verify the root project release metadata is present and readable.
 
 ```bash
 prd-to-product-agents-cli --skill-root <skill-root> validate version-metadata

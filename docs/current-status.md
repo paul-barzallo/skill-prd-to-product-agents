@@ -32,6 +32,7 @@ Update it when priorities, blockers, or key repository risks change.
 - the repository now documents repo, skill-package, and deployed-workspace scopes as separate contracts
 - the packaged skill now avoids source-repository maintenance guidance, and the deployed workspace now documents its own files-first context system for agents
 - template and runtime contract tests now better tolerate explicit skill-root injection instead of assuming only the current repository layout
+- project version metadata now lives only at the repository root, and skill-root detection no longer treats `VERSION` as part of the packaged skill contract
 
 ## Current gaps to close next
 
@@ -79,6 +80,7 @@ Update it when priorities, blockers, or key repository risks change.
 - fixed `project-memory-cli` retrieve so recomputed embeddings are persisted and later runs converge from `mismatch_recomputed` to `hit`
 - cleaned the skill-package and deployed-workspace docs so each surface now explains only its own contract, and added a dedicated workspace runtime guide for the files-first context system
 - added an ADR, workspace portability test coverage, and less rigid skill-root resolution in repo and package tests to keep scope boundaries enforceable
+- moved release version ownership to the repository root `VERSION` file and removed skill-scoped `VERSION` assumptions from package validation, bootstrap reporting, and repo tests
 
 ## Update rule
 
