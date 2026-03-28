@@ -228,6 +228,13 @@ fn assert_openai_request(mode: &str, request_line: &str, headers: &str, request:
                 "azure provider should send api-key header"
             );
             assert!(request["input"].is_array(), "azure provider should send input array");
+            assert!(
+                !request
+                    .as_object()
+                    .expect("azure request object")
+                    .contains_key("model"),
+                "azure provider should omit model from deployment-scoped request body"
+            );
         }
         other => panic!("unexpected openai mode {other}"),
     }
@@ -649,6 +656,29 @@ fn openai_compatible_provider_requires_explicit_remote_enablement() {
     );
     assert!(!status.success(), "ingest should fail when remote provider is not explicitly enabled");
     assert!(stderr.contains("explicit remote enablement"));
+}
+
+#[test]
+fn openai_compatible_provider_rejects_malformed_remote_enablement_env() {
+    let project = build_fixture_project();
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"https://example.invalid/v1\"\nmodel = \"text-embedding-3-small\"\napi_key_env = \"PMEM_TEST_OPENAI_KEY\"\n",
+    );
+
+    let (status, _stdout, stderr) = run_cli_raw_with_env(
+        project.path(),
+        &[],
+        &["ingest"],
+        &[
+            ("PMEM_TEST_OPENAI_KEY", "secret"),
+            ("PMEM_EMBEDDING_REMOTE_ENABLED", "maybe"),
+        ],
+    );
+    assert!(!status.success(), "ingest should fail when PMEM_EMBEDDING_REMOTE_ENABLED is malformed");
+    assert!(stderr.contains("parsing PMEM_EMBEDDING_REMOTE_ENABLED"));
+    assert!(stderr.contains("unsupported boolean value: maybe"));
 }
 
 #[test]

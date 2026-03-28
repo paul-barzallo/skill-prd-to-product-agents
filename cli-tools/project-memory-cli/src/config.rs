@@ -117,9 +117,17 @@ pub fn resolve(project_root: &Path, overrides: &RuntimeOverrides) -> Result<Runt
         env::var("PMEM_EMBEDDING_API_KEY_ENV").ok(),
         file_config.embedding.api_key_env,
     ]);
+    let env_remote_enabled = match env::var("PMEM_EMBEDDING_REMOTE_ENABLED") {
+        Ok(value) => Some(
+            parse_bool(&value)
+                .with_context(|| "parsing PMEM_EMBEDDING_REMOTE_ENABLED".to_string())?,
+        ),
+        Err(env::VarError::NotPresent) => None,
+        Err(err) => return Err(anyhow::Error::new(err)).context("reading PMEM_EMBEDDING_REMOTE_ENABLED"),
+    };
     let remote_enabled = overrides
         .embedding_remote_enabled
-        .or_else(|| env::var("PMEM_EMBEDDING_REMOTE_ENABLED").ok().and_then(|value| parse_bool(&value).ok()))
+        .or(env_remote_enabled)
         .or(file_config.embedding.remote_enabled)
         .unwrap_or(false);
     let timeout_ms = overrides

@@ -249,8 +249,13 @@ impl EmbeddingService {
             .context("embedding HTTP client was not initialized")?;
 
         let (url, headers) = self.openai_request_target(config, base_url, &api_key)?;
+        let request_model = if config.deployment.is_some() {
+            None
+        } else {
+            config.model.as_deref()
+        };
         let request = OpenAiEmbeddingRequest {
-            model: config.model.as_deref(),
+            model: request_model,
             input: inputs.iter().map(|(_, text)| text.as_str()).collect(),
         };
         let response = client
