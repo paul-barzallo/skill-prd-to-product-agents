@@ -75,7 +75,7 @@ If all checks pass, transition the release from `ready` to `approved`:
 
 ```shell
 prdtp-agents-functions-cli state release update \
-  --release-ref  "v1.0.0" \
+  --release-ref  "v1.1.0" \
   --new-status   approved \
   --agent-role   devops-release-engineer
 ```
