@@ -1,4 +1,3 @@
-use crate::embeddings;
 use crate::model::{ChunkEmbeddingRecord, Snapshot};
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection, Transaction};
@@ -26,7 +25,17 @@ pub fn load_snapshot(project_root: &Path) -> Result<Snapshot> {
         .with_context(|| format!("parsing snapshot {}", path.display()))
 }
 
-pub fn save_snapshot(project_root: &Path, snapshot: &Snapshot) -> Result<PathBuf> {
+pub fn has_database(project_root: &Path) -> bool {
+    database_path(project_root).is_file()
+}
+
+pub fn save_snapshot_with_embeddings(
+    project_root: &Path,
+    snapshot: &Snapshot,
+    chunk_embeddings: &[ChunkEmbeddingRecord],
+    active_embedding_provider: &str,
+    active_embedding_model: Option<&str>,
+) -> Result<PathBuf> {
     let path = snapshot_path(project_root);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -35,11 +44,49 @@ pub fn save_snapshot(project_root: &Path, snapshot: &Snapshot) -> Result<PathBuf
 
     let content = serde_json::to_string_pretty(snapshot)?;
     fs::write(&path, content).with_context(|| format!("writing snapshot {}", path.display()))?;
-    save_snapshot_to_database(project_root, snapshot)?;
+    save_snapshot_to_database(
+        project_root,
+        snapshot,
+        chunk_embeddings,
+        active_embedding_provider,
+        active_embedding_model,
+    )?;
     Ok(path)
 }
 
-fn save_snapshot_to_database(project_root: &Path, snapshot: &Snapshot) -> Result<()> {
+pub fn save_chunk_embeddings(
+    project_root: &Path,
+    chunk_embeddings: &[ChunkEmbeddingRecord],
+    active_embedding_provider: &str,
+    active_embedding_model: Option<&str>,
+) -> Result<()> {
+    let database = database_path(project_root);
+    let mut connection = Connection::open(&database)
+        .with_context(|| format!("opening SQLite store {}", database.display()))?;
+    initialize_schema(&connection)?;
+
+    let transaction = connection
+        .transaction()
+        .context("starting SQLite chunk embedding transaction")?;
+    replace_chunk_embeddings(
+        &transaction,
+        chunk_embeddings,
+        active_embedding_provider,
+        active_embedding_model,
+    )?;
+    transaction
+        .commit()
+        .context("committing SQLite chunk embedding transaction")?;
+    Ok(())
+}
+
+fn save_snapshot_to_database(
+    project_root: &Path,
+    snapshot: &Snapshot,
+    chunk_embeddings: &[ChunkEmbeddingRecord],
+    active_embedding_provider: &str,
+    active_embedding_model: Option<&str>,
+) -> Result<()> {
     let database = database_path(project_root);
     let mut connection = Connection::open(&database)
         .with_context(|| format!("opening SQLite store {}", database.display()))?;
@@ -48,7 +95,13 @@ fn save_snapshot_to_database(project_root: &Path, snapshot: &Snapshot) -> Result
     let transaction = connection
         .transaction()
         .context("starting SQLite snapshot transaction")?;
-    replace_snapshot(&transaction, snapshot)?;
+    replace_snapshot(
+        &transaction,
+        snapshot,
+        chunk_embeddings,
+        active_embedding_provider,
+        active_embedding_model,
+    )?;
     transaction.commit().context("committing SQLite snapshot transaction")?;
     Ok(())
 }
@@ -101,6 +154,7 @@ fn initialize_schema(connection: &Connection) -> Result<()> {
             CREATE TABLE IF NOT EXISTS chunk_embeddings (
                 chunk_id TEXT PRIMARY KEY,
                 provider TEXT NOT NULL,
+                model TEXT,
                 dimensions INTEGER NOT NULL,
                 content_hash TEXT NOT NULL,
                 vector_json TEXT NOT NULL,
@@ -167,10 +221,18 @@ fn initialize_schema(connection: &Connection) -> Result<()> {
         )
         .context("initializing SQLite schema")?;
 
+    ensure_chunk_embeddings_model_column(connection)?;
+
     Ok(())
 }
 
-fn replace_snapshot(transaction: &Transaction<'_>, snapshot: &Snapshot) -> Result<()> {
+fn replace_snapshot(
+    transaction: &Transaction<'_>,
+    snapshot: &Snapshot,
+    chunk_embeddings: &[ChunkEmbeddingRecord],
+    active_embedding_provider: &str,
+    active_embedding_model: Option<&str>,
+) -> Result<()> {
     transaction
         .execute("DELETE FROM chunk_embeddings", [])
         .context("clearing chunk_embeddings")?;
@@ -236,11 +298,15 @@ fn replace_snapshot(transaction: &Transaction<'_>, snapshot: &Snapshot) -> Resul
     transaction
         .execute(
             "INSERT OR REPLACE INTO snapshot_metadata (key, value) VALUES ('embedding_provider', ?1)",
-            [embeddings::EMBEDDING_PROVIDER],
+            [active_embedding_provider],
         )
         .context("writing embedding_provider metadata")?;
-
-    let chunk_embeddings = embeddings::build_chunk_embeddings(snapshot);
+    transaction
+        .execute(
+            "INSERT OR REPLACE INTO snapshot_metadata (key, value) VALUES ('embedding_model', ?1)",
+            [active_embedding_model.unwrap_or("")],
+        )
+        .context("writing embedding_model metadata")?;
 
     for file in &snapshot.files {
         transaction
@@ -347,27 +413,8 @@ fn replace_snapshot(transaction: &Transaction<'_>, snapshot: &Snapshot) -> Resul
         }
     }
 
-    for embedding in &chunk_embeddings {
-        let vector_json = serde_json::to_string(&embedding.vector)
-            .with_context(|| format!("serializing embedding vector for {}", embedding.chunk_id))?;
-        transaction
-            .execute(
-                "INSERT INTO chunk_embeddings (
-                    chunk_id,
-                    provider,
-                    dimensions,
-                    content_hash,
-                    vector_json
-                ) VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![
-                    embedding.chunk_id,
-                    embedding.provider,
-                    embedding.dimensions as i64,
-                    embedding.content_hash,
-                    vector_json,
-                ],
-            )
-            .with_context(|| format!("writing chunk embedding for {}", embedding.chunk_id))?;
+    for embedding in chunk_embeddings {
+        insert_chunk_embedding(transaction, embedding)?;
     }
 
     for edge in &snapshot.trace_edges {
@@ -400,6 +447,62 @@ fn replace_snapshot(transaction: &Transaction<'_>, snapshot: &Snapshot) -> Resul
     Ok(())
 }
 
+fn replace_chunk_embeddings(
+    transaction: &Transaction<'_>,
+    chunk_embeddings: &[ChunkEmbeddingRecord],
+    active_embedding_provider: &str,
+    active_embedding_model: Option<&str>,
+) -> Result<()> {
+    transaction
+        .execute("DELETE FROM chunk_embeddings", [])
+        .context("clearing chunk_embeddings")?;
+    transaction
+        .execute(
+            "INSERT OR REPLACE INTO snapshot_metadata (key, value) VALUES ('embedding_provider', ?1)",
+            [active_embedding_provider],
+        )
+        .context("writing embedding_provider metadata")?;
+    transaction
+        .execute(
+            "INSERT OR REPLACE INTO snapshot_metadata (key, value) VALUES ('embedding_model', ?1)",
+            [active_embedding_model.unwrap_or("")],
+        )
+        .context("writing embedding_model metadata")?;
+
+    for embedding in chunk_embeddings {
+        insert_chunk_embedding(transaction, embedding)?;
+    }
+
+    Ok(())
+}
+
+fn insert_chunk_embedding(transaction: &Transaction<'_>, embedding: &ChunkEmbeddingRecord) -> Result<()> {
+    let vector_json = serde_json::to_string(&embedding.vector)
+        .with_context(|| format!("serializing embedding vector for {}", embedding.chunk_id))?;
+    transaction
+        .execute(
+            "INSERT INTO chunk_embeddings (
+                chunk_id,
+                provider,
+                model,
+                dimensions,
+                content_hash,
+                vector_json
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                embedding.chunk_id,
+                embedding.provider,
+                embedding.model,
+                embedding.dimensions as i64,
+                embedding.content_hash,
+                vector_json,
+            ],
+        )
+        .with_context(|| format!("writing chunk embedding for {}", embedding.chunk_id))?;
+
+    Ok(())
+}
+
 pub fn load_chunk_embeddings(project_root: &Path) -> Result<BTreeMap<String, ChunkEmbeddingRecord>> {
     let database = database_path(project_root);
     let connection = Connection::open(&database)
@@ -407,17 +510,17 @@ pub fn load_chunk_embeddings(project_root: &Path) -> Result<BTreeMap<String, Chu
 
     let mut statement = connection
         .prepare(
-            "SELECT chunk_id, provider, dimensions, content_hash, vector_json
+            "SELECT chunk_id, provider, model, dimensions, content_hash, vector_json
              FROM chunk_embeddings",
         )
         .context("preparing chunk_embeddings query")?;
 
     let rows = statement
         .query_map([], |row| {
-            let vector_json: String = row.get(4)?;
+            let vector_json: String = row.get(5)?;
             let vector: Vec<f32> = serde_json::from_str(&vector_json).map_err(|error| {
                 rusqlite::Error::FromSqlConversionFailure(
-                    4,
+                    5,
                     rusqlite::types::Type::Text,
                     Box::new(error),
                 )
@@ -426,8 +529,9 @@ pub fn load_chunk_embeddings(project_root: &Path) -> Result<BTreeMap<String, Chu
             Ok(ChunkEmbeddingRecord {
                 chunk_id: row.get(0)?,
                 provider: row.get(1)?,
-                dimensions: row.get::<_, i64>(2)? as usize,
-                content_hash: row.get(3)?,
+                model: row.get(2)?,
+                dimensions: row.get::<_, i64>(3)? as usize,
+                content_hash: row.get(4)?,
                 vector,
             })
         })
@@ -440,4 +544,29 @@ pub fn load_chunk_embeddings(project_root: &Path) -> Result<BTreeMap<String, Chu
     }
 
     Ok(records)
+}
+
+fn ensure_chunk_embeddings_model_column(connection: &Connection) -> Result<()> {
+    let mut statement = connection
+        .prepare("PRAGMA table_info(chunk_embeddings)")
+        .context("preparing chunk_embeddings schema inspection")?;
+    let rows = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .context("querying chunk_embeddings schema")?;
+
+    let mut has_model = false;
+    for row in rows {
+        if row.context("reading chunk_embeddings schema row")? == "model" {
+            has_model = true;
+            break;
+        }
+    }
+
+    if !has_model {
+        connection
+            .execute("ALTER TABLE chunk_embeddings ADD COLUMN model TEXT", [])
+            .context("adding model column to chunk_embeddings")?;
+    }
+
+    Ok(())
 }

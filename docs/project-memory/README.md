@@ -21,6 +21,11 @@ The attached plan was directionally strong, but too broad to execute safely in o
 - `mvp.md`: concise definition of the P0 cut.
 - `issues/`: one Markdown specification per GitHub issue.
 
+## Current Backlog Waves
+
+- PMEM-000 through PMEM-009 captured the v1 foundation that is now implemented in this repository.
+- PMEM-010 through PMEM-019 define the current provider-focused wave for configurable local and remote-safe semantic retrieval backends.
+
 ## Backlog Rules
 
 - Each issue must have a concrete deliverable.
@@ -33,3 +38,5 @@ The attached plan was directionally strong, but too broad to execute safely in o
 The Markdown issue files in this directory are the source material for the matching GitHub issues created for repository planning.
 
 At this point, those planned issues have corresponding implementation in the repository. This directory remains useful as the design and delivery record for that work.
+
+The provider-focused second wave continues to use this directory as the canonical source for issue text before or alongside GitHub issue creation.

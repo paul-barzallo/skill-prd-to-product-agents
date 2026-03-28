@@ -22,4 +22,5 @@ runtime CLI steps to refresh it.
 
 - Context injection uses **versioned replace** semantics (full section replacement, not append).
 - Freshness is a warning, not a blocking error. Agents can still operate with stale context.
+- The context system is files-first: refresh canonical docs and context sources before treating derived outputs as broken.
 - After assembly, optionally commit the updated `.agent.md` files via `prdtp-agents-functions-cli git finalize`.

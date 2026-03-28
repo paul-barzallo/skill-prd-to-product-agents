@@ -35,6 +35,7 @@ when each one should be used.
 - `validate all` matters when the repository task changes packaged artifacts.
 - Docs-only work should still run `test markdown` at minimum.
 - For changes in `cli-tools/**`, `.agents/skills/prd-to-product-agents/**`, `bin/**`, or `.github/workflows/**`, GitHub also runs the multi-OS build and release-gate workflow before merge.
+- The `project-memory-cli` crate tests now cover provider-mode behavior for `local_hashed_v1`, `local_microservice`, generic `openai_compatible`, Azure-compatible request shaping, and remote safety-gate failures without real credentials.
 
 ## Current gaps in coverage
 

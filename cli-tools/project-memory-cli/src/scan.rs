@@ -1,4 +1,5 @@
 use crate::cli::IngestArgs;
+use crate::embeddings::EmbeddingService;
 use crate::model::{ChunkKind, ChunkRecord, FileRecord, FileType, IngestReport, Snapshot, SnapshotStats, SymbolKind, SymbolRecord};
 use crate::{store, trace, util, validate};
 use anyhow::{Context, Result};
@@ -14,7 +15,11 @@ const SNAPSHOT_SCHEMA_VERSION: &str = "pmem.snapshot.v3";
 const MAX_SECTION_CHARS: usize = 1_200;
 const MAX_WINDOW_LINES: usize = 40;
 
-pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, IngestReport)> {
+pub fn ingest(
+    project_root: &Path,
+    args: &IngestArgs,
+    embedding_service: &EmbeddingService,
+) -> Result<(Vec<String>, IngestReport)> {
     let previous_snapshot = if args.force {
         None
     } else {
@@ -122,7 +127,14 @@ pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, In
     snapshot.stats.trace_edges = snapshot.trace_edges.len();
 
     let validation_report = validate::validate_snapshot(&snapshot, false);
-    let snapshot_path = store::save_snapshot(project_root, &snapshot)?;
+    let chunk_embeddings = embedding_service.build_chunk_embeddings_with_fallback(&snapshot)?;
+    let snapshot_path = store::save_snapshot_with_embeddings(
+        project_root,
+        &snapshot,
+        &chunk_embeddings.value,
+        &chunk_embeddings.diagnostics.effective_provider,
+        chunk_embeddings.diagnostics.effective_model.as_deref(),
+    )?;
 
     let mut warnings = Vec::new();
     if skipped_files > 0 {
@@ -131,11 +143,28 @@ pub fn ingest(project_root: &Path, args: &IngestArgs) -> Result<(Vec<String>, In
     if deleted_files > 0 {
         warnings.push(format!("removed {deleted_files} file(s) from the snapshot because they no longer exist"));
     }
+    if chunk_embeddings.diagnostics.fallback_used {
+        warnings.push(format!(
+            "ingest fell back from `{}` to `{}`: {}",
+            chunk_embeddings.diagnostics.configured_provider,
+            chunk_embeddings.diagnostics.effective_provider,
+            chunk_embeddings
+                .diagnostics
+                .fallback_reason
+                .as_deref()
+                .unwrap_or("primary provider failed")
+        ));
+    }
+    if chunk_embeddings.diagnostics.remote_access {
+        warnings.push("ingest used an external embedding provider over the network".to_string());
+    }
 
     Ok((
         warnings,
         IngestReport {
             snapshot_path: snapshot_path.display().to_string(),
+            embedding_provider: chunk_embeddings.diagnostics.effective_provider.clone(),
+            embedding_model: chunk_embeddings.diagnostics.effective_model.clone(),
             files_indexed: snapshot.stats.files_indexed,
             changed_files,
             reused_files,
@@ -169,7 +198,41 @@ fn collect_candidate_files(project_root: &Path) -> Result<Vec<PathBuf>> {
         files.push(path);
     }
 
+    files.extend(collect_explicit_hidden_files(project_root, ".github")?);
     files.sort();
+    files.dedup();
+
+    Ok(files)
+}
+
+fn collect_explicit_hidden_files(project_root: &Path, relative_root: &str) -> Result<Vec<PathBuf>> {
+    let root = project_root.join(relative_root);
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut builder = WalkBuilder::new(&root);
+    builder.standard_filters(false);
+    builder.hidden(false);
+    builder.parents(true);
+    builder.ignore(true);
+    builder.git_ignore(true);
+    builder.git_exclude(true);
+    builder.git_global(true);
+
+    let mut files = Vec::new();
+    for entry in builder.build() {
+        let entry = entry?;
+        let path = entry.into_path();
+        if !path.is_file() {
+            continue;
+        }
+        if should_skip_path(&path, project_root) {
+            continue;
+        }
+        files.push(path);
+    }
+
     Ok(files)
 }
 
@@ -244,6 +307,7 @@ fn extract_chunks(path: &str, file_type: &FileType, content: &str) -> Vec<ChunkR
     }
 
     match file_type {
+        FileType::Yaml => extract_yaml_chunks(path, content),
         FileType::Prd
         | FileType::Readme
         | FileType::Adr
@@ -253,6 +317,156 @@ fn extract_chunks(path: &str, file_type: &FileType, content: &str) -> Vec<ChunkR
         | FileType::Markdown => extract_markdown_chunks(path, content),
         _ => extract_window_chunks(path, content),
     }
+}
+
+fn extract_yaml_chunks(path: &str, content: &str) -> Vec<ChunkRecord> {
+    let lines: Vec<(usize, &str)> = content.lines().enumerate().map(|(index, line)| (index + 1, line)).collect();
+    let mut chunks = Vec::new();
+    let mut current_lines: Vec<(usize, &str)> = Vec::new();
+    let mut current_title: Option<String> = None;
+    let mut root_key: Option<String> = None;
+    let mut current_job: Option<String> = None;
+
+    for (line_number, line) in &lines {
+        let trimmed = line.trim();
+        let indent = yaml_indent_width(line);
+
+        if let Some(anchor_title) = yaml_anchor_title(trimmed, indent, root_key.as_deref(), current_job.as_deref()) {
+            if !current_lines.is_empty() {
+                push_chunk(path, &mut chunks, ChunkKind::Section, current_title.take(), &current_lines);
+                current_lines.clear();
+            }
+            current_title = Some(anchor_title);
+        }
+
+        update_yaml_context(trimmed, indent, &mut root_key, &mut current_job);
+
+        if trimmed.is_empty() && current_lines.is_empty() {
+            continue;
+        }
+
+        current_lines.push((*line_number, *line));
+    }
+
+    if !current_lines.is_empty() {
+        push_chunk(path, &mut chunks, ChunkKind::Section, current_title.take(), &current_lines);
+    }
+
+    if chunks.is_empty() {
+        extract_window_chunks(path, content)
+    } else {
+        chunks
+    }
+}
+
+fn yaml_indent_width(line: &str) -> usize {
+    line.chars().take_while(|character| *character == ' ').count()
+}
+
+fn yaml_anchor_title(
+    trimmed: &str,
+    indent: usize,
+    root_key: Option<&str>,
+    current_job: Option<&str>,
+) -> Option<String> {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return None;
+    }
+
+    if let Some((key, value)) = parse_yaml_mapping(trimmed) {
+        if indent == 0 {
+            return Some(match value {
+                Some(value) if key == "name" && !value.is_empty() => format!("name {value}"),
+                _ => key,
+            });
+        }
+
+        if root_key == Some("jobs") && indent == 2 && value.is_none() {
+            return Some(format!("job {key}"));
+        }
+
+        if let Some(job) = current_job {
+            if indent == 4 && value.is_none() {
+                return Some(format!("job {job} > {key}"));
+            }
+            if indent >= 6 && matches!(key.as_str(), "name" | "uses" | "run" | "if" | "needs" | "path") {
+                return Some(match value {
+                    Some(value) if !value.is_empty() => format!("job {job} > {key} {value}"),
+                    _ => format!("job {job} > {key}"),
+                });
+            }
+        }
+    }
+
+    if let Some((key, value)) = parse_yaml_sequence_mapping(trimmed) {
+        if let Some(job) = current_job {
+            return Some(match key.as_str() {
+                "name" => format!("job {job} > step {}", value.unwrap_or_else(|| "unnamed".to_string())),
+                "uses" => format!("job {job} > step uses {}", value.unwrap_or_else(|| "action".to_string())),
+                "run" => format!("job {job} > step run {}", value.unwrap_or_else(|| "command".to_string())),
+                _ => format!("job {job} > step {key}"),
+            });
+        }
+    }
+
+    None
+}
+
+fn update_yaml_context(
+    trimmed: &str,
+    indent: usize,
+    root_key: &mut Option<String>,
+    current_job: &mut Option<String>,
+) {
+    if trimmed.is_empty() || trimmed.starts_with('#') {
+        return;
+    }
+
+    if let Some((key, _)) = parse_yaml_mapping(trimmed) {
+        if indent == 0 {
+            *root_key = Some(key.clone());
+            if key != "jobs" {
+                *current_job = None;
+            }
+            return;
+        }
+
+        if root_key.as_deref() == Some("jobs") && indent == 2 {
+            *current_job = Some(key);
+            return;
+        }
+
+        if indent <= 2 && root_key.as_deref() != Some("jobs") {
+            *current_job = None;
+        }
+    }
+}
+
+fn parse_yaml_mapping(trimmed: &str) -> Option<(String, Option<String>)> {
+    if trimmed.starts_with('-') {
+        return None;
+    }
+
+    let (raw_key, raw_value) = trimmed.split_once(':')?;
+    let key = raw_key.trim();
+    if key.is_empty() || key.contains(' ') {
+        return None;
+    }
+
+    let value = raw_value.trim();
+    Some((key.to_string(), if value.is_empty() { None } else { Some(value.to_string()) }))
+}
+
+fn parse_yaml_sequence_mapping(trimmed: &str) -> Option<(String, Option<String>)> {
+    let stripped = trimmed.strip_prefix('-')?.trim_start();
+    let (raw_key, raw_value) = stripped.split_once(':')?;
+    let key = raw_key.trim();
+    if key.is_empty() || key.contains(' ') {
+        return None;
+    }
+
+    let value = raw_value.trim();
+    Some((key.to_string(), if value.is_empty() { None } else { Some(value.to_string()) }))
 }
 
 fn extract_markdown_chunks(path: &str, content: &str) -> Vec<ChunkRecord> {

@@ -3,7 +3,7 @@ use crate::embeddings;
 use crate::model::{ChunkEmbeddingRecord, ChunkRecord, FileRecord, FileType, QueryMatch, QueryReport, RetrieveReport, Snapshot};
 use crate::store;
 use crate::util;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::str::FromStr;
@@ -31,15 +31,40 @@ pub fn run(snapshot: &Snapshot, args: &QueryArgs) -> Result<(Vec<String>, QueryR
     ))
 }
 
-pub fn run_retrieve(project_root: &Path, snapshot: &Snapshot, args: &RetrieveArgs) -> Result<(Vec<String>, RetrieveReport)> {
+pub fn run_retrieve(
+    project_root: &Path,
+    snapshot: &Snapshot,
+    args: &RetrieveArgs,
+    embedding_service: &embeddings::EmbeddingService,
+) -> Result<(Vec<String>, RetrieveReport)> {
     let filters = QueryFilters::from_retrieve_args(args)?;
-    let chunk_embeddings = store::load_chunk_embeddings(project_root)
-        .unwrap_or_else(|_| fallback_chunk_embeddings(snapshot));
     let mut warnings = Vec::new();
-    if chunk_embeddings.is_empty() {
-        warnings.push("retrieve ran without persisted chunk embeddings; falling back to lexical scoring only".to_string());
+    let query_embedding = embedding_service.embed_query_with_fallback(
+        filters
+            .needle
+            .as_deref()
+            .context("retrieve requires a text query")?,
+    )?;
+    if query_embedding.diagnostics.fallback_used {
+        warnings.push(format!(
+            "retrieve fell back from `{}` to `{}`: {}",
+            query_embedding.diagnostics.configured_provider,
+            query_embedding.diagnostics.effective_provider,
+            query_embedding
+                .diagnostics
+                .fallback_reason
+                .as_deref()
+                .unwrap_or("primary provider failed")
+        ));
     }
-    let mut matches = collect_retrieve_matches(snapshot, &filters, &chunk_embeddings);
+    let (chunk_embeddings, cache_status) = resolve_chunk_embeddings(
+        project_root,
+        snapshot,
+        embedding_service,
+        &query_embedding.effective_config,
+        &mut warnings,
+    )?;
+    let mut matches = collect_retrieve_matches(snapshot, &filters, &query_embedding.value, &chunk_embeddings);
 
     matches.sort_by(|left, right| {
         right
@@ -51,12 +76,24 @@ pub fn run_retrieve(project_root: &Path, snapshot: &Snapshot, args: &RetrieveArg
     let total_matches = matches.len();
     matches.truncate(args.limit);
 
+    if embedding_service.uses_external_network() {
+        warnings.push("retrieve used an external embedding provider over the network".to_string());
+    }
+
     Ok((
         warnings,
         RetrieveReport {
             query: args.text.clone(),
             retrieval_mode: "hybrid_lexical_local_embedding",
-            embedding_provider: embeddings::EMBEDDING_PROVIDER,
+            configured_embedding_provider: query_embedding.diagnostics.configured_provider.clone(),
+            configured_embedding_model: query_embedding.diagnostics.configured_model.clone(),
+            embedding_provider: query_embedding.diagnostics.effective_provider.clone(),
+            embedding_model: query_embedding.diagnostics.effective_model.clone(),
+            remote_access: query_embedding.diagnostics.remote_access,
+            cost_risk: query_embedding.diagnostics.cost_risk.to_string(),
+            cache_status,
+            fallback_used: query_embedding.diagnostics.fallback_used,
+            fallback_reason: query_embedding.diagnostics.fallback_reason.clone(),
             file_type: filters.file_type.map(|value| value.to_string()),
             path_contains: args.path_contains.clone(),
             total_matches,
@@ -311,13 +348,13 @@ fn build_file_level_match(
 fn collect_retrieve_matches(
     snapshot: &Snapshot,
     filters: &QueryFilters,
+    query_embedding: &[f32],
     chunk_embeddings: &BTreeMap<String, ChunkEmbeddingRecord>,
 ) -> Vec<QueryMatch> {
     let mut matches = Vec::new();
     let Some(needle) = &filters.needle else {
         return matches;
     };
-    let query_embedding = embeddings::embed_text(needle);
 
     for file in &snapshot.files {
         if let Some(expected) = &filters.file_type {
@@ -351,7 +388,7 @@ fn collect_retrieve_matches(
             let lexical = lexical_chunk_score(&chunk, needle);
             let semantic = chunk_embeddings
                 .get(&chunk.chunk_id)
-                .map(|record| embeddings::cosine_similarity(&query_embedding, &record.vector))
+                .map(|record| embeddings::cosine_similarity(query_embedding, &record.vector))
                 .unwrap_or(0.0);
 
             if lexical == 0.0 && semantic < 0.18 {
@@ -417,9 +454,84 @@ fn best_chunk_snippet(chunk: &ChunkRecord) -> String {
         .unwrap_or_else(|| util::truncate(chunk.content.trim(), 200))
 }
 
-fn fallback_chunk_embeddings(snapshot: &Snapshot) -> BTreeMap<String, ChunkEmbeddingRecord> {
-    embeddings::build_chunk_embeddings(snapshot)
-        .into_iter()
-        .map(|record| (record.chunk_id.clone(), record))
-        .collect()
+fn resolve_chunk_embeddings(
+    project_root: &Path,
+    snapshot: &Snapshot,
+    embedding_service: &embeddings::EmbeddingService,
+    effective_config: &crate::config::EmbeddingRuntimeConfig,
+    warnings: &mut Vec<String>,
+) -> Result<(BTreeMap<String, ChunkEmbeddingRecord>, String)> {
+    let persisted = store::load_chunk_embeddings(project_root).unwrap_or_default();
+    let expected_chunks = snapshot.files.iter().map(|file| file.chunks.len()).sum::<usize>();
+    if persisted.len() == expected_chunks
+        && persisted
+            .values()
+            .all(|record| {
+                record.provider == effective_config.provider.as_str()
+                    && record.model.as_deref()
+                        == effective_config
+                            .model
+                            .as_deref()
+                            .or(effective_config.deployment.as_deref())
+            })
+    {
+        return Ok((persisted, "hit".to_string()));
+    }
+
+    if persisted.is_empty() {
+        warnings.push(
+            "retrieve did not find persisted embeddings for the active provider; computing them on demand"
+                .to_string(),
+        );
+        let embeddings = embedding_service.build_chunk_embeddings_for_config(effective_config, snapshot)?;
+        persist_recomputed_embeddings(project_root, &embeddings, effective_config, warnings);
+        return Ok((
+            embeddings
+                .into_iter()
+                .map(|record| (record.chunk_id.clone(), record))
+                .collect(),
+            "miss_recomputed".to_string(),
+        ));
+    } else {
+        warnings.push(
+            format!(
+                "retrieve ignored persisted embeddings because they do not match provider `{}` or the current chunk set",
+                effective_config.provider.as_str()
+            ),
+        );
+        let embeddings = embedding_service.build_chunk_embeddings_for_config(effective_config, snapshot)?;
+        persist_recomputed_embeddings(project_root, &embeddings, effective_config, warnings);
+        return Ok((
+            embeddings
+                .into_iter()
+                .map(|record| (record.chunk_id.clone(), record))
+                .collect(),
+            "mismatch_recomputed".to_string(),
+        ));
+    }
+}
+
+fn persist_recomputed_embeddings(
+    project_root: &Path,
+    embeddings: &[ChunkEmbeddingRecord],
+    effective_config: &crate::config::EmbeddingRuntimeConfig,
+    warnings: &mut Vec<String>,
+) {
+    if !store::has_database(project_root) {
+        return;
+    }
+
+    if let Err(error) = store::save_chunk_embeddings(
+        project_root,
+        embeddings,
+        effective_config.provider.as_str(),
+        effective_config
+            .model
+            .as_deref()
+            .or(effective_config.deployment.as_deref()),
+    ) {
+        warnings.push(format!(
+            "retrieve recomputed embeddings but could not persist the refreshed cache: {error}"
+        ));
+    }
 }

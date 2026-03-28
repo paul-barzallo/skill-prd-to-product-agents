@@ -48,6 +48,8 @@ Si no puedes ejecutar una validacion requerida, dilo de forma explicita y no afi
 3. No uses la documentacion del repo para describir otros ambitos si el cambio actual no los toca.
 4. No dejes archivos huerfanos, ZIPs ad hoc, directorios temporales ni salidas de smoke tests dentro del repo.
 5. Si un cambio altera contratos, comandos o claims, actualiza la documentacion correspondiente en el mismo cambio.
+6. Cuando una tarea toque simultaneamente repo, skill empaquetada y workspace desplegado, valida y documenta cada superficie por separado. No mezcles reglas de mantenimiento del repo en la skill ni dependencias de la skill o del repo dentro del workspace generado.
+7. Si `project-memory-cli` cambia logica de cache o providers, deja cobertura explicita del comportamiento en segunda ejecucion. Una recomputacion puntual en `retrieve` no es suficiente si no converge a cache persistida y reutilizable.
 
 ## 6. Automatizacion esperada
 

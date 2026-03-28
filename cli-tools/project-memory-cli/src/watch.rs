@@ -1,4 +1,5 @@
 use crate::cli::{IngestArgs, WatchArgs};
+use crate::embeddings::EmbeddingService;
 use crate::model::{Snapshot, WatchIteration, WatchReport};
 use crate::{scan, store, util};
 use anyhow::{bail, Context, Result};
@@ -9,7 +10,11 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
-pub fn run(project_root: &Path, args: &WatchArgs) -> Result<(Vec<String>, WatchReport)> {
+pub fn run(
+    project_root: &Path,
+    args: &WatchArgs,
+    embedding_service: &EmbeddingService,
+) -> Result<(Vec<String>, WatchReport)> {
     if args.max_events == 0 {
         bail!("--max-events must be greater than zero");
     }
@@ -24,6 +29,7 @@ pub fn run(project_root: &Path, args: &WatchArgs) -> Result<(Vec<String>, WatchR
             &IngestArgs {
                 force: args.force_initial_ingest,
             },
+            embedding_service,
         )?;
         true
     } else {
@@ -70,7 +76,11 @@ pub fn run(project_root: &Path, args: &WatchArgs) -> Result<(Vec<String>, WatchR
         }
 
         let previous = store::load_snapshot(project_root).ok();
-        let (_warnings, ingest_report) = scan::ingest(project_root, &IngestArgs { force: false })?;
+        let (_warnings, ingest_report) = scan::ingest(
+            project_root,
+            &IngestArgs { force: false },
+            embedding_service,
+        )?;
         let current = store::load_snapshot(project_root)?;
         let (changed_paths, deleted_paths) = diff_snapshots(previous.as_ref(), &current);
 

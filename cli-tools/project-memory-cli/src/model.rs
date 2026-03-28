@@ -133,6 +133,7 @@ pub struct ChunkRecord {
 pub struct ChunkEmbeddingRecord {
     pub chunk_id: String,
     pub provider: String,
+    pub model: Option<String>,
     pub dimensions: usize,
     pub content_hash: String,
     pub vector: Vec<f32>,
@@ -225,6 +226,9 @@ pub struct Snapshot {
 #[derive(Debug, Clone, Serialize)]
 pub struct IngestReport {
     pub snapshot_path: String,
+    pub embedding_provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
     pub files_indexed: usize,
     pub changed_files: usize,
     pub reused_files: usize,
@@ -277,7 +281,18 @@ pub struct QueryReport {
 pub struct RetrieveReport {
     pub query: String,
     pub retrieval_mode: &'static str,
-    pub embedding_provider: &'static str,
+    pub configured_embedding_provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub configured_embedding_model: Option<String>,
+    pub embedding_provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub embedding_model: Option<String>,
+    pub remote_access: bool,
+    pub cost_risk: String,
+    pub cache_status: String,
+    pub fallback_used: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
     pub file_type: Option<String>,
     pub path_contains: Option<String>,
     pub total_matches: usize,

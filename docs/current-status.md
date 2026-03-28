@@ -17,6 +17,11 @@ Update it when priorities, blockers, or key repository risks change.
 - release checklist in `docs/repo-release-checklist.md`
 - `project-memory-cli` MVP foundation with ingest, chunk-aware query, chunk-first retrieve, trace, impact, and validate commands backed by `.project-memory/snapshot.json` plus `.project-memory/project-memory.db`
 - `project-memory-cli` now also persists deterministic local chunk embeddings in SQLite and uses them in hybrid retrieve scoring
+- `project-memory-cli` now resolves embedding provider configuration through flags, env vars, or `.project-memory/config.toml`, supports a loopback-only `local_microservice`, and supports an explicit opt-in `openai_compatible` bridge for generic and Azure-compatible embedding APIs
+- `project-memory-cli` now also supports explicit local-only fallback policy, provider/model-aware cache invalidation, and retrieve diagnostics that surface effective backend, cache reuse, fallback use, and remote-risk level
+- `project-memory-cli` ingest now includes hidden repository metadata such as `.github/workflows/` unless ignore rules explicitly exclude it
+- `project-memory-cli` now chunks YAML and GitHub workflow files by structural anchors so retrieval over repository automation is less dependent on blind fixed windows
+- `project-memory-cli` retrieve now persists recomputed embeddings back into SQLite so provider/model cache invalidation converges to reusable cache state on later runs
 
 ## Active strengths
 
@@ -25,6 +30,7 @@ Update it when priorities, blockers, or key repository risks change.
 - packaged binary model is explicit
 - claims about bootstrap and readiness are more disciplined than in earlier drafts
 - the repository now documents repo, skill-package, and deployed-workspace scopes as separate contracts
+- the packaged skill now avoids source-repository maintenance guidance, and the deployed workspace now documents its own files-first context system for agents
 - template and runtime contract tests now better tolerate explicit skill-root injection instead of assuming only the current repository layout
 
 ## Current gaps to close next
@@ -34,7 +40,7 @@ Update it when priorities, blockers, or key repository risks change.
 3. repository support and escalation flow is still minimal
 4. release workflow and documentation drift still need periodic review, especially around path filters, published binary permissions, and multi-OS gate scope
 5. decide whether `project-memory-cli` should stay as repository-only tooling or eventually become part of a broader product workflow story
-6. replace or complement the local hashed embedding provider with a real external semantic backend
+6. keep the provider diagnostics and validation matrix coherent as fallback behavior evolves, then decide whether any additional operator-facing reporting belongs in `trace` or separate commands
 
 ## Current blockers or risks
 
@@ -65,6 +71,13 @@ Update it when priorities, blockers, or key repository risks change.
 - added SQLite-backed snapshot mirroring, deterministic chunk persistence, and chunk-aware query results for `project-memory-cli`
 - added an explicit `retrieve` command as the forward-looking chunk retrieval contract for future hybrid semantic ranking
 - added deterministic local chunk embeddings plus hybrid retrieve scoring so the retrieval pipeline now exercises stored vectors end to end
+- added provider-aware embedding configuration plus a loopback-only `local_microservice` backend for `project-memory-cli`
+- added an explicit opt-in `openai_compatible` bridge with Azure-compatible request shaping and remote safety gates for `project-memory-cli`
+- added local-only provider fallback, explicit cache-status reporting, and richer retrieve diagnostics for `project-memory-cli`
+- fixed `project-memory-cli` ingest so hidden repository metadata like `.github/workflows/` is indexed when not ignored
+- improved `project-memory-cli` YAML chunking so workflow jobs and steps become first-class retrieval units instead of generic fixed windows
+- fixed `project-memory-cli` retrieve so recomputed embeddings are persisted and later runs converge from `mismatch_recomputed` to `hit`
+- cleaned the skill-package and deployed-workspace docs so each surface now explains only its own contract, and added a dedicated workspace runtime guide for the files-first context system
 - added an ADR, workspace portability test coverage, and less rigid skill-root resolution in repo and package tests to keep scope boundaries enforceable
 
 ## Update rule

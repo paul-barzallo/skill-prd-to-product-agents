@@ -2,6 +2,17 @@
 
 Error recovery procedures for the workspace runtime CLI (`prdtp-agents-functions-cli`).
 
+## Context system confusion or stale state
+
+If an agent sees conflicting information across docs, assembled agent files,
+reporting output, or the SQLite ledger:
+
+1. Treat `docs/project/*` as authoritative.
+2. If assembled agent files are stale, refresh the correct context source and run `prdtp-agents-functions-cli agents assemble`.
+3. If reporting is stale, run `prdtp-agents-functions-cli report snapshot` and then `prdtp-agents-functions-cli report dashboard` when reporting is enabled.
+4. If the ledger is stale, leave canonical files unchanged and let infrastructure run `prdtp-agents-functions-cli audit sync`.
+5. Do not edit `.state/project_memory.db` directly and do not use it to override canonical files.
+
 ## Audit sync failure
 
 If `prdtp-agents-functions-cli audit sync` fails:

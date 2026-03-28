@@ -2,7 +2,8 @@
 
 Human-oriented README for the `prd-to-product-agents` skill package.
 
-This document is for maintainers of the skill package. Runtime operation belongs to the generated workspace documentation under `templates/workspace/docs/runtime/`.
+This document is for people using the packaged skill to bootstrap a workspace.
+Daily operation after bootstrap belongs to the generated workspace documentation.
 
 ## What it does
 
@@ -16,18 +17,15 @@ The skill generates a product-development workspace with:
 
 ## Boundaries
 
-Three scopes must stay aligned:
+This document covers only the packaged skill and the workspace it deploys.
 
 | Scope | Purpose |
 | --- | --- |
-| Project repo | develop, test, and release the skill |
 | Skill package | ship the bootstrap CLI, template, and package docs |
 | Deployed workspace | run the agents and operational tooling in client projects |
 
-The source repository maintains all three, but the deployed workspace must be
-able to live on its own after bootstrap. Runtime operation must not require the
-project repo, and day-to-day workspace execution must not require knowledge of
-the skill-maintenance surface.
+After bootstrap, the deployed workspace must operate from its own files,
+runtime binaries, and runtime documentation.
 
 ## Current bootstrap contract
 
@@ -64,7 +62,6 @@ GitHub.com is intentionally documented as a degraded surface. The supported cont
 
 | Command | Scope |
 | --- | --- |
-| `skill-dev-cli test release-gate` | project repo release gate |
 | `prd-to-product-agents-cli validate all` | skill package integrity |
 | `prdtp-agents-functions-cli validate workspace` | workspace structural validation |
 | `prdtp-agents-functions-cli validate governance` | configured workspace governance validation |

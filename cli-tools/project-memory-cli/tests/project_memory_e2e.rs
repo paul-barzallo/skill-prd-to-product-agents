@@ -1,6 +1,9 @@
 use serde_json::Value;
 use rusqlite::Connection;
+use std::collections::BTreeMap;
 use std::fs;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 use std::path::Path;
 use std::process::Command;
 use std::thread;
@@ -16,8 +19,49 @@ fn write_file(root: &Path, relative: &str, content: &str) {
 }
 
 fn run_cli(project_root: &Path, args: &[&str]) -> (std::process::ExitStatus, Value) {
+    run_cli_with_global_args(project_root, &[], args)
+}
+
+fn run_cli_raw_with_env(
+    project_root: &Path,
+    global_args: &[&str],
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> (std::process::ExitStatus, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_project-memory-cli"))
         .args(["--project-root", project_root.to_str().expect("project root utf-8")])
+        .args(global_args)
+        .args(args)
+        .envs(envs.iter().copied())
+        .output()
+        .expect("run project-memory-cli raw");
+
+    (
+        output.status,
+        String::from_utf8(output.stdout).expect("stdout utf-8"),
+        String::from_utf8(output.stderr).expect("stderr utf-8"),
+    )
+}
+
+fn run_cli_with_env(
+    project_root: &Path,
+    global_args: &[&str],
+    args: &[&str],
+    envs: &[(&str, &str)],
+) -> (std::process::ExitStatus, Value) {
+    let (status, stdout, _stderr) = run_cli_raw_with_env(project_root, global_args, args, envs);
+    let json = serde_json::from_str::<Value>(&stdout).expect("valid JSON output");
+    (status, json)
+}
+
+fn run_cli_with_global_args(
+    project_root: &Path,
+    global_args: &[&str],
+    args: &[&str],
+) -> (std::process::ExitStatus, Value) {
+    let output = Command::new(env!("CARGO_BIN_EXE_project-memory-cli"))
+        .args(["--project-root", project_root.to_str().expect("project root utf-8")])
+        .args(global_args)
         .args(args)
         .output()
         .expect("run project-memory-cli");
@@ -25,6 +69,200 @@ fn run_cli(project_root: &Path, args: &[&str]) -> (std::process::ExitStatus, Val
     let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
     let json = serde_json::from_str::<Value>(&stdout).expect("valid JSON output");
     (output.status, json)
+}
+
+fn start_embedding_stub(expected_requests: usize) -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind embedding stub");
+    let address = listener.local_addr().expect("embedding stub address");
+    let handle = thread::spawn(move || {
+        for _ in 0..expected_requests {
+            let (mut stream, _) = listener.accept().expect("accept embedding request");
+            let mut buffer = Vec::new();
+            let mut chunk = [0_u8; 4096];
+
+            loop {
+                let read = stream.read(&mut chunk).expect("read embedding request");
+                if read == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+                if let Some(header_end) = find_header_end(&buffer) {
+                    let content_length = parse_content_length(&buffer[..header_end]);
+                    let body_end = header_end + content_length;
+                    if buffer.len() >= body_end {
+                        let body = &buffer[header_end..body_end];
+                        let request: Value = serde_json::from_slice(body).expect("parse embedding request");
+                        let response = build_embedding_response(&request);
+                        let response_body = serde_json::to_vec(&response).expect("serialize embedding response");
+                        let headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            response_body.len()
+                        );
+                        stream.write_all(headers.as_bytes()).expect("write embedding headers");
+                        stream.write_all(&response_body).expect("write embedding body");
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    (format!("http://{address}/v1/embeddings"), handle)
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+}
+
+fn parse_content_length(headers: &[u8]) -> usize {
+    let text = String::from_utf8_lossy(headers);
+    text.lines()
+        .find_map(|line| {
+            line.split_once(':').and_then(|(name, value)| {
+                if name.eq_ignore_ascii_case("content-length") {
+                    value.trim().parse().ok()
+                } else {
+                    None
+                }
+            })
+        })
+        .unwrap_or(0)
+}
+
+fn build_embedding_response(request: &Value) -> Value {
+    let data = request["inputs"]
+        .as_array()
+        .expect("embedding inputs array")
+        .iter()
+        .map(|input| {
+            let id = input["id"].as_str().expect("embedding input id");
+            let text = input["text"].as_str().expect("embedding input text");
+            let token_like = text.split_whitespace().count() as f32;
+            let incident_bias = if text.to_ascii_lowercase().contains("incident") {
+                5.0
+            } else {
+                1.0
+            };
+
+            serde_json::json!({
+                "id": id,
+                "embedding": [text.len() as f32, token_like, incident_bias],
+            })
+        })
+        .collect::<Vec<_>>();
+
+    serde_json::json!({ "data": data })
+}
+
+fn start_openai_embedding_stub(
+    expected_requests: usize,
+    expected_modes: &[&str],
+) -> (String, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind openai embedding stub");
+    let address = listener.local_addr().expect("openai embedding stub address");
+    let modes = expected_modes.iter().map(|value| value.to_string()).collect::<Vec<_>>();
+
+    let handle = thread::spawn(move || {
+        for index in 0..expected_requests {
+            let (mut stream, _) = listener.accept().expect("accept openai embedding request");
+            let mut buffer = Vec::new();
+            let mut chunk = [0_u8; 4096];
+
+            loop {
+                let read = stream.read(&mut chunk).expect("read openai embedding request");
+                if read == 0 {
+                    break;
+                }
+                buffer.extend_from_slice(&chunk[..read]);
+                if let Some(header_end) = find_header_end(&buffer) {
+                    let content_length = parse_content_length(&buffer[..header_end]);
+                    let body_end = header_end + content_length;
+                    if buffer.len() >= body_end {
+                        let headers = String::from_utf8_lossy(&buffer[..header_end]).to_string();
+                        let request_line = headers.lines().next().expect("request line");
+                        let mode = modes.get(index).expect("expected openai mode");
+                        let body = &buffer[header_end..body_end];
+                        let request: Value = serde_json::from_slice(body).expect("parse openai request");
+                        assert_openai_request(mode, request_line, &headers, &request);
+                        let response = build_openai_embedding_response(&request);
+                        let response_body = serde_json::to_vec(&response).expect("serialize openai response");
+                        let response_headers = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                            response_body.len()
+                        );
+                        stream.write_all(response_headers.as_bytes()).expect("write openai headers");
+                        stream.write_all(&response_body).expect("write openai body");
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    (format!("http://{address}"), handle)
+}
+
+fn assert_openai_request(mode: &str, request_line: &str, headers: &str, request: &Value) {
+    let header_map = parse_headers(headers);
+    match mode {
+        "generic" => {
+            assert!(request_line.starts_with("POST /v1/embeddings "), "generic provider should call /v1/embeddings");
+            let auth = header_map
+                .get("authorization")
+                .expect("generic authorization header");
+            assert!(auth.starts_with("Bearer "));
+            assert!(request["model"].is_string(), "generic provider should send model");
+            assert!(request["input"].is_array(), "generic provider should send input array");
+        }
+        "azure" => {
+            assert!(
+                request_line.starts_with("POST /openai/deployments/team-embed/embeddings?api-version=2024-06-01-preview "),
+                "azure provider should call deployment-scoped embeddings path"
+            );
+            assert_eq!(
+                header_map.get("api-key").map(String::as_str),
+                Some("azure-secret"),
+                "azure provider should send api-key header"
+            );
+            assert!(request["input"].is_array(), "azure provider should send input array");
+        }
+        other => panic!("unexpected openai mode {other}"),
+    }
+}
+
+fn parse_headers(headers: &str) -> BTreeMap<String, String> {
+    let mut parsed = BTreeMap::new();
+    for line in headers.lines().skip(1) {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some((name, value)) = trimmed.split_once(':') {
+            parsed.insert(name.trim().to_ascii_lowercase(), value.trim().to_string());
+        }
+    }
+    parsed
+}
+
+fn build_openai_embedding_response(request: &Value) -> Value {
+    let data = request["input"]
+        .as_array()
+        .expect("openai input array")
+        .iter()
+        .enumerate()
+        .map(|(index, input)| {
+            let text = input.as_str().expect("openai input text");
+            serde_json::json!({
+                "index": index,
+                "embedding": [text.len() as f32, text.split_whitespace().count() as f32, (index + 1) as f32],
+            })
+        })
+        .collect::<Vec<_>>();
+
+    serde_json::json!({ "data": data })
 }
 
 fn build_fixture_project() -> tempfile::TempDir {
@@ -186,6 +424,248 @@ fn ingest_creates_sqlite_store_with_file_rows() {
 }
 
 #[test]
+fn ingest_and_retrieve_support_local_microservice_provider_from_config() {
+    let project = build_fixture_project();
+    let (endpoint, server) = start_embedding_stub(2);
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        &format!(
+            "[embedding]\nprovider = \"local_microservice\"\nendpoint = \"{endpoint}\"\ntimeout_ms = 1500\n"
+        ),
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed with local microservice provider");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "local_microservice");
+
+    let connection = Connection::open(project.path().join(".project-memory").join("project-memory.db"))
+        .expect("open SQLite store");
+    let persisted_provider: String = connection
+        .query_row(
+            "SELECT value FROM snapshot_metadata WHERE key = 'embedding_provider'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read embedding provider metadata");
+    assert_eq!(persisted_provider, "local_microservice");
+
+    let (status, retrieve_json) = run_cli(project.path(), &["retrieve", "--text", "incident triage"]);
+    assert!(status.success(), "retrieve should succeed with local microservice provider");
+    assert_eq!(retrieve_json["data"]["embedding_provider"], "local_microservice");
+    assert!(retrieve_json["data"]["results"][0]["semantic_score"].is_number());
+
+    server.join().expect("join embedding stub");
+}
+
+#[test]
+fn cli_embedding_flags_override_configured_provider() {
+    let project = build_fixture_project();
+    let (endpoint, server) = start_embedding_stub(1);
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"local_hashed_v1\"\n",
+    );
+
+    let (status, ingest_json) = run_cli_with_global_args(
+        project.path(),
+        &[
+            "--embedding-provider",
+            "local_microservice",
+            "--embedding-endpoint",
+            endpoint.as_str(),
+        ],
+        &["ingest"],
+    );
+    assert!(status.success(), "ingest should honor CLI provider override");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "local_microservice");
+
+    server.join().expect("join override embedding stub");
+}
+
+#[test]
+fn retrieve_recomputes_embeddings_when_provider_changes() {
+    let project = build_fixture_project();
+    let (endpoint, server) = start_embedding_stub(1);
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        &format!(
+            "[embedding]\nprovider = \"local_microservice\"\nendpoint = \"{endpoint}\"\ntimeout_ms = 1500\n"
+        ),
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed with local microservice provider");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "local_microservice");
+    server.join().expect("join initial embedding stub");
+
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"local_hashed_v1\"\n",
+    );
+
+    let (status, retrieve_json) = run_cli(project.path(), &["retrieve", "--text", "incident triage"]);
+    assert!(status.success(), "retrieve should succeed after provider change");
+    assert_eq!(retrieve_json["data"]["configured_embedding_provider"], "local_hashed_v1");
+    assert_eq!(retrieve_json["data"]["embedding_provider"], "local_hashed_v1");
+    assert_eq!(retrieve_json["data"]["cache_status"], "mismatch_recomputed");
+
+    let (status, second_retrieve_json) = run_cli(project.path(), &["retrieve", "--text", "incident triage"]);
+    assert!(status.success(), "second retrieve should succeed after refreshing the cache");
+    assert_eq!(second_retrieve_json["data"]["cache_status"], "hit");
+}
+
+#[test]
+fn ingest_falls_back_to_local_hashed_when_microservice_fails() {
+    let project = build_fixture_project();
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"local_microservice\"\nendpoint = \"http://127.0.0.1:9/v1/embeddings\"\nfallback_provider = \"local_hashed_v1\"\n",
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should fall back to local_hashed_v1");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "local_hashed_v1");
+    assert!(ingest_json["warnings"]
+        .as_array()
+        .expect("warnings array")
+        .iter()
+        .any(|warning| warning.as_str().expect("warning text").contains("fell back")));
+}
+
+#[test]
+fn retrieve_reports_fallback_diagnostics_for_remote_failure() {
+    let project = build_fixture_project();
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"local_hashed_v1\"\n",
+    );
+    let (status, _ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "seed ingest should succeed");
+
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"http://127.0.0.1:9/v1\"\nmodel = \"text-embedding-3-small\"\napi_key_env = \"PMEM_TEST_OPENAI_KEY\"\nremote_enabled = true\nmax_requests_per_run = 2\nfallback_provider = \"local_hashed_v1\"\n",
+    );
+
+    let envs = [("PMEM_TEST_OPENAI_KEY", "generic-secret")];
+    let (status, retrieve_json) = run_cli_with_env(project.path(), &[], &["retrieve", "--text", "incident triage"], &envs);
+    assert!(status.success(), "retrieve should succeed by falling back to local_hashed_v1");
+    assert_eq!(retrieve_json["data"]["configured_embedding_provider"], "openai_compatible");
+    assert_eq!(retrieve_json["data"]["embedding_provider"], "local_hashed_v1");
+    assert_eq!(retrieve_json["data"]["fallback_used"], true);
+    assert_eq!(retrieve_json["data"]["remote_access"], false);
+    assert_eq!(retrieve_json["data"]["cost_risk"], "none");
+    assert!(retrieve_json["data"]["fallback_reason"]
+        .as_str()
+        .expect("fallback reason")
+        .contains("requesting embeddings"));
+}
+
+#[test]
+fn openai_compatible_provider_supports_generic_openai_shape() {
+    let project = build_fixture_project();
+    let (base_url, server) = start_openai_embedding_stub(2, &["generic", "generic"]);
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        &format!(
+            "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"{base_url}/v1\"\nmodel = \"text-embedding-3-small\"\napi_key_env = \"PMEM_TEST_OPENAI_KEY\"\nremote_enabled = true\nmax_requests_per_run = 1\n"
+        ),
+    );
+
+    let envs = [("PMEM_TEST_OPENAI_KEY", "generic-secret")];
+    let (status, ingest_json) = run_cli_with_env(project.path(), &[], &["ingest"], &envs);
+    assert!(status.success(), "ingest should succeed with openai_compatible provider");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "openai_compatible");
+    assert_eq!(ingest_json["data"]["embedding_model"], "text-embedding-3-small");
+    assert!(ingest_json["warnings"]
+        .as_array()
+        .expect("warnings array")
+        .iter()
+        .any(|warning| warning.as_str().expect("warning text").contains("external embedding provider")));
+
+    let connection = Connection::open(project.path().join(".project-memory").join("project-memory.db"))
+        .expect("open SQLite store");
+    let persisted_model: String = connection
+        .query_row(
+            "SELECT value FROM snapshot_metadata WHERE key = 'embedding_model'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("read embedding model metadata");
+    assert_eq!(persisted_model, "text-embedding-3-small");
+
+    let (status, retrieve_json) = run_cli_with_env(project.path(), &[], &["retrieve", "--text", "incident triage"], &envs);
+    assert!(status.success(), "retrieve should succeed with openai_compatible provider");
+    assert_eq!(retrieve_json["data"]["embedding_provider"], "openai_compatible");
+    assert_eq!(retrieve_json["data"]["embedding_model"], "text-embedding-3-small");
+    assert_eq!(retrieve_json["data"]["remote_access"], true);
+
+    server.join().expect("join generic openai stub");
+}
+
+#[test]
+fn openai_compatible_provider_supports_azure_shaping() {
+    let project = build_fixture_project();
+    let (base_url, server) = start_openai_embedding_stub(1, &["azure"]);
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        &format!(
+            "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"{base_url}\"\ndeployment = \"team-embed\"\napi_version = \"2024-06-01-preview\"\napi_key_env = \"PMEM_TEST_AZURE_KEY\"\nmodel = \"text-embedding-3-large\"\nremote_enabled = true\nmax_requests_per_run = 1\n"
+        ),
+    );
+
+    let envs = [("PMEM_TEST_AZURE_KEY", "azure-secret")];
+    let (status, ingest_json) = run_cli_with_env(project.path(), &[], &["ingest"], &envs);
+    assert!(status.success(), "ingest should succeed with azure-compatible openai provider");
+    assert_eq!(ingest_json["data"]["embedding_provider"], "openai_compatible");
+    assert_eq!(ingest_json["data"]["embedding_model"], "text-embedding-3-large");
+
+    server.join().expect("join azure openai stub");
+}
+
+#[test]
+fn openai_compatible_provider_requires_explicit_remote_enablement() {
+    let project = build_fixture_project();
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"https://example.invalid/v1\"\nmodel = \"text-embedding-3-small\"\napi_key_env = \"PMEM_TEST_OPENAI_KEY\"\n",
+    );
+
+    let (status, _stdout, stderr) = run_cli_raw_with_env(
+        project.path(),
+        &[],
+        &["ingest"],
+        &[("PMEM_TEST_OPENAI_KEY", "secret")],
+    );
+    assert!(!status.success(), "ingest should fail when remote provider is not explicitly enabled");
+    assert!(stderr.contains("explicit remote enablement"));
+}
+
+#[test]
+fn openai_compatible_provider_rejects_secrets_in_config() {
+    let project = build_fixture_project();
+    write_file(
+        project.path(),
+        ".project-memory/config.toml",
+        "[embedding]\nprovider = \"openai_compatible\"\nbase_url = \"https://example.invalid/v1\"\nmodel = \"text-embedding-3-small\"\nremote_enabled = true\napi_key = \"hardcoded-secret\"\n",
+    );
+
+    let (status, _stdout, stderr) = run_cli_raw_with_env(project.path(), &[], &["ingest"], &[]);
+    assert!(!status.success(), "ingest should fail when a secret is stored directly in config");
+    assert!(stderr.contains("must not store embedding secrets directly"));
+}
+
+#[test]
 fn ingest_persists_deterministic_chunks_in_snapshot_and_sqlite() {
     let project = tempdir().expect("create temp dir");
     write_file(project.path(), ".gitignore", ".project-memory/\n");
@@ -241,6 +721,90 @@ fn ingest_persists_deterministic_chunks_in_snapshot_and_sqlite() {
 
     assert!(markdown_chunks >= 3, "markdown headings should produce section chunks");
     assert!(code_chunks >= 3, "long code files should produce window chunks");
+}
+
+#[test]
+fn ingest_indexes_hidden_workflow_files_when_not_ignored() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\nignored.log\n");
+    write_file(
+        project.path(),
+        ".github/workflows/build-skill-binaries.yml",
+        "name: Build Scoped CLI Binaries\non: [push]\njobs:\n  validate:\n    runs-on: ubuntu-latest\n",
+    );
+    write_file(
+        project.path(),
+        "docs/guide.md",
+        "# Guide\n\nSee .github/workflows/build-skill-binaries.yml.\n",
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+    assert_eq!(ingest_json["data"]["files_indexed"], 2);
+
+    let snapshot = fs::read_to_string(project.path().join(".project-memory").join("snapshot.json"))
+        .expect("read snapshot");
+    let snapshot_json: Value = serde_json::from_str(&snapshot).expect("parse snapshot JSON");
+    let files = snapshot_json["files"].as_array().expect("files array");
+    assert!(
+        files.iter().any(|file| file["path"] == ".github/workflows/build-skill-binaries.yml"),
+        "hidden workflow file should be present in the snapshot"
+    );
+
+    let (status, query_json) = run_cli(project.path(), &["query", "--path-contains", ".github/workflows"]);
+    assert!(status.success(), "query should succeed");
+    assert_eq!(query_json["data"]["total_matches"], 1);
+    assert_eq!(query_json["data"]["results"][0]["path"], ".github/workflows/build-skill-binaries.yml");
+}
+
+#[test]
+fn ingest_builds_structured_yaml_chunks_for_workflows() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(
+        project.path(),
+        ".github/workflows/build.yml",
+        "name: Build Scoped CLI Binaries\n\non: [push]\n\njobs:\n  release-gate:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Enforce executable bits\n        run: chmod +x collected/skill-dev-cli-linux-x64\n      - uses: actions/download-artifact@v4\n        with:\n          path: collected\n  publish:\n    needs: [release-gate]\n    steps:\n      - run: sha256sum skill-dev-cli-linux-x64 > checksums.sha256\n",
+    );
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+    assert_eq!(ingest_json["data"]["files_indexed"], 1);
+
+    let snapshot = fs::read_to_string(project.path().join(".project-memory").join("snapshot.json"))
+        .expect("read snapshot");
+    let snapshot_json: Value = serde_json::from_str(&snapshot).expect("parse snapshot JSON");
+    let workflow = snapshot_json["files"]
+        .as_array()
+        .expect("files array")
+        .iter()
+        .find(|file| file["path"] == ".github/workflows/build.yml")
+        .expect("workflow present");
+    let chunk_titles = workflow["chunks"]
+        .as_array()
+        .expect("workflow chunks")
+        .iter()
+        .filter_map(|chunk| chunk["title"].as_str())
+        .collect::<Vec<_>>();
+
+    assert!(
+        chunk_titles.iter().any(|title| *title == "job release-gate > step Enforce executable bits"),
+        "workflow chunks should capture named steps"
+    );
+    assert!(
+        chunk_titles
+            .iter()
+            .any(|title| *title == "job release-gate > step uses actions/download-artifact@v4"),
+        "workflow chunks should capture uses steps"
+    );
+    assert!(
+        chunk_titles.iter().any(|title| *title == "job publish > step run sha256sum skill-dev-cli-linux-x64 > checksums.sha256"),
+        "workflow chunks should capture run steps"
+    );
+
+    let (status, query_json) = run_cli(project.path(), &["query", "--text", "checksums.sha256", "--path-contains", ".github/workflows"]);
+    assert!(status.success(), "query should succeed");
+    assert_eq!(query_json["data"]["results"][0]["chunk_title"], "job publish > step run sha256sum skill-dev-cli-linux-x64 > checksums.sha256");
 }
 
 #[test]

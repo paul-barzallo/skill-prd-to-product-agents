@@ -16,8 +16,7 @@ can carry its own reusable workflow knowledge together with agents, prompts,
 and scripts.
 
 After bootstrap, this layer is part of the workspace contract. Runtime
-operation must not depend on the original skill source repository continuing to
-exist nearby.
+operation must not depend on external files continuing to exist nearby.
 
 ## Base agents
 

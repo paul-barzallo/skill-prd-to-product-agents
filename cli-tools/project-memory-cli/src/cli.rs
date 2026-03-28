@@ -12,6 +12,58 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub project_root: Option<PathBuf>,
 
+    /// Override the default `.project-memory/config.toml` path
+    #[arg(long, global = true)]
+    pub config: Option<PathBuf>,
+
+    /// Override the embedding provider (`local_hashed_v1`, `local_microservice`, `openai_compatible`)
+    #[arg(long, global = true)]
+    pub embedding_provider: Option<String>,
+
+    /// Override the embedding provider endpoint
+    #[arg(long, global = true)]
+    pub embedding_endpoint: Option<String>,
+
+    /// Override the embedding provider base URL
+    #[arg(long, global = true)]
+    pub embedding_base_url: Option<String>,
+
+    /// Override the embedding deployment name for Azure-compatible providers
+    #[arg(long, global = true)]
+    pub embedding_deployment: Option<String>,
+
+    /// Override the embedding API version for Azure-compatible providers
+    #[arg(long, global = true)]
+    pub embedding_api_version: Option<String>,
+
+    /// Override the embedding provider model name
+    #[arg(long, global = true)]
+    pub embedding_model: Option<String>,
+
+    /// Override the environment variable name that contains the embedding API key
+    #[arg(long, global = true)]
+    pub embedding_api_key_env: Option<String>,
+
+    /// Explicitly enable or disable remote embedding providers
+    #[arg(long, global = true)]
+    pub embedding_remote_enabled: Option<bool>,
+
+    /// Override the embedding provider timeout in milliseconds
+    #[arg(long, global = true)]
+    pub embedding_timeout_ms: Option<u64>,
+
+    /// Override the maximum number of remote embedding requests allowed per command execution
+    #[arg(long, global = true)]
+    pub embedding_max_requests_per_run: Option<usize>,
+
+    /// Override the fallback provider used when the primary embedding backend fails
+    #[arg(long, global = true)]
+    pub embedding_fallback_provider: Option<String>,
+
+    /// Override the fallback endpoint used when the fallback provider is local_microservice
+    #[arg(long, global = true)]
+    pub embedding_fallback_endpoint: Option<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }

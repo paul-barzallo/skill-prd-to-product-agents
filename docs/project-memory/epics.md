@@ -43,3 +43,27 @@ Goal: add structural analysis depth only after the basic memory system proves it
 Issues:
 
 - PMEM-008
+
+## Epic F: Provider Architecture And Safety
+
+Goal: introduce provider-aware embedding backends, local-first configuration, and explicit remote safety boundaries without undoing the repository-only scope.
+
+Issues:
+
+- PMEM-010
+- PMEM-011
+- PMEM-012
+- PMEM-013
+- PMEM-014
+- PMEM-015
+- PMEM-016
+
+## Epic G: Provider Reliability And Operator Diagnostics
+
+Goal: make provider-backed retrieval reproducible, diagnosable, and testable across local and optional remote modes.
+
+Issues:
+
+- PMEM-017
+- PMEM-018
+- PMEM-019
