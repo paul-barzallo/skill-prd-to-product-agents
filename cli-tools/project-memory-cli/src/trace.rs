@@ -184,15 +184,7 @@ pub fn impact_report(
     args: &ImpactArgs,
 ) -> Result<(Vec<String>, ImpactReport)> {
     let normalized_node = normalize_input_node(&args.node, project_root, snapshot);
-    let node_kind = if snapshot
-        .files
-        .iter()
-        .any(|file| file.path.eq_ignore_ascii_case(&normalized_node))
-    {
-        "file".to_string()
-    } else {
-        "requirement".to_string()
-    };
+    let node_kind = infer_node_kind(&args.node, &normalized_node, snapshot);
 
     let mut warnings = Vec::new();
     let edges: Vec<TraceEdge> = snapshot
@@ -301,4 +293,25 @@ fn normalize_input_node(input: &str, project_root: &Path, snapshot: &Snapshot) -
     }
 
     trimmed.to_ascii_uppercase()
+}
+
+fn infer_node_kind(input: &str, normalized_node: &str, snapshot: &Snapshot) -> String {
+    if snapshot
+        .files
+        .iter()
+        .any(|file| file.path.eq_ignore_ascii_case(normalized_node))
+        || looks_like_file_node(input)
+        || looks_like_file_node(normalized_node)
+    {
+        "file".to_string()
+    } else {
+        "requirement".to_string()
+    }
+}
+
+fn looks_like_file_node(value: &str) -> bool {
+    let trimmed = value.trim();
+    trimmed.contains('/')
+        || trimmed.contains('\\')
+        || Path::new(trimmed).extension().is_some()
 }

@@ -179,7 +179,7 @@ pub fn ingest(
 
 fn collect_candidate_files(project_root: &Path) -> Result<Vec<PathBuf>> {
     let mut builder = WalkBuilder::new(project_root);
-    builder.hidden(false);
+    builder.hidden(true);
     builder.git_ignore(true);
     builder.git_exclude(true);
     builder.git_global(true);

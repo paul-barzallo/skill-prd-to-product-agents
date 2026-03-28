@@ -30,12 +30,14 @@ The v1 should do the following well:
 
 ## Explicitly Out Of Scope For P0
 
-- vector databases or external services
+- vector databases or any required external service dependency
 - full graph database storage
 - tree-sitter-based language parsing across many ecosystems
 - long-running background daemons as the primary execution model
 - autonomous summarization pipelines that cannot be reproduced deterministically
 - invasive repository mutation flows
+
+Remote providers remain optional and gated. The baseline P0 path must stay usable with the local hashed provider only.
 
 ## Internal Modules
 

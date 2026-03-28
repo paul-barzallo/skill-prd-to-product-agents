@@ -758,6 +758,37 @@ fn ingest_indexes_hidden_workflow_files_when_not_ignored() {
 }
 
 #[test]
+fn ingest_skips_hidden_root_secrets_while_allowlisting_workflows() {
+    let project = tempdir().expect("create temp dir");
+    write_file(project.path(), ".gitignore", ".project-memory/\n");
+    write_file(project.path(), ".env", "PMEM_OPENAI_API_KEY=secret\n");
+    write_file(
+        project.path(),
+        ".github/workflows/build.yml",
+        "name: Build\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n",
+    );
+    write_file(project.path(), "docs/guide.md", "# Guide\n\nSee workflow.\n");
+
+    let (status, ingest_json) = run_cli(project.path(), &["ingest"]);
+    assert!(status.success(), "ingest should succeed");
+    assert_eq!(ingest_json["data"]["files_indexed"], 2);
+
+    let snapshot = fs::read_to_string(project.path().join(".project-memory").join("snapshot.json"))
+        .expect("read snapshot");
+    let snapshot_json: Value = serde_json::from_str(&snapshot).expect("parse snapshot JSON");
+    let files = snapshot_json["files"].as_array().expect("files array");
+
+    assert!(
+        !files.iter().any(|file| file["path"] == ".env"),
+        "hidden root secrets should stay out of the snapshot"
+    );
+    assert!(
+        files.iter().any(|file| file["path"] == ".github/workflows/build.yml"),
+        "workflow allowlist should still include hidden workflow files"
+    );
+}
+
+#[test]
 fn ingest_builds_structured_yaml_chunks_for_workflows() {
     let project = tempdir().expect("create temp dir");
     write_file(project.path(), ".gitignore", ".project-memory/\n");
@@ -972,7 +1003,7 @@ fn retrieve_returns_ranked_chunk_results_for_lexical_recall() {
     );
     assert!(status.success(), "retrieve should succeed");
     assert_eq!(retrieve_json["command"], "retrieve");
-    assert_eq!(retrieve_json["data"]["retrieval_mode"], "hybrid_lexical_local_embedding");
+    assert_eq!(retrieve_json["data"]["retrieval_mode"], "hybrid_lexical_embedding");
     assert_eq!(retrieve_json["data"]["embedding_provider"], "local_hashed_v1");
     assert_eq!(retrieve_json["data"]["total_matches"], 1);
     assert_eq!(retrieve_json["data"]["results"][0]["path"], "docs/ops.md");

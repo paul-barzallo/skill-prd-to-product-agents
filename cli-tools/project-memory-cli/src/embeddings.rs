@@ -90,10 +90,6 @@ impl EmbeddingService {
         })
     }
 
-    pub fn uses_external_network(&self) -> bool {
-        matches!(self.config.provider, EmbeddingProviderKind::OpenAiCompatible)
-    }
-
     pub fn configured_provider_name(&self) -> &'static str {
         self.config.provider.as_str()
     }

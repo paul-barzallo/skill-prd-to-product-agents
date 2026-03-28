@@ -64,8 +64,14 @@ pub fn validate_snapshot(snapshot: &Snapshot, fail_on_warnings: bool) -> Validat
             rule: "broken_reference".to_string(),
             severity: Severity::Error,
             message: format!(
-                "{} references missing artifact {}",
-                edge.source.id, edge.target.id
+                "{} references missing {} {}",
+                edge.source.id,
+                match edge.edge_type {
+                    EdgeType::ReferencesFile => "file",
+                    EdgeType::ReferencesArtifact => "artifact",
+                    _ => "target",
+                },
+                edge.target.id
             ),
             source: edge.source.clone(),
             evidence_path: edge.evidence.source_path.clone(),

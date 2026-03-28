@@ -8,6 +8,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::str::FromStr;
 
+const RETRIEVAL_MODE_HYBRID_LEXICAL_EMBEDDING: &str = "hybrid_lexical_embedding";
+
 pub fn run(snapshot: &Snapshot, args: &QueryArgs) -> Result<(Vec<String>, QueryReport)> {
     let filters = QueryFilters::from_query_args(args)?;
     let mut matches = collect_matches(snapshot, &filters);
@@ -57,7 +59,7 @@ pub fn run_retrieve(
                 .unwrap_or("primary provider failed")
         ));
     }
-    let (chunk_embeddings, cache_status) = resolve_chunk_embeddings(
+    let (chunk_embeddings, cache_status, chunk_remote_access) = resolve_chunk_embeddings(
         project_root,
         snapshot,
         embedding_service,
@@ -76,7 +78,7 @@ pub fn run_retrieve(
     let total_matches = matches.len();
     matches.truncate(args.limit);
 
-    if embedding_service.uses_external_network() {
+    if query_embedding.diagnostics.remote_access || chunk_remote_access {
         warnings.push("retrieve used an external embedding provider over the network".to_string());
     }
 
@@ -84,7 +86,7 @@ pub fn run_retrieve(
         warnings,
         RetrieveReport {
             query: args.text.clone(),
-            retrieval_mode: "hybrid_lexical_local_embedding",
+            retrieval_mode: RETRIEVAL_MODE_HYBRID_LEXICAL_EMBEDDING,
             configured_embedding_provider: query_embedding.diagnostics.configured_provider.clone(),
             configured_embedding_model: query_embedding.diagnostics.configured_model.clone(),
             embedding_provider: query_embedding.diagnostics.effective_provider.clone(),
@@ -460,7 +462,7 @@ fn resolve_chunk_embeddings(
     embedding_service: &embeddings::EmbeddingService,
     effective_config: &crate::config::EmbeddingRuntimeConfig,
     warnings: &mut Vec<String>,
-) -> Result<(BTreeMap<String, ChunkEmbeddingRecord>, String)> {
+) -> Result<(BTreeMap<String, ChunkEmbeddingRecord>, String, bool)> {
     let persisted = store::load_chunk_embeddings(project_root).unwrap_or_default();
     let expected_chunks = snapshot.files.iter().map(|file| file.chunks.len()).sum::<usize>();
     if persisted.len() == expected_chunks
@@ -475,7 +477,7 @@ fn resolve_chunk_embeddings(
                             .or(effective_config.deployment.as_deref())
             })
     {
-        return Ok((persisted, "hit".to_string()));
+        return Ok((persisted, "hit".to_string(), false));
     }
 
     if persisted.is_empty() {
@@ -491,6 +493,10 @@ fn resolve_chunk_embeddings(
                 .map(|record| (record.chunk_id.clone(), record))
                 .collect(),
             "miss_recomputed".to_string(),
+            matches!(
+                effective_config.provider,
+                embeddings::EmbeddingProviderKind::OpenAiCompatible
+            ),
         ));
     } else {
         warnings.push(
@@ -507,6 +513,10 @@ fn resolve_chunk_embeddings(
                 .map(|record| (record.chunk_id.clone(), record))
                 .collect(),
             "mismatch_recomputed".to_string(),
+            matches!(
+                effective_config.provider,
+                embeddings::EmbeddingProviderKind::OpenAiCompatible
+            ),
         ));
     }
 }
