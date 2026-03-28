@@ -1,4 +1,5 @@
 use std::fs;
+use std::env;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -29,6 +30,38 @@ fn repo_root() -> PathBuf {
         })
 }
 
+fn is_skill_root(path: &Path) -> bool {
+    path.join("SKILL.md").is_file()
+        && path.join("templates").join("workspace").is_dir()
+}
+
+fn skill_root() -> PathBuf {
+    if let Some(explicit) = env::var_os("PRDTP_SKILL_ROOT").or_else(|| env::var_os("SKILL_ROOT")) {
+        return normalize_skill_root(PathBuf::from(explicit));
+    }
+
+    normalize_skill_root(repo_root())
+}
+
+fn normalize_skill_root(candidate: PathBuf) -> PathBuf {
+    if is_skill_root(&candidate) {
+        return candidate;
+    }
+
+    let nested = candidate
+        .join(".agents")
+        .join("skills")
+        .join("prd-to-product-agents");
+    if is_skill_root(&nested) {
+        return nested;
+    }
+
+    panic!(
+        "could not resolve skill root from {}; set PRDTP_SKILL_ROOT to the repo root or skill root",
+        candidate.display()
+    );
+}
+
 fn is_repo_root(path: &Path) -> bool {
     path.join("AGENTS.md").is_file()
         && path
@@ -51,12 +84,7 @@ fn find_repo_root_from(path: Option<PathBuf>) -> Option<PathBuf> {
 }
 
 fn template_root() -> PathBuf {
-    repo_root()
-        .join(".agents")
-        .join("skills")
-        .join("prd-to-product-agents")
-        .join("templates")
-        .join("workspace")
+    skill_root().join("templates").join("workspace")
 }
 
 fn copy_dir_recursive(src: &Path, dst: &Path) {

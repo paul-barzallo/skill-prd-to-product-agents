@@ -1,6 +1,6 @@
 [package]
 name = "prdtp-agents-shared"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "Shared library for the workspace CLI — enums, YAML ops, audit, fs utilities"
 

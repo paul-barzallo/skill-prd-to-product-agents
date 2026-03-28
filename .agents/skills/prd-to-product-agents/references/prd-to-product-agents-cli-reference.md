@@ -11,8 +11,7 @@ during daily workspace operation.
 
 **Binary**: `prd-to-product-agents-cli` in the skill `bin/` directory.
 
-**Global flag**: `--skill-root <path>` is required. The CLI accepts either the
-skill root itself or the repository root that contains the skill.
+**Global flag**: `--skill-root <path>` is required. Pass the packaged skill root.
 
 ---
 
@@ -23,7 +22,7 @@ skill root itself or the repository root that contains the skill.
 Create a new workspace from templates.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap workspace --target <path>
+prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <path>
 ```
 
 Notes:
@@ -39,7 +38,7 @@ Notes:
 Safe git commit of manifest-listed files after bootstrap.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap commit --target <path>
+prd-to-product-agents-cli --skill-root <skill-root> bootstrap commit --target <path>
 ```
 
 ### `validate all`
@@ -47,7 +46,7 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap commit --t
 Run all skill-side validation checks.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all
+prd-to-product-agents-cli --skill-root <skill-root> validate all
 ```
 
 ### `validate generated`
@@ -55,7 +54,7 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all
 Validate generated workspace structure.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate generated --workspace <path>
+prd-to-product-agents-cli --skill-root <skill-root> validate generated --workspace <path>
 ```
 
 Notes:
@@ -70,7 +69,7 @@ Notes:
 Check that the packaged skill contains no runtime artifacts.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate package-hygiene
+prd-to-product-agents-cli --skill-root <skill-root> validate package-hygiene
 ```
 
 ### `validate platform-claims`
@@ -78,15 +77,15 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate package-hyg
 Validate platform compatibility claims.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate platform-claims
+prd-to-product-agents-cli --skill-root <skill-root> validate platform-claims
 ```
 
 ### `validate version-metadata`
 
-Verify `VERSION` is present and readable for the packaged skill.
+Verify the root project release metadata is present and readable.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-metadata
+prd-to-product-agents-cli --skill-root <skill-root> validate version-metadata
 ```
 
 ### `clean workspace`
@@ -94,7 +93,7 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-met
 Remove bootstrap-deployed artifacts per manifest.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> clean workspace --target <path>
+prd-to-product-agents-cli --skill-root <skill-root> clean workspace --target <path>
 ```
 
 ### `preflight detect`
@@ -102,7 +101,7 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> clean workspace --ta
 Detect environment capabilities and write `workspace-capabilities.yaml`.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight detect --target <path>
+prd-to-product-agents-cli --skill-root <skill-root> preflight detect --target <path>
 ```
 
 ### `preflight check`
@@ -110,7 +109,7 @@ prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight detect --t
 Quick preflight capability check.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight check
+prd-to-product-agents-cli --skill-root <skill-root> preflight check
 ```
 
 ### `preflight deps`
@@ -119,13 +118,13 @@ Check workspace dependency availability. Supports auto-install, Git identity
 configuration, and GitHub CLI authentication.
 
 ```bash
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight deps
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight deps --install
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight deps \
+prd-to-product-agents-cli --skill-root <skill-root> preflight deps
+prd-to-product-agents-cli --skill-root <skill-root> preflight deps --install
+prd-to-product-agents-cli --skill-root <skill-root> preflight deps \
   --configure-git-identity local \
   --git-user-name "Name" \
   --git-user-email "email@example.com"
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> preflight deps --start-gh-auth
+prd-to-product-agents-cli --skill-root <skill-root> preflight deps --start-gh-auth
 ```
 
 Flags:

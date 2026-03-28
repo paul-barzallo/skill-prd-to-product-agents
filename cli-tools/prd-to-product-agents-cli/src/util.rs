@@ -331,18 +331,52 @@ pub fn backup_with_retention(path: &Path, keep: usize) -> Result<Option<std::pat
     Ok(Some(backup))
 }
 
-/// Read VERSION file content trimmed.
-pub fn read_version(skill_root: &Path) -> Result<String> {
-    let version_path = skill_root.join("VERSION");
+/// Read project VERSION when available, returning None outside a repository root.
+pub fn read_version_if_present(skill_root: &Path) -> Result<Option<String>> {
+    let Some(version_path) = find_project_version_path(skill_root) else {
+        return Ok(None);
+    };
     let content = fs::read_to_string(&version_path)
         .with_context(|| format!("reading VERSION at {}", version_path.display()))?;
-    Ok(content.trim().to_string())
+    Ok(Some(content.trim().to_string()))
+}
+
+fn find_project_version_path(path: &Path) -> Option<PathBuf> {
+    let project_root = resolve_project_root(path);
+    let version_path = project_root.join("VERSION");
+    version_path.is_file().then_some(version_path)
+}
+
+fn resolve_project_root(path: &Path) -> PathBuf {
+    let resolved = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    if is_repo_root(&resolved) {
+        return resolved;
+    }
+
+    for ancestor in resolved.ancestors() {
+        if is_repo_root(ancestor) {
+            return ancestor.to_path_buf();
+        }
+    }
+
+    resolved
 }
 
 fn is_skill_root(path: &Path) -> bool {
     path.join("SKILL.md").is_file()
-        && path.join("VERSION").is_file()
         && path.join("templates").join("workspace").is_dir()
+}
+
+fn is_repo_root(path: &Path) -> bool {
+    path.join("AGENTS.md").is_file()
+        && path.join("VERSION").is_file()
+        && path
+            .join(".agents")
+            .join("skills")
+            .join("prd-to-product-agents")
+            .join("templates")
+            .join("workspace")
+            .is_dir()
 }
 
 /// Resolve either the skill root itself or the repository root that contains it.

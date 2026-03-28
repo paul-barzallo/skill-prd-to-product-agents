@@ -232,6 +232,53 @@ fn build_workflow_tracks_multi_os_relevant_paths() {
 }
 
 #[test]
+fn repo_validation_workflow_includes_project_memory_cli_and_skill_source_paths() {
+    let workflow = read_workflow_yaml(".github/workflows/repo-validation.yml");
+    let workflow_mapping = as_mapping(&workflow, "workflow");
+    let triggers = as_mapping(mapping_get(workflow_mapping, "on"), "on");
+    let push = as_mapping(mapping_get(triggers, "push"), "push");
+    let pull_request = as_mapping(mapping_get(triggers, "pull_request"), "pull_request");
+
+    let push_paths = string_entries(as_sequence(mapping_get(push, "paths"), "push.paths"), "push.paths");
+    let pull_request_paths = string_entries(
+        as_sequence(mapping_get(pull_request, "paths"), "pull_request.paths"),
+        "pull_request.paths",
+    );
+
+    for expected in [".agents/skills/prd-to-product-agents/**", "cli-tools/**", "docs/**"] {
+        assert!(
+            push_paths.iter().any(|path| path == expected),
+            "push.paths missing '{expected}'"
+        );
+        assert!(
+            pull_request_paths.iter().any(|path| path == expected),
+            "pull_request.paths missing '{expected}'"
+        );
+    }
+
+    let validate = workflow_job(&workflow, "validate");
+    let steps = as_sequence(mapping_get(validate, "steps"), "validate.steps");
+    let mut found = false;
+
+    for step in steps {
+        let step = as_mapping(step, "step");
+        if let Some(run) = step.get(Value::String("run".to_string())) {
+            if let Some(command) = run.as_str() {
+                if command.contains("cli-tools/project-memory-cli/Cargo.toml") {
+                    found = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(
+        found,
+        "repo-validation workflow must run project-memory-cli tests when repository-side tooling changes"
+    );
+}
+
+#[test]
 fn build_workflow_release_gate_runs_before_merge() {
     let workflow = read_workflow_yaml(".github/workflows/build-skill-binaries.yml");
     let release_gate = workflow_job(&workflow, "release-gate");

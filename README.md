@@ -56,6 +56,8 @@ La documentacion de mantenimiento vive en `docs/` y cubre arquitectura, estado a
 
 El proyecto usa tooling en Rust y una cadena de validacion explicita para evitar que el release dependa de memoria humana o de pasos no escritos.
 
+Tambien incluye `project-memory-cli`, una CLI de alcance repositorio para indexado local, trazabilidad y recuperacion incremental de contexto sobre proyectos.
+
 ### 3. Trazabilidad de decisiones y auditorias
 
 El repo ya tiene:
@@ -77,6 +79,7 @@ Tambien se ha preparado con:
 
 - la skill instalable en `.agents/skills/prd-to-product-agents/`
 - el tooling Rust que mantiene, valida y publica el proyecto
+- la CLI `project-memory-cli` para memoria local e indexado incremental de proyectos
 - la documentacion de mantenimiento del repo en `docs/`
 - workflows y plantillas de revision en `.github/`
 - binarios publicables del alcance proyecto en `bin/`
@@ -100,6 +103,7 @@ La operativa del repositorio se apoya en varias piezas:
 cargo test --manifest-path cli-tools/skill-dev-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml
 cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test markdown
 cargo run --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- --skill-root . validate all
 cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . test repo-validation

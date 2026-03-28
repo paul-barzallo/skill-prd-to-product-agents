@@ -1,6 +1,6 @@
 [package]
 name = "prd-to-product-agents-cli"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2021"
 description = "prd-to-product-agents skill CLI — bootstrap, validate, clean, preflight"
 

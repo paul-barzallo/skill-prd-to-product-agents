@@ -2,7 +2,8 @@
 
 Human-oriented README for the `prd-to-product-agents` skill package.
 
-This document is for maintainers of the skill package. Runtime operation belongs to the generated workspace documentation under `templates/workspace/docs/runtime/`.
+This document is for people using the packaged skill to bootstrap a workspace.
+Daily operation after bootstrap belongs to the generated workspace documentation.
 
 ## What it does
 
@@ -16,13 +17,15 @@ The skill generates a product-development workspace with:
 
 ## Boundaries
 
-Three scopes must stay aligned:
+This document covers only the packaged skill and the workspace it deploys.
 
 | Scope | Purpose |
 | --- | --- |
-| Project repo | develop, test, and release the skill |
 | Skill package | ship the bootstrap CLI, template, and package docs |
 | Deployed workspace | run the agents and operational tooling in client projects |
+
+After bootstrap, the deployed workspace must operate from its own files,
+runtime binaries, and runtime documentation.
 
 ## Current bootstrap contract
 
@@ -41,6 +44,10 @@ Freshly generated workspaces should be described as:
 - `configured` only after local governance placeholders are replaced
 - `production-ready` only after the stricter governance expectations are intentionally enabled
 
+After bootstrap, the generated workspace uses its own runtime docs and local
+runtime binaries. The skill package remains the delivery source, not an
+operational dependency for normal workspace execution.
+
 ## Support matrix
 
 | Surface | VS Code + GitHub Copilot | GitHub.com |
@@ -55,7 +62,6 @@ GitHub.com is intentionally documented as a degraded surface. The supported cont
 
 | Command | Scope |
 | --- | --- |
-| `skill-dev-cli test release-gate` | project repo release gate |
 | `prd-to-product-agents-cli validate all` | skill package integrity |
 | `prdtp-agents-functions-cli validate workspace` | workspace structural validation |
 | `prdtp-agents-functions-cli validate governance` | configured workspace governance validation |

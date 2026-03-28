@@ -691,14 +691,17 @@ pub fn platform_claims(skill_root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Verify VERSION metadata is present and readable for the packaged skill.
+/// Verify project VERSION metadata when running from a repository root.
 pub fn version_metadata(skill_root: &Path) -> Result<()> {
-    let version = util::read_version(skill_root)?;
+    let Some(version) = util::read_version_if_present(skill_root)? else {
+        println!("  Project VERSION metadata unavailable outside repository root; skipped");
+        return Ok(());
+    };
 
     if version.is_empty() {
         bail!("VERSION is empty");
     }
 
-    println!("  VERSION is readable: {version}");
+    println!("  Project VERSION is readable: {version}");
     Ok(())
 }

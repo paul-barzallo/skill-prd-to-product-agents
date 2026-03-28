@@ -10,6 +10,7 @@ All runtime CLI examples assume an explicit workspace root via
 ## Contents
 
 - [prdtp-agents-functions-cli-reference.md](prdtp-agents-functions-cli-reference.md) - Full command reference.
+- [context-system-runtime.md](context-system-runtime.md) - Files-first context retrieval system, derivative surfaces, and recovery rules.
 - [runtime-operations.md](runtime-operations.md) - Operational summary and command overview.
 - [runtime-error-recovery.md](runtime-error-recovery.md) - Error recovery procedures.
 - [runtime-platform-compatibility.md](runtime-platform-compatibility.md) - Cross-platform evidence.

@@ -142,6 +142,7 @@ Every sub-agent delegation must end with a structured report returned to the del
 ### Memory Model
 
 - **Canonical truth**: `docs/project/*` (Markdown/YAML files).
+- **Context system**: read `docs/runtime/context-system-runtime.md` for the files-first retrieval order, derivative surfaces, and recovery rules.
 - **Execution layer**: GitHub Issues, GitHub Projects, branches, commits and PRs.
 - **Historical context**: Git (commits, PRs, issues, tags) for traceability.
 - **Operational capability contract**: `.github/workspace-capabilities.yaml` is the persisted policy snapshot consulted by Git, GitHub automation, SQLite audit, reporting, and markdownlint commands.

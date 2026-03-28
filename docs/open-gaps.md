@@ -12,7 +12,7 @@ release quality, and operational discipline.
 
 ## Priority 0
 
-- The empty legacy path `docs/project/` may still exist in some environments and should be cleaned up once no tooling depends on it.
+- The empty legacy path `docs/project/` may still exist in some bootstrapped workspaces and should be cleaned up once no workspace tooling depends on it.
 - Audit remediation still needs consistent upkeep even though `docs/audits/index.md` now exists.
 - Repository changelog discipline must now be maintained consistently in `CHANGELOG.md`.
 
@@ -25,7 +25,6 @@ release quality, and operational discipline.
 
 ## Priority 2
 
-- No repository changelog focused on contract, packaging, and maintenance process changes.
 - No explicit support policy for maintainers beyond the current contribution and security guidance.
 - No repository-level dashboard or summary page linking current status, gaps, decisions, and audits in one place.
 

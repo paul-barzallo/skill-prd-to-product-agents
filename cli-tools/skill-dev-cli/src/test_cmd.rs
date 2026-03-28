@@ -1042,6 +1042,16 @@ pub fn repo_validation(skill_root: &Path, args: RepoValidationArgs) -> Result<()
     }
 
     step += 1;
+    print!("  [{step}] Test project memory CLI... ");
+    match cargo_test(&repo_root, "cli-tools/project-memory-cli/Cargo.toml") {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{}", "FAIL".red());
+            bail!("Repo validation blocked at step {step} (project memory CLI tests): {e}");
+        }
+    }
+
+    step += 1;
     print!("  [{step}] Markdown contract... ");
     match markdown(skill_root, MarkdownArgs {
         config: None,

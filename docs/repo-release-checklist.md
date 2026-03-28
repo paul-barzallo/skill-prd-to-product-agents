@@ -5,7 +5,7 @@ the `prd-to-product-agents` skill.
 
 ## 1. Version and contract integrity
 
-- Confirm `VERSION` is current for the repository release you are preparing.
+- Confirm the root `VERSION` file is current for the repository release you are preparing.
 - Confirm packaged artifacts and their documentation still match the current release contract when packaging changed.
 - Review recent Markdown edits for drift inside repository-level documentation and release guidance.
 
@@ -17,6 +17,7 @@ Shorthand:
 - Use `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` when you specifically need the current-platform simulation of the build workflow gate.
 
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test unit`.
+- Run `cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml` when the current release work touches `project-memory-cli`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test markdown`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test smoke`.
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` to simulate the build workflow release-gate on your current platform.
@@ -35,7 +36,7 @@ Shorthand:
 - Confirm `validate all` checks package integrity, template encoding, and agent assembly consistency.
 - Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate package-hygiene`.
 - Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate platform-claims`.
-- Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-metadata` to verify `VERSION` is readable and present.
+- Run `prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate version-metadata` to verify the root project `VERSION` is readable and present.
 
 ## 4. Packaging and scope review
 

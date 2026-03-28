@@ -1,8 +1,9 @@
-//! Single source of truth for workspace file paths and agent names.
+//! Single source of truth for generated-workspace file paths and agent names.
 //!
 //! Both the bootstrap CLI (`prd-to-product-agents-cli`) and the functions CLI
 //! (`prdtp-agents-functions-cli`) should reference these constants rather than
-//! maintaining their own lists.
+//! maintaining their own lists. These constants describe the deployed-workspace
+//! contract only; they are not a repository-maintenance file inventory.
 
 /// Files that MUST exist after a successful bootstrap.
 pub const REQUIRED_FILES: &[&str] = &[

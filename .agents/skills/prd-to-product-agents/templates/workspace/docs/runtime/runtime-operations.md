@@ -7,6 +7,16 @@ day-to-day workspace operation after bootstrap.
 All commands require an explicit workspace root:
 `prdtp-agents-functions-cli --workspace <path> ...`
 
+## Context system first
+
+Before using reporting, audit, or database commands, read
+`context-system-runtime.md`.
+
+- Canonical truth lives in `docs/project/*`.
+- Assembled `.agent.md` files and reporting outputs are derived views.
+- `.state/project_memory.db` is a passive infrastructure ledger, not an agent-facing query surface.
+- If a context surface looks stale, refresh the canonical files first and rebuild derivatives second.
+
 ## Runtime CLI commands
 
 | Command | Role |

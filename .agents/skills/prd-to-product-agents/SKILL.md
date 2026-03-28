@@ -24,7 +24,7 @@ When this skill is invoked, treat it as an operating contract, not as background
   - explain the concrete next action you are taking under this skill
   - ask for the single missing input that blocks execution
 - If the task concerns bootstrap, validation, governance, or readiness, name the exact command or status model that applies.
-- Do not introduce repo-maintenance scope, packaging scope, or other meta-context unless the user explicitly asks for it.
+- Do not introduce unrelated maintenance scope or other meta-context unless the user explicitly asks for it.
 
 ## Forbidden response pattern
 
@@ -32,7 +32,7 @@ These are failures when this skill has been invoked:
 
 - replying only that the skill was read
 - paraphrasing the skill without applying it to the user request
-- adding unrelated scope explanations about repository maintenance or skill packaging
+- adding unrelated scope explanations about maintenance work or skill packaging
 - claiming a workspace is ready when the skill only establishes that it is `bootstrapped` or structurally valid
 
 ## Required output contract
@@ -141,7 +141,6 @@ A fresh bootstrap may pass structural validation and still be not ready.
 
 Command semantics:
 
-- `skill-dev-cli test release-gate`: repository release gate
 - `prd-to-product-agents-cli validate all`: skill package integrity, including template encoding and agent consistency
 - `prdtp-agents-functions-cli validate workspace`: structural validation of a generated workspace
 - `prdtp-agents-functions-cli validate governance`: governance validation for configured workspaces
@@ -167,6 +166,15 @@ Important:
 - `markdownlint` is optional and may be disabled by policy.
 - Missing `sqlite3` is degraded mode, not a hard stop.
 
+## Post-bootstrap independence
+
+After bootstrap succeeds, treat the generated workspace as its own operational
+surface.
+
+- Runtime work should use the deployed workspace docs and runtime CLI.
+- Normal day-to-day workspace operation should continue from the deployed files.
+- If a task is outside bootstrap or workspace operation, name that scope explicitly instead of inferring it from runtime work.
+
 ## Platform contract
 
 | Surface | VS Code + GitHub Copilot | GitHub.com |
@@ -182,15 +190,15 @@ Do not claim GitHub.com parity. The supported contract is Copilot-first in a loc
 Preferred command:
 
 ```shell
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap workspace --target <workspace>
+prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <workspace>
 ```
 
 Useful variants:
 
 ```shell
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap workspace --target <workspace> --preflight-only
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> bootstrap workspace --target <workspace> --dry-run
-prd-to-product-agents-cli --skill-root <repo-or-skill-root> validate all
+prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <workspace> --preflight-only
+prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <workspace> --dry-run
+prd-to-product-agents-cli --skill-root <skill-root> validate all
 ```
 
 ## Post-bootstrap checks

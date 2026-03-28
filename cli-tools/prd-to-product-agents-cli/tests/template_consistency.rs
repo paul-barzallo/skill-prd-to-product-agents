@@ -3,25 +3,51 @@
 /// These tests confirm that the required_files in validate.rs exactly match
 /// the files produced by the bootstrap templates, preventing split-brain
 /// regressions between contract and implementation.
-use std::path::PathBuf;
+use std::env;
+use std::path::{Path, PathBuf};
 
 /// Resolve the skill root from the test environment.
 fn skill_root() -> PathBuf {
-    // The test binary runs from the crate root; skill root is two levels up.
+    if let Some(explicit) = env::var_os("PRDTP_SKILL_ROOT").or_else(|| env::var_os("SKILL_ROOT")) {
+        return normalize_skill_root(PathBuf::from(explicit));
+    }
+
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
+    let repo_root = manifest
         .parent() // cli-tools/
         .and_then(|p| p.parent()) // repo root
-        .expect("could not resolve skill root from CARGO_MANIFEST_DIR")
+        .expect("could not resolve repository root from CARGO_MANIFEST_DIR");
+
+    normalize_skill_root(repo_root.to_path_buf())
+}
+
+fn normalize_skill_root(candidate: PathBuf) -> PathBuf {
+    if candidate.join("SKILL.md").is_file() {
+        return candidate;
+    }
+
+    let nested = candidate
         .join(".agents")
         .join("skills")
-        .join("prd-to-product-agents")
+        .join("prd-to-product-agents");
+    if nested.join("SKILL.md").is_file() {
+        return nested;
+    }
+
+    panic!(
+        "could not resolve skill root from {}; set PRDTP_SKILL_ROOT to the repo root or skill root",
+        candidate.display()
+    );
+}
+
+fn template_root() -> PathBuf {
+    skill_root().join("templates").join("workspace")
 }
 
 /// Verify every path in workspace_paths::REQUIRED_FILES exists in the template.
 #[test]
 fn required_files_match_template() {
-    let template_root = skill_root().join("templates").join("workspace");
+    let template_root = template_root();
     assert!(
         template_root.is_dir(),
         "template root not found: {}",
@@ -46,7 +72,7 @@ fn required_files_match_template() {
 /// Verify every path in workspace_paths::EXTENDED_REQUIRED_FILES exists in the template.
 #[test]
 fn extended_required_files_match_template() {
-    let template_root = skill_root().join("templates").join("workspace");
+    let template_root = template_root();
     assert!(
         template_root.is_dir(),
         "template root not found: {}",
@@ -71,7 +97,7 @@ fn extended_required_files_match_template() {
 /// Verify every YAML file in workspace_paths::YAML_FILES exists in the template.
 #[test]
 fn yaml_files_match_template() {
-    let template_root = skill_root().join("templates").join("workspace");
+    let template_root = template_root();
 
     let mut missing = Vec::new();
     for path in prdtp_agents_shared::workspace_paths::YAML_FILES {
@@ -115,7 +141,7 @@ fn agent_names_match_template() {
 /// Verify IMMUTABLE_FILES_PATH exists in the template.
 #[test]
 fn immutable_files_path_exists_in_template() {
-    let template_root = skill_root().join("templates").join("workspace");
+    let template_root = template_root();
     let full = template_root.join(prdtp_agents_shared::workspace_paths::IMMUTABLE_FILES_PATH);
 
     assert!(
@@ -123,4 +149,19 @@ fn immutable_files_path_exists_in_template() {
         "IMMUTABLE_FILES_PATH '{}' not found in template",
         prdtp_agents_shared::workspace_paths::IMMUTABLE_FILES_PATH
     );
+}
+
+#[test]
+fn skill_root_env_var_accepts_repo_root_or_skill_root() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let repo_root = manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("could not resolve repository root from CARGO_MANIFEST_DIR");
+
+    let from_repo_root = normalize_skill_root(repo_root.to_path_buf());
+    let from_skill_root = normalize_skill_root(from_repo_root.clone());
+
+    assert_eq!(from_repo_root, from_skill_root);
+    assert!(Path::new(&from_repo_root).join("SKILL.md").is_file());
 }

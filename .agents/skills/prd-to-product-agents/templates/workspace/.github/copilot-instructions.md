@@ -1,6 +1,8 @@
 
 # Copilot Workspace Instructions
 
+These instructions apply to the deployed workspace only.
+
 ## Mission
 
 This repository uses a product-development automation architecture built around:
@@ -30,6 +32,7 @@ This repository uses a product-development automation architecture built around:
 
 - **Operational state (source of truth):** `docs/project/*`.
 - **Source of truth map:** `docs/project/source-of-truth-map.md` maps every artifact to its location, schema, steward, mutation path, and consumers.
+- **Context system:** use `docs/runtime/context-system-runtime.md` for the files-first retrieval order, derivative surfaces, and recovery sequence.
 - **Execution layer:** GitHub Issues, GitHub Projects, task branches, commits, and PRs.
 - **Historical context (Git):** commits, PRs, issues, tags, and releases provide traceability.
 - **Operational capability contract:** `.github/workspace-capabilities.yaml` is the persisted policy snapshot for runtime commands that consult Git, GitHub automation, SQLite audit, reporting, markdownlint, and local-only mode.
@@ -296,7 +299,7 @@ These git operations are **dangerous** and require explicit user confirmation wi
 | Handoffs (`agents:` frontmatter) | Routed via UI | Silently ignored |
 | Context injection (enrich prompts) | Full layered injection | Not available -- context must be in `copilot-instructions.md` |
 | Tool restrictions (per agent) | Enforced per agent frontmatter | Single tool set for entire session |
-| CLI execution | Local workspace binary under `.agents/bin/prd-to-product-agents/` | GitHub Actions runner (installed from workspace-local binary) |
+| CLI execution | Local workspace binary under `.agents/bin/prd-to-product-agents/` | GitHub Actions runner (installed from the same workspace-local runtime binary) |
 | Canonical file I/O | Direct file read/write | Branch-based via PR workflow |
 | Audit ledger (`.state/`) | Infrastructure-managed, local SQLite | Not available -- no persistent `.state/` |
 
