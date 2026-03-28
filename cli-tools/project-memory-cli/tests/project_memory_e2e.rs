@@ -339,6 +339,7 @@ fn ingest_query_trace_impact_and_validate_round_trip() {
 
     let (status, validate_json) = run_cli(project.path(), &["validate"]);
     assert_eq!(status.code(), Some(1), "validate should fail on findings");
+    assert_eq!(validate_json["status"], "error");
     assert!(
         validate_json["data"]["summary"]["errors"]
             .as_u64()
@@ -1091,6 +1092,7 @@ fn validate_ignores_fenced_examples_and_rust_string_literals() {
 
     let (status, validate_json) = run_cli(project.path(), &["validate"]);
     assert!(status.success(), "validate should succeed without false positives");
+    assert_eq!(validate_json["status"], "ok");
     assert_eq!(validate_json["data"]["summary"]["errors"], 0);
 
     let (status, req_trace) = run_cli(project.path(), &["trace", "--requirement", "REQ-999"]);

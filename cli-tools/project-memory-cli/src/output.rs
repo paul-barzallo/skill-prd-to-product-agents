@@ -17,17 +17,39 @@ where
     data: &'a T,
 }
 
-pub fn print_json<T>(command: &str, project_root: &Path, warnings: Vec<String>, data: &T) -> Result<()>
+#[derive(Clone, Copy)]
+pub enum CommandStatus {
+    Ok,
+    Warning,
+    Error,
+}
+
+impl CommandStatus {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::Warning => "warning",
+            Self::Error => "error",
+        }
+    }
+}
+
+pub fn print_json<T>(
+    command: &str,
+    project_root: &Path,
+    status: CommandStatus,
+    warnings: Vec<String>,
+    data: &T,
+) -> Result<()>
 where
     T: Serialize,
 {
-    let status = if warnings.is_empty() { "ok" } else { "warning" };
     let envelope = CommandEnvelope {
         schema_version: "pmem.v1",
         command,
         project_root: project_root.display().to_string(),
         generated_at: Utc::now().to_rfc3339(),
-        status,
+        status: status.as_str(),
         warnings,
         data,
     };

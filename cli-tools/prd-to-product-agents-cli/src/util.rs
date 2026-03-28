@@ -331,15 +331,6 @@ pub fn backup_with_retention(path: &Path, keep: usize) -> Result<Option<std::pat
     Ok(Some(backup))
 }
 
-/// Read project VERSION file content trimmed.
-pub fn read_version(skill_root: &Path) -> Result<String> {
-    let version_path = find_project_version_path(skill_root)
-        .ok_or_else(|| anyhow::anyhow!("VERSION file not found at the project root"))?;
-    let content = fs::read_to_string(&version_path)
-        .with_context(|| format!("reading VERSION at {}", version_path.display()))?;
-    Ok(content.trim().to_string())
-}
-
 /// Read project VERSION when available, returning None outside a repository root.
 pub fn read_version_if_present(skill_root: &Path) -> Result<Option<String>> {
     let Some(version_path) = find_project_version_path(skill_root) else {
