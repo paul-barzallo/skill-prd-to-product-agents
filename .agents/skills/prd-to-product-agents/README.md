@@ -65,7 +65,7 @@ GitHub.com is intentionally documented as a degraded surface. The supported cont
 | `prd-to-product-agents-cli validate all` | skill package integrity |
 | `prdtp-agents-functions-cli validate workspace` | workspace structural validation |
 | `prdtp-agents-functions-cli validate governance` | configured workspace governance validation |
-| `prdtp-agents-functions-cli validate readiness` | configured workspace operational readiness |
+| `prdtp-agents-functions-cli validate readiness` | production-ready workspace operational readiness with remote governance checks |
 
 ## References
 

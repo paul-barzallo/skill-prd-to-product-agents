@@ -29,13 +29,16 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli validate agents` | Validate agent hierarchy and contracts. |
 | `prdtp-agents-functions-cli validate prompts` | Validate prompts have required sections. |
 | `prdtp-agents-functions-cli validate governance` | Validate a configured workspace has real repository identifiers, reviewers, CODEOWNERS, and no placeholders. |
-| `prdtp-agents-functions-cli validate readiness` | Validate structure, governance, assembly, encoding, and capability-contract prerequisites together. |
+| `prdtp-agents-functions-cli validate readiness` | Validate the strong `production-ready` gate: structure, governance, assembly, encoding, capability-contract prerequisites, and remote GitHub controls. |
+| `prdtp-agents-functions-cli validate pr-governance` | Validate PR metadata, required sections, label contract, commit subjects, and release gate preconditions from the GitHub event payload. |
+| `prdtp-agents-functions-cli validate release-gate` | Validate only the final release-gate approval path for PRs targeting `main`. |
 | `prdtp-agents-functions-cli validate models` | Validate model frontmatter against agent-model-policy.yaml. |
 | `prdtp-agents-functions-cli validate ci ...` | CI-focused validation helpers for fixtures, schemas, degraded runtime, reporting, and Copilot contract drift. |
 | `prdtp-agents-functions-cli capabilities detect` | Detect tool availability and render `workspace-capabilities.yaml`. |
+| `prdtp-agents-functions-cli capabilities authorize` | Explicitly authorize or de-authorize a capability without editing YAML by hand. |
 | `prdtp-agents-functions-cli dependencies check` | Check workspace dependency availability. |
-| `prdtp-agents-functions-cli git finalize` | Supported end-of-task closure path for Git-enabled and local-only workspaces. |
-| `prdtp-agents-functions-cli git checkout-task-branch` | Task branch creation with naming validation. |
+| `prdtp-agents-functions-cli git finalize` | Supported end-of-task closure path for Git-enabled and local-only workspaces; blocks commit creation if workspace validation fails. |
+| `prdtp-agents-functions-cli git checkout-task-branch` | Task branch creation with naming validation; refuses dirty worktrees and does not sync branches implicitly. |
 | `prdtp-agents-functions-cli git pre-commit-validate` | Governance gate for immutable files, staged YAML sanity. |
 | `prdtp-agents-functions-cli git install-hooks` | Install git hooks into `.git/hooks/`. |
 | `prdtp-agents-functions-cli report snapshot` | Build `.state/reporting/report-snapshot.json` from canonical docs and execution evidence. |
@@ -45,13 +48,15 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli report export` | Export CSV, XLSX report packs. |
 | `prdtp-agents-functions-cli audit sync` | Passive ledger sync from canonical docs into SQLite. |
 | `prdtp-agents-functions-cli audit replay-spool` | Replay degraded-mode spool entries into the ledger. |
+| `prdtp-agents-functions-cli audit export` | Export structured audit evidence as JSONL from canonical state, spool, and work-unit records. |
 | `prdtp-agents-functions-cli state handoff create/update` | Handoff YAML operations. |
 | `prdtp-agents-functions-cli state finding create/update` | Finding YAML operations. |
 | `prdtp-agents-functions-cli state release create/update` | Release YAML operations. |
 | `prdtp-agents-functions-cli state event record` | Environment event recording. |
 | `prdtp-agents-functions-cli governance immutable-token` | Generate a time-limited local bypass token for intentional governance maintenance. |
 | `prdtp-agents-functions-cli governance configure` | Configure local repository owner/name, reviewers, release-gate login, and regenerate `CODEOWNERS`. |
-| `prdtp-agents-functions-cli board sync` | Refresh the operational board from GitHub execution state. |
+| `prdtp-agents-functions-cli github issue create/update/comment/label` | Supported GitHub Issue mutation wrappers gated by the workspace capability contract. |
+| `prdtp-agents-functions-cli board sync` | Refresh the operational board snapshot from GitHub issues and pull requests. |
 
 ## CI validation helpers
 
@@ -65,8 +70,8 @@ contract:
 - `raw-sql-prompts`: blocks raw SQL snippets in prompts.
 - `template-state`: ensures runtime-generated `.state` artifacts are not
   committed into the template.
-- `prompt-tool-contracts` and `prompt-label-contracts`: enforce prompt
-  governance.
+- `prompt-tool-contracts` and `prompt-label-contracts`: enforce prompt and
+  assembled-agent frontmatter governance.
 - `operational-state`: exercises handoff, finding, and release lifecycles.
 - `degraded-runtime`: verifies deferred-SQLite behavior.
 - `reporting`: verifies snapshot and dashboard generation.
@@ -76,8 +81,8 @@ contract:
 
 A unit of work is not complete until `prdtp-agents-functions-cli git finalize` succeeds.
 
-- If Git capability is enabled, `git finalize` runs workspace validation as a pre-commit gate, then creates the commit.
-- If Git capability is disabled, `git finalize` writes Markdown + JSON evidence under `.state/local-history/`.
+- If Git authorization is enabled, `git finalize` runs workspace validation as a blocking pre-commit gate and creates the commit only after validation and governance checks pass.
+- If Git authorization is disabled, `git finalize` writes Markdown + JSON evidence under `.state/local-history/`.
 
 ## Reporting operations
 
@@ -89,8 +94,8 @@ A unit of work is not complete until `prdtp-agents-functions-cli git finalize` s
 
 ## Audit operations
 
-- `audit sync` mirrors canonical file checksums into SQLite when `capabilities.sqlite.policy.enabled=true`. It never establishes truth.
-- `audit replay-spool` recovers events from degraded-mode spool files when SQLite policy is enabled again.
+- `audit sync` mirrors canonical file checksums into SQLite when `capabilities.sqlite.authorized.enabled=true`. It never establishes truth.
+- `audit replay-spool` recovers events from degraded-mode spool files when SQLite authorization is enabled again.
 - The audit ledger is passive. Failed or delayed syncs never change canonical files.
 
 ## State and degradation notes

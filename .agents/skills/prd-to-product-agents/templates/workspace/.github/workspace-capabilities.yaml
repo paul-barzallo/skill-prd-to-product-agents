@@ -1,4 +1,4 @@
-schema_version: 1
+schema_version: 2
 environment:
   host: unknown
   os: unknown
@@ -7,21 +7,26 @@ capabilities:
     detected:
       installed: false
       identity_configured: false
-    policy:
+    authorized:
       enabled: false
+      source: manual-default-deny
+    policy:
       mode: local-only
   gh:
     detected:
       installed: false
       authenticated: false
-    policy:
+    authorized:
       enabled: false
+      source: manual-default-deny
   sqlite:
     detected:
       installed: false
       db_initialized: false
-    policy:
+    authorized:
       enabled: false
+      source: missing-runtime
+    policy:
       mode: spool-only
   node:
     detected:
@@ -32,11 +37,14 @@ capabilities:
     detected:
       installed: false
       native_linux: false
-    policy:
+    authorized:
       enabled: false
+      source: missing-runtime
   local_history:
-    policy:
+    authorized:
       enabled: true
+      source: detected-default
+    policy:
       format: markdown+json
       path: .state/local-history
   reporting:
@@ -44,7 +52,9 @@ capabilities:
       ui_available: false
       xlsx_export_ready: false
       pdf_export_ready: false
-    policy:
+    authorized:
       enabled: true
-      visibility_mode: auto
+      source: detected-default
+    policy:
+      visibility_mode: local-only
 last_updated: 1970-01-01T00:00:00Z

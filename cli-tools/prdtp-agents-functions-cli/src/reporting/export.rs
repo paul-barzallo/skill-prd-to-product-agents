@@ -176,7 +176,10 @@ fn selected_sections(section: Option<&str>) -> Vec<&str> {
     }
 }
 
-fn snapshot_section_items<'a>(snapshot: &'a serde_json::Value, section: &str) -> Option<&'a [serde_json::Value]> {
+fn snapshot_section_items<'a>(
+    snapshot: &'a serde_json::Value,
+    section: &str,
+) -> Option<&'a [serde_json::Value]> {
     snapshot.get(section)?.as_array().map(Vec::as_slice)
 }
 

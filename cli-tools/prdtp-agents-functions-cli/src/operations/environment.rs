@@ -3,9 +3,9 @@ use clap::Args;
 use colored::Colorize;
 use std::path::Path;
 
+use crate::common::audit;
 use crate::common::enums::{Environment, EventType, Role, Severity};
 use crate::common::yaml_ops;
-use crate::common::audit;
 
 #[derive(Args)]
 pub struct RecordEventArgs {

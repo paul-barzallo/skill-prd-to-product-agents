@@ -33,7 +33,7 @@ Before evaluating release gates, verify governance readiness:
 1. Read `.github/github-governance.yaml` and check `readiness.status`.
 2. If status is `template` or `bootstrapped`, stop. Governance is still pending local configuration.
 3. Scan `github-governance.yaml` and `.github/CODEOWNERS` for any remaining `REPLACE_ME` or `@team-` placeholders. If found, stop with the same routing.
-4. Minimum required readiness: `configured`.
+4. Minimum required readiness: `production-ready`. If the workspace is only `configured`, stop and route the owner to remote governance hardening plus `prdtp-agents-functions-cli validate readiness`.
 
 ### 1. Gather release state
 

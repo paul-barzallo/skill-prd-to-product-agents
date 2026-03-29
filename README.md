@@ -50,7 +50,7 @@ El repositorio esta preparado para mantenerse con menos friccion y menos ambigue
 
 ### 1. Mantenimiento claro del repo
 
-La documentacion de mantenimiento vive en `docs/` y cubre arquitectura, estado actual, huecos abiertos, limitaciones conocidas, auditorias, decisiones y runbook del mantenedor.
+La documentacion de mantenimiento vive en `docs/` y cubre arquitectura, estado actual, huecos abiertos, limitaciones conocidas, decisiones y runbook del mantenedor. Las notas de auditoria de trabajo se mantienen fuera del repo y solo sus conclusiones duraderas se reflejan en la documentacion estable.
 
 ### 2. Validacion y release con criterio
 
@@ -58,12 +58,12 @@ El proyecto usa tooling en Rust y una cadena de validacion explicita para evitar
 
 Tambien incluye `project-memory-cli`, una CLI de alcance repositorio para indexado local, trazabilidad y recuperacion incremental de contexto sobre proyectos.
 
-### 3. Trazabilidad de decisiones y auditorias
+### 3. Trazabilidad de decisiones y revisiones
 
 El repo ya tiene:
 
 - ADRs para decisiones estructurales del propio proyecto
-- indice de auditorias y seguimiento
+- seguimiento estable de riesgos y remediaciones en la documentacion mantenida
 - changelog de cambios relevantes de mantenimiento y contrato
 
 ### 4. Experiencia de mantenimiento mas estable
@@ -147,7 +147,5 @@ cargo run --manifest-path cli-tools/skill-dev-cli/Cargo.toml -- --skill-root . t
 - `docs/known-limitations.md`
 - `docs/maintainer-runbook.md`
 - `docs/test-matrix.md`
-- `docs/audits/README.md`
-- `docs/audits/index.md`
 - `docs/decisions/README.md`
 - `docs/repo-release-checklist.md`

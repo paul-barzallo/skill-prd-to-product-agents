@@ -4,6 +4,7 @@ use clap::Args;
 use colored::Colorize;
 use prdtp_agents_shared::yaml_ops;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use serde_yaml::{Mapping, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
@@ -195,6 +196,17 @@ pub fn run_immutable_token(workspace: &Path, args: ImmutableTokenArgs) -> Result
         files = ?token.files,
         "immutable-edit token created"
     );
+    let _ = crate::audit::events::record_sensitive_action(
+        workspace,
+        "governance.immutable-token",
+        &token.author,
+        "success",
+        json!({
+            "files": token.files,
+            "reason": token.reason,
+            "expires_utc": expires_utc
+        }),
+    );
 
     Ok(())
 }
@@ -233,7 +245,13 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
     let mut governance: Value = serde_yaml::from_str(&governance_raw)
         .with_context(|| format!("parsing {}", governance_path.display()))?;
 
-    update_governance_value(&mut governance, &owner, &repo, &release_gate_login, &reviewers)?;
+    update_governance_value(
+        &mut governance,
+        &owner,
+        &repo,
+        &release_gate_login,
+        &reviewers,
+    )?;
     let rendered_governance = serde_yaml::to_string(&governance)?;
     let rendered_codeowners = render_codeowners(&reviewers);
 
@@ -251,7 +269,18 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
     println!("  Repository: {owner}/{repo}");
     println!("  Release gate login: {release_gate_login}");
     println!("  Readiness status: configured");
-    println!("  Note: production-ready remains a separate manual transition.");
+    println!("  Note: production-ready must be promoted through reviewed GitHub governance, not a local bypass.");
+    let _ = crate::audit::events::record_sensitive_action(
+        workspace,
+        "governance.configure",
+        "runtime-cli",
+        "success",
+        json!({
+            "repository": format!("{owner}/{repo}"),
+            "release_gate_login": release_gate_login,
+            "readiness_status": "configured"
+        }),
+    );
 
     Ok(())
 }
@@ -317,7 +346,7 @@ fn update_governance_value(
     set_string(
         readiness,
         "notes",
-        "Governance configured locally via prdtp-agents-functions-cli governance configure. production-ready remains a separate manual transition.",
+        "Governance configured locally via prdtp-agents-functions-cli governance configure. production-ready must be promoted through reviewed GitHub governance.",
     );
     set_string(readiness, "status", "configured");
 

@@ -114,13 +114,24 @@ pub(crate) fn init_with_mode(workspace: &Path, args: InitArgs, degraded_mode: bo
             )?;
             println!("  Tables: {table_count} | Views: {view_count} | Indices: {index_count}");
             println!("  DB preserved (use --force to rebuild).");
-            tracing::info!(table_count, view_count, index_count, "existing sqlite database preserved");
+            tracing::info!(
+                table_count,
+                view_count,
+                index_count,
+                "existing sqlite database preserved"
+            );
             // Apply pending migrations
             migrate(workspace)?;
             return Ok(());
         } else {
-            tracing::warn!(missing, "existing sqlite database missing required tables; rebuilding");
-            eprintln!("{} {missing} table(s) missing — rebuilding with backup.", "WARN:".yellow().bold());
+            tracing::warn!(
+                missing,
+                "existing sqlite database missing required tables; rebuilding"
+            );
+            eprintln!(
+                "{} {missing} table(s) missing — rebuilding with backup.",
+                "WARN:".yellow().bold()
+            );
         }
     }
 
@@ -200,7 +211,10 @@ pub fn migrate(workspace: &Path) -> Result<()> {
     let migrations_dir = workspace.join(".state/migrations");
 
     if !db_path.exists() {
-        bail!("Database not found at {}. Run prdtp-agents-functions-cli database init first.", db_path.display());
+        bail!(
+            "Database not found at {}. Run prdtp-agents-functions-cli database init first.",
+            db_path.display()
+        );
     }
 
     let conn = Connection::open(&db_path)?;
@@ -270,14 +284,23 @@ pub fn migrate(workspace: &Path) -> Result<()> {
     }
 
     let new_version: i64 = conn
-        .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |row| row.get(0))
+        .query_row(
+            "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+            [],
+            |row| row.get(0),
+        )
         .unwrap_or(current_version);
 
     println!("\nMigration summary:");
     println!("  Previous version: {current_version}");
     println!("  Current version:  {new_version}");
     println!("  Applied: {applied}");
-    tracing::info!(current_version, new_version, applied, "sqlite migration summary complete");
+    tracing::info!(
+        current_version,
+        new_version,
+        applied,
+        "sqlite migration summary complete"
+    );
 
     Ok(())
 }

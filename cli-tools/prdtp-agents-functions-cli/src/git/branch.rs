@@ -1,7 +1,8 @@
 use anyhow::{bail, Result};
 use clap::Args;
 use colored::Colorize;
-use git2::Repository;
+use git2::{BranchType, Repository, StatusOptions};
+use serde_json::json;
 use std::path::Path;
 
 use crate::common::enums::Role;
@@ -14,7 +15,7 @@ pub struct CheckoutTaskBranchArgs {
     /// Branch slug (kebab-case description)
     #[arg(long)]
     slug: String,
-    /// GitHub issue ID (optional, e.g. GH-42)
+    /// GitHub issue ID (required, e.g. GH-42)
     #[arg(long)]
     issue_id: Option<String>,
     /// Base branch (develop or main)
@@ -30,28 +31,22 @@ pub fn run(workspace: &Path, args: CheckoutTaskBranchArgs) -> Result<()> {
         "git checkout-task-branch",
     )?;
 
-    // Validate base
     if args.base != "develop" && args.base != "main" {
-        bail!("Base branch must be 'develop' or 'main' (got: '{}')", args.base);
+        bail!(
+            "Base branch must be 'develop' or 'main' (got: '{}')",
+            args.base
+        );
     }
 
-    // Build branch name
     let prefix = args.role.branch_prefix();
     let branch_name = match &args.issue_id {
-        Some(id) => {
-            // Normalize issue ID to lowercase: GH-42 → gh-42 (matches PR workflow regex)
-            let normalized_id = id.to_lowercase();
-            format!("{prefix}/{normalized_id}-{}", args.slug)
-        }
-        None => {
-            bail!(
-                "--issue-id is required. Branch names must include an issue reference \
-                 (e.g. --issue-id GH-42) to pass the PR governance workflow."
-            );
-        }
+        Some(id) => format!("{prefix}/{}-{}", id.to_lowercase(), args.slug),
+        None => bail!(
+            "--issue-id is required. Branch names must include an issue reference \
+             (e.g. --issue-id GH-42) to pass the PR governance workflow."
+        ),
     };
 
-    // Validate slug (kebab-case, no spaces)
     let slug_re = regex::Regex::new(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")?;
     if !slug_re.is_match(&args.slug) {
         bail!(
@@ -60,74 +55,77 @@ pub fn run(workspace: &Path, args: CheckoutTaskBranchArgs) -> Result<()> {
         );
     }
 
+    let repo = Repository::open(workspace)
+        .map_err(|error| anyhow::anyhow!("Not a git repository: {error}"))?;
+
+    let dirty_paths = dirty_paths(&repo)?;
+    if !dirty_paths.is_empty() {
+        bail!(
+            "Refusing to switch branches with local changes present. Commit, stash, or discard them first:\n{}",
+            dirty_paths
+                .iter()
+                .map(|path| format!("  - {path}"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
     println!("  Branch: {branch_name}");
     println!("  Base: {}", args.base);
 
-    let repo = Repository::open(workspace)
-        .map_err(|e| anyhow::anyhow!("Not a git repository: {e}"))?;
-
-    // Fetch origin (best effort)
     println!("  Fetching origin...");
-    let fetch_result = fetch_origin(&repo);
-    if let Err(e) = &fetch_result {
-        eprintln!("  {} fetch origin failed: {e} — continuing", "⚠".yellow());
+    if let Err(error) = fetch_origin(&repo) {
+        eprintln!(
+            "  {} fetch origin failed: {error} - continuing",
+            "!".yellow()
+        );
     }
 
-    // Checkout base branch
-    println!("  Checking out {base}...", base = args.base);
-    checkout_branch(&repo, &args.base)?;
-
-    // Pull with fast-forward
-    if fetch_result.is_ok() {
-        println!("  Pulling {base}...", base = args.base);
-        if let Err(e) = pull_ff(&repo, &args.base) {
-            eprintln!("  {} pull failed: {e} — continuing", "⚠".yellow());
-        }
-    }
-
-    // Check if branch exists
-    let branch_exists = repo.find_branch(&branch_name, git2::BranchType::Local).is_ok();
-
-    if branch_exists {
-        println!("  Branch '{branch_name}' exists — switching");
-        checkout_branch(&repo, &branch_name)?;
-
-        // Rebase onto base (best effort)
-        println!("  Rebasing onto {base}...", base = args.base);
-        // Using git CLI for rebase since libgit2's rebase API is complex
-        let rebase = std::process::Command::new("git")
-            .args(["rebase", &args.base])
-            .current_dir(workspace)
-            .output();
-        match rebase {
-            Ok(output) if output.status.success() => {
-                println!("  {} Rebase successful", "✓".green());
-            }
-            Ok(output) => {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                // Abort rebase on conflict
-                let _ = std::process::Command::new("git")
-                    .args(["rebase", "--abort"])
-                    .current_dir(workspace)
-                    .output();
-                bail!("Rebase conflict — aborted automatically. Resolve manually.\n{stderr}");
-            }
-            Err(e) => {
-                eprintln!("  {} rebase command failed: {e}", "⚠".yellow());
-            }
-        }
+    if repo.find_branch(&branch_name, BranchType::Local).is_ok() {
+        println!("  Branch '{branch_name}' exists locally - switching safely");
+        checkout_local_branch(&repo, &branch_name)?;
+    } else if let Ok(remote_branch) = repo.find_branch(&branch_name, BranchType::Remote) {
+        println!("  Branch '{branch_name}' exists on origin - creating local tracking branch");
+        let commit = remote_branch.get().peel_to_commit()?;
+        repo.branch(&branch_name, &commit, false)?;
+        checkout_local_branch(&repo, &branch_name)?;
     } else {
-        println!("  Creating new branch '{branch_name}'");
-        let head = repo.head()?.peel_to_commit()?;
-        repo.branch(&branch_name, &head, false)?;
-        checkout_branch(&repo, &branch_name)?;
+        println!("  Creating new branch '{branch_name}' from {}", args.base);
+        let base_commit = resolve_branch_commit(&repo, &args.base)?;
+        repo.branch(&branch_name, &base_commit, false)?;
+        checkout_local_branch(&repo, &branch_name)?;
     }
 
-    println!(
-        "{} On branch '{branch_name}'",
-        "OK:".green().bold()
+    let _ = crate::audit::events::record_sensitive_action(
+        workspace,
+        "git.checkout-task-branch",
+        &args.role.to_string(),
+        "success",
+        json!({
+            "branch": branch_name,
+            "base": args.base
+        }),
     );
+    println!("{} On branch '{branch_name}'", "OK:".green().bold());
     Ok(())
+}
+
+fn dirty_paths(repo: &Repository) -> Result<Vec<String>> {
+    let mut options = StatusOptions::new();
+    options
+        .include_untracked(true)
+        .recurse_untracked_dirs(true)
+        .include_ignored(false)
+        .include_unmodified(false)
+        .renames_head_to_index(true)
+        .renames_index_to_workdir(true);
+
+    let statuses = repo.statuses(Some(&mut options))?;
+    let dirty = statuses
+        .iter()
+        .filter_map(|entry| entry.path().map(str::to_string))
+        .collect::<Vec<_>>();
+    Ok(dirty)
 }
 
 fn fetch_origin(repo: &Repository) -> Result<()> {
@@ -136,44 +134,23 @@ fn fetch_origin(repo: &Repository) -> Result<()> {
     Ok(())
 }
 
-fn checkout_branch(repo: &Repository, name: &str) -> Result<()> {
-    // Try local branch first
-    let reference = format!("refs/heads/{name}");
-    if let Ok(r) = repo.find_reference(&reference) {
-        let obj = r.peel(git2::ObjectType::Commit)?;
-        repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))?;
-        repo.set_head(&reference)?;
-        return Ok(());
+fn resolve_branch_commit<'repo>(
+    repo: &'repo Repository,
+    name: &str,
+) -> Result<git2::Commit<'repo>> {
+    if let Ok(reference) = repo.find_reference(&format!("refs/remotes/origin/{name}")) {
+        return reference.peel_to_commit().map_err(Into::into);
     }
-
-    // Try remote tracking branch
-    let remote_ref = format!("refs/remotes/origin/{name}");
-    if let Ok(r) = repo.find_reference(&remote_ref) {
-        let obj = r.peel(git2::ObjectType::Commit)?;
-        // Create local branch from remote
-        let commit = obj.peel_to_commit()?;
-        repo.branch(name, &commit, false)?;
-        let local_ref = format!("refs/heads/{name}");
-        let local = repo.find_reference(&local_ref)?;
-        let local_obj = local.peel(git2::ObjectType::Commit)?;
-        repo.checkout_tree(&local_obj, Some(git2::build::CheckoutBuilder::new().force()))?;
-        repo.set_head(&local_ref)?;
-        return Ok(());
+    if let Ok(reference) = repo.find_reference(&format!("refs/heads/{name}")) {
+        return reference.peel_to_commit().map_err(Into::into);
     }
-
     bail!("Branch '{name}' not found locally or in origin");
 }
 
-fn pull_ff(repo: &Repository, branch: &str) -> Result<()> {
-    let remote_ref = format!("refs/remotes/origin/{branch}");
-    if let Ok(r) = repo.find_reference(&remote_ref) {
-        let remote_commit = r.peel_to_commit()?;
-        let local_ref = format!("refs/heads/{branch}");
-        if let Ok(mut lr) = repo.find_reference(&local_ref) {
-            lr.set_target(remote_commit.id(), "fast-forward pull")?;
-            let obj = remote_commit.into_object();
-            repo.checkout_tree(&obj, Some(git2::build::CheckoutBuilder::new().force()))?;
-        }
-    }
+fn checkout_local_branch(repo: &Repository, name: &str) -> Result<()> {
+    let reference = format!("refs/heads/{name}");
+    repo.find_reference(&reference)?;
+    repo.set_head(&reference)?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::new().safe()))?;
     Ok(())
 }

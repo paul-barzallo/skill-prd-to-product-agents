@@ -124,7 +124,10 @@ pub fn create(workspace: &Path, args: CreateFindingArgs) -> Result<()> {
         "finding_created",
         "finding",
         &id,
-        &format!("type={}, severity={}, target={}", args.finding_type, args.severity, args.target_role),
+        &format!(
+            "type={}, severity={}, target={}",
+            args.finding_type, args.severity, args.target_role
+        ),
     );
 
     tracing::info!(finding_id = %id, entity = %args.entity, severity = %args.severity, "finding created");
@@ -172,8 +175,8 @@ pub fn update(workspace: &Path, args: UpdateFindingArgs) -> Result<()> {
         );
     }
 
-    let target_role_str = yaml_ops::read_yaml_entry_field(&content, &args.finding_id, "target")
-        .unwrap_or_default();
+    let target_role_str =
+        yaml_ops::read_yaml_entry_field(&content, &args.finding_id, "target").unwrap_or_default();
     let authorized = args.agent_role == Role::QaLead
         || args.agent_role == Role::PmOrchestrator
         || args.agent_role.to_string() == target_role_str;
@@ -199,7 +202,11 @@ pub fn update(workspace: &Path, args: UpdateFindingArgs) -> Result<()> {
         let old_status_line = format!("status: {current_status}");
         let new_status_line = format!("status: {}", args.new_status);
         let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!("{}{new_block}{}", &content[..block_start], &content[next_entry..]);
+        let updated = format!(
+            "{}{new_block}{}",
+            &content[..block_start],
+            &content[next_entry..]
+        );
 
         yaml_ops::atomic_write(&yaml_path, &updated)?;
     } else {

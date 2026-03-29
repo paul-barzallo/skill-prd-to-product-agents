@@ -23,11 +23,7 @@ pub fn run(workspace: &Path) -> Result<()> {
 
     let entries: Vec<_> = fs::read_dir(&spool_dir)?
         .filter_map(|e| e.ok())
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map_or(false, |ext| ext == "json")
-        })
+        .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
         .collect();
 
     if entries.is_empty() {
@@ -60,7 +56,7 @@ pub fn run(workspace: &Path) -> Result<()> {
             entity_type TEXT,
             entity_id TEXT,
             details TEXT
-        );"
+        );",
     )?;
 
     let mut replayed = 0u32;
@@ -99,7 +95,10 @@ pub fn run(workspace: &Path) -> Result<()> {
                    (id, timestamp_utc, agent_role, activity_type, entity_type, entity_id, details) \
                    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)";
 
-        match conn.execute(sql, rusqlite::params![id, ts, role, activity, etype, eid, details]) {
+        match conn.execute(
+            sql,
+            rusqlite::params![id, ts, role, activity, etype, eid, details],
+        ) {
             Ok(_) => {
                 let _ = fs::remove_file(&path);
                 replayed += 1;

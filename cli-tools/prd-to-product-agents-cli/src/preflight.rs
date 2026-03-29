@@ -1,6 +1,7 @@
 use anyhow::Result;
 use clap::Args;
 use colored::Colorize;
+use prdtp_agents_shared::capabilities::{render_capabilities_yaml, CapabilitySnapshotInput};
 use std::path::Path;
 
 use crate::util;
@@ -41,10 +42,7 @@ pub struct DepsArgs {
 
 /// Detect environment capabilities and write workspace-capabilities.yaml.
 pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
-    let target = args
-        .target
-        .as_deref()
-        .unwrap_or(Path::new("."));
+    let target = args.target.as_deref().unwrap_or(Path::new("."));
     let target = target
         .canonicalize()
         .unwrap_or_else(|_| target.to_path_buf());
@@ -68,10 +66,7 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     };
     let sqlite_runtime_available = util::sqlite_runtime_available();
     let sqlite_cli_available = util::sqlite_cli_available();
-    let db_initialized = target
-        .join(".state")
-        .join("project_memory.db")
-        .exists();
+    let db_initialized = target.join(".state").join("project_memory.db").exists();
     let node_installed = util::command_exists("node");
     let npm_installed = util::command_exists("npm");
     let markdownlint_installed = util::command_exists("markdownlint");
@@ -80,13 +75,29 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     println!("  Host:          {host}");
     println!(
         "  Git:           {} {}",
-        if git_installed { "installed".green() } else { "missing".red() },
-        if git_identity { "(identity OK)" } else { "(no identity)" }
+        if git_installed {
+            "installed".green()
+        } else {
+            "missing".red()
+        },
+        if git_identity {
+            "(identity OK)"
+        } else {
+            "(no identity)"
+        }
     );
     println!(
         "  gh:            {} {}",
-        if gh_installed { "installed".green() } else { "missing".yellow() },
-        if gh_authenticated { "(authenticated)" } else { "(not authenticated)" }
+        if gh_installed {
+            "installed".green()
+        } else {
+            "missing".yellow()
+        },
+        if gh_authenticated {
+            "(authenticated)"
+        } else {
+            "(not authenticated)"
+        }
     );
     println!(
         "  SQLite:        {}",
@@ -106,57 +117,86 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     );
     println!(
         "  DB:            {}",
-        if db_initialized { "initialized".green() } else { "not initialized".yellow() }
+        if db_initialized {
+            "initialized".green()
+        } else {
+            "not initialized".yellow()
+        }
     );
     println!(
         "  Node:          {}",
-        if node_installed { "installed".green() } else { "missing (optional)".yellow() }
+        if node_installed {
+            "installed".green()
+        } else {
+            "missing (optional)".yellow()
+        }
     );
     println!(
         "  npm:           {}",
-        if npm_installed { "installed".green() } else { "missing (optional)".yellow() }
+        if npm_installed {
+            "installed".green()
+        } else {
+            "missing (optional)".yellow()
+        }
     );
     println!(
         "  markdownlint:  {}",
-        if markdownlint_installed { "installed".green() } else { "not installed (optional)".yellow() }
+        if markdownlint_installed {
+            "installed".green()
+        } else {
+            "not installed (optional)".yellow()
+        }
     );
 
-    // Write capabilities YAML
-    let caps_path = target
-        .join(".github")
-        .join("workspace-capabilities.yaml");
+    let caps_path = target.join(".github").join("workspace-capabilities.yaml");
 
     let existing_updated = util::yaml_scalar(&caps_path, "last_updated").ok().flatten();
     let preserve = existing_updated
         .as_deref()
         .map_or(false, |v| !v.is_empty() && v != "1970-01-01T00:00:00Z");
 
-    let git_enabled = if preserve {
-        util::yaml_bool(&caps_path, "capabilities.git.policy.enabled", git_installed && git_identity)
-    } else {
-        git_installed && git_identity
-    };
-    let gh_enabled = if preserve {
-        util::yaml_bool(&caps_path, "capabilities.gh.policy.enabled", gh_installed && gh_authenticated) && git_enabled
-    } else {
-        gh_installed && gh_authenticated && git_enabled
-    };
-    let sqlite_enabled = if preserve {
+    let git_authorized = if preserve {
         util::yaml_bool(
             &caps_path,
-            "capabilities.sqlite.policy.enabled",
+            "capabilities.git.authorized.enabled",
+            false,
+        )
+    } else {
+        false
+    };
+    let gh_authorized = if preserve {
+        util::yaml_bool(
+            &caps_path,
+            "capabilities.gh.authorized.enabled",
+            false,
+        ) && git_authorized
+    } else {
+        false
+    };
+    let sqlite_authorized = if preserve {
+        util::yaml_bool(
+            &caps_path,
+            "capabilities.sqlite.authorized.enabled",
             sqlite_runtime_available,
         )
     } else {
         sqlite_runtime_available
     };
-    let mdlint_enabled = if preserve {
-        util::yaml_bool(&caps_path, "capabilities.markdownlint.policy.enabled", markdownlint_installed)
+    let mdlint_authorized = if preserve {
+        util::yaml_bool(
+            &caps_path,
+            "capabilities.markdownlint.authorized.enabled",
+            markdownlint_installed,
+        )
     } else {
         markdownlint_installed
     };
-    let local_history = if preserve {
-        util::yaml_bool(&caps_path, "capabilities.local_history.policy.enabled", true)
+    let local_history_authorized = if preserve {
+        util::yaml_bool(
+            &caps_path,
+            "capabilities.local_history.authorized.enabled",
+            true,
+        )
     } else {
         true
     };
@@ -164,89 +204,83 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     let ui_available = target.join("reporting-ui/index.html").exists();
     let xlsx_ready = target.join("reporting-ui/vendor/xlsx.mini.min.js").exists();
 
-    let b = |v: bool| if v { "true" } else { "false" };
-    let yaml = format!(
-        r#"schema_version: 1
-environment:
-  host: {host}
-  os: {os}
-capabilities:
-  git:
-    detected:
-      installed: {git_installed}
-      identity_configured: {git_identity}
-    policy:
-      enabled: {git_enabled}
-      mode: {git_mode}
-  gh:
-    detected:
-      installed: {gh_installed}
-      authenticated: {gh_auth}
-    policy:
-      enabled: {gh_enabled}
-  sqlite:
-    detected:
-      installed: {sqlite_installed}
-      db_initialized: {db_init}
-    policy:
-      enabled: {sqlite_enabled}
-      mode: {sqlite_mode}
-  node:
-    detected:
-      installed: {node_installed}
-      npm_installed: {npm_installed}
-      native_linux: {node_native}
-  markdownlint:
-    detected:
-      installed: {mdlint_installed}
-      native_linux: {mdlint_native}
-    policy:
-      enabled: {mdlint_enabled}
-  local_history:
-    policy:
-      enabled: {local_history}
-      format: markdown+json
-      path: .state/local-history
-  reporting:
-    detected:
-      ui_available: {ui_available}
-      xlsx_export_ready: {xlsx_ready}
-      pdf_export_ready: false
-    policy:
-      enabled: true
-      visibility_mode: {vis_mode}
-last_updated: {ts}
-"#,
-        git_installed = b(git_installed),
-        git_identity = b(git_identity),
-        git_enabled = b(git_enabled),
-        git_mode = if git_enabled { "full" } else { "local-only" },
-        gh_installed = b(gh_installed),
-        gh_auth = b(gh_authenticated),
-        gh_enabled = b(gh_enabled),
-        sqlite_installed = b(sqlite_runtime_available),
-        db_init = b(db_initialized),
-        sqlite_enabled = b(sqlite_enabled),
-        sqlite_mode = if sqlite_enabled && db_initialized { "ledger" } else { "spool-only" },
-        node_installed = b(node_installed),
-        npm_installed = b(npm_installed),
-        node_native = b(node_installed),
-        mdlint_installed = b(markdownlint_installed),
-        mdlint_native = b(markdownlint_installed),
-        mdlint_enabled = b(mdlint_enabled),
-        local_history = b(local_history),
-        ui_available = b(ui_available),
-        xlsx_ready = b(xlsx_ready),
-        vis_mode = if gh_enabled { "auto" } else { "local-only" },
-        ts = util::now_utc(),
-    );
+    let reporting_authorized = if preserve {
+        util::yaml_bool(&caps_path, "capabilities.reporting.authorized.enabled", true)
+    } else {
+        true
+    };
+
+    let yaml = render_capabilities_yaml(CapabilitySnapshotInput {
+        host: host.to_string(),
+        os: os.to_string(),
+        git_installed,
+        git_identity_configured: git_identity,
+        git_authorized,
+        git_authorization_source: if git_authorized {
+            "manual-maintainer".to_string()
+        } else {
+            "manual-default-deny".to_string()
+        },
+        git_mode: if git_authorized {
+            "full".to_string()
+        } else {
+            "local-only".to_string()
+        },
+        gh_installed,
+        gh_authenticated,
+        gh_authorized,
+        gh_authorization_source: if gh_authorized {
+            "manual-maintainer".to_string()
+        } else {
+            "manual-default-deny".to_string()
+        },
+        sqlite_installed: sqlite_runtime_available,
+        db_initialized,
+        sqlite_authorized,
+        sqlite_authorization_source: if sqlite_authorized {
+            "detected-default".to_string()
+        } else {
+            "missing-runtime".to_string()
+        },
+        sqlite_mode: if sqlite_authorized && db_initialized {
+            "ledger".to_string()
+        } else {
+            "spool-only".to_string()
+        },
+        node_installed,
+        npm_installed,
+        node_native_linux: node_installed,
+        markdownlint_installed,
+        markdownlint_native_linux: markdownlint_installed,
+        markdownlint_authorized: mdlint_authorized,
+        markdownlint_authorization_source: if mdlint_authorized {
+            "detected-default".to_string()
+        } else {
+            "missing-runtime".to_string()
+        },
+        local_history_authorized,
+        local_history_authorization_source: "detected-default".to_string(),
+        local_history_format: "markdown+json".to_string(),
+        local_history_path: ".state/local-history".to_string(),
+        reporting_ui_available: ui_available,
+        reporting_xlsx_export_ready: xlsx_ready,
+        reporting_pdf_export_ready: false,
+        reporting_authorized,
+        reporting_authorization_source: if reporting_authorized {
+            "detected-default".to_string()
+        } else {
+            "manual-maintainer".to_string()
+        },
+        reporting_visibility_mode: if gh_authorized {
+            "auto".to_string()
+        } else {
+            "local-only".to_string()
+        },
+        last_updated: util::now_utc(),
+    })?;
 
     util::write_utf8_lf(&caps_path, &yaml)?;
-    println!(
-        "\n  {} {}",
-        "Written:".green(),
-        caps_path.display()
-    );
+    println!("\n  {} {}", "Written:".green(), caps_path.display());
 
     Ok(())
 }
@@ -271,14 +305,20 @@ pub fn check(_skill_root: &Path) -> Result<()> {
     if util::command_exists("sqlite3") {
         println!("{}", "OK".green());
     } else {
-        println!("{}", "missing (optional — DB init will be deferred)".yellow());
+        println!(
+            "{}",
+            "missing (optional — DB init will be deferred)".yellow()
+        );
     }
 
     print!("  gh:            ");
     if util::command_exists("gh") {
         println!("{}", "OK".green());
     } else {
-        println!("{}", "missing (optional — GitHub automation disabled)".yellow());
+        println!(
+            "{}",
+            "missing (optional — GitHub automation disabled)".yellow()
+        );
     }
 
     print!("  markdownlint:  ");
@@ -287,8 +327,7 @@ pub fn check(_skill_root: &Path) -> Result<()> {
     } else {
         println!(
             "{}",
-            "missing (optional — install: npm install -g markdownlint-cli)"
-                .yellow()
+            "missing (optional — install: npm install -g markdownlint-cli)".yellow()
         );
     }
 
@@ -296,13 +335,19 @@ pub fn check(_skill_root: &Path) -> Result<()> {
     if util::command_exists("gitleaks") {
         println!("{}", "OK".green());
     } else {
-        println!("{}", "missing (optional — secrets scanning disabled)".yellow());
+        println!(
+            "{}",
+            "missing (optional — secrets scanning disabled)".yellow()
+        );
     }
 
     if ok {
         println!("\n  {}", "Preflight passed.".green());
     } else {
-        println!("\n  {}", "Preflight has missing required dependencies.".red());
+        println!(
+            "\n  {}",
+            "Preflight has missing required dependencies.".red()
+        );
     }
 
     Ok(())
@@ -310,10 +355,7 @@ pub fn check(_skill_root: &Path) -> Result<()> {
 
 /// Check workspace dependency availability with install hints.
 pub fn deps(_skill_root: &Path, args: DepsArgs) -> Result<()> {
-    let target = args
-        .target
-        .as_deref()
-        .unwrap_or(Path::new("."));
+    let target = args.target.as_deref().unwrap_or(Path::new("."));
     let target = target
         .canonicalize()
         .unwrap_or_else(|_| target.to_path_buf());
@@ -343,7 +385,8 @@ pub fn deps(_skill_root: &Path, args: DepsArgs) -> Result<()> {
         DepInfo {
             name: "sqlite3",
             required: false,
-            install_hint: "winget install SQLite.SQLite / brew install sqlite3 / apt install sqlite3",
+            install_hint:
+                "winget install SQLite.SQLite / brew install sqlite3 / apt install sqlite3",
         },
         DepInfo {
             name: "markdownlint",
@@ -364,12 +407,7 @@ pub fn deps(_skill_root: &Path, args: DepsArgs) -> Result<()> {
         let available = util::command_exists(dep.name);
         let tag = if dep.required { "required" } else { "optional" };
         if available {
-            println!(
-                "  {} {} ({})",
-                dep.name,
-                "available".green(),
-                tag
-            );
+            println!("  {} {} ({})", dep.name, "available".green(), tag);
         } else {
             let color_msg = if dep.required {
                 missing_required = true;
@@ -419,16 +457,9 @@ pub fn deps(_skill_root: &Path, args: DepsArgs) -> Result<()> {
         } else {
             let ok = configure_git_identity(&target, scope, name, email);
             if ok {
-                println!(
-                    "  {} git identity configured ({})",
-                    "OK".green(),
-                    scope
-                );
+                println!("  {} git identity configured ({})", "OK".green(), scope);
             } else {
-                println!(
-                    "  {} failed to configure git identity",
-                    "ERROR:".red()
-                );
+                println!("  {} failed to configure git identity", "ERROR:".red());
             }
         }
     }
@@ -462,10 +493,7 @@ pub fn deps(_skill_root: &Path, args: DepsArgs) -> Result<()> {
     println!();
 
     if missing_required {
-        println!(
-            "  {}",
-            "Some required dependencies are missing.".red()
-        );
+        println!("  {}", "Some required dependencies are missing.".red());
     } else {
         println!("  {}", "All required dependencies available.".green());
     }
@@ -489,17 +517,31 @@ fn configure_git_identity(target: &Path, scope: &str, name: &str, email: &str) -
     let name_ok = std::process::Command::new("git")
         .args(&name_args)
         .current_dir(target)
-
         .output()
-        .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+        .map(|o| {
+            if !o.status.success() {
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.trim().is_empty() {
+                    eprintln!("[Preflight Command Failed] {}", err.trim());
+                }
+            }
+            o.status.success()
+        })
         .unwrap_or(false);
 
     let email_ok = std::process::Command::new("git")
         .args(&email_args)
         .current_dir(target)
-
         .output()
-        .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+        .map(|o| {
+            if !o.status.success() {
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.trim().is_empty() {
+                    eprintln!("[Preflight Command Failed] {}", err.trim());
+                }
+            }
+            o.status.success()
+        })
         .unwrap_or(false);
 
     name_ok && email_ok
@@ -530,9 +572,16 @@ fn try_install(tool_name: &str) -> bool {
             if util::command_exists("npm") {
                 std::process::Command::new("npm")
                     .args(["install", "-g", "markdownlint-cli"])
-
                     .output()
-                    .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+                    .map(|o| {
+                        if !o.status.success() {
+                            let err = String::from_utf8_lossy(&o.stderr);
+                            if !err.trim().is_empty() {
+                                eprintln!("[Preflight Command Failed] {}", err.trim());
+                            }
+                        }
+                        o.status.success()
+                    })
                     .unwrap_or(false)
             } else {
                 false
@@ -550,12 +599,24 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if util::command_exists("winget") {
         let ok = std::process::Command::new("winget")
             .args([
-                "install", "--id", winget_id, "-e", "--silent",
-                "--accept-package-agreements", "--accept-source-agreements",
+                "install",
+                "--id",
+                winget_id,
+                "-e",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
             ])
-
             .output()
-            .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+            .map(|o| {
+                if !o.status.success() {
+                    let err = String::from_utf8_lossy(&o.stderr);
+                    if !err.trim().is_empty() {
+                        eprintln!("[Preflight Command Failed] {}", err.trim());
+                    }
+                }
+                o.status.success()
+            })
             .unwrap_or(false);
         if ok {
             return true;
@@ -564,9 +625,16 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if util::command_exists("choco") {
         let ok = std::process::Command::new("choco")
             .args(["install", choco_pkg, "-y"])
-
             .output()
-            .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+            .map(|o| {
+                if !o.status.success() {
+                    let err = String::from_utf8_lossy(&o.stderr);
+                    if !err.trim().is_empty() {
+                        eprintln!("[Preflight Command Failed] {}", err.trim());
+                    }
+                }
+                o.status.success()
+            })
             .unwrap_or(false);
         if ok {
             return true;
@@ -575,9 +643,16 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if util::command_exists("scoop") {
         let ok = std::process::Command::new("scoop")
             .args(["install", scoop_pkg])
-
             .output()
-            .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+            .map(|o| {
+                if !o.status.success() {
+                    let err = String::from_utf8_lossy(&o.stderr);
+                    if !err.trim().is_empty() {
+                        eprintln!("[Preflight Command Failed] {}", err.trim());
+                    }
+                }
+                o.status.success()
+            })
             .unwrap_or(false);
         if ok {
             return true;
@@ -591,9 +666,16 @@ fn apt_install(packages: &[&str]) -> bool {
     args.extend_from_slice(packages);
     std::process::Command::new("sudo")
         .args(&args)
-
         .output()
-        .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+        .map(|o| {
+            if !o.status.success() {
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.trim().is_empty() {
+                    eprintln!("[Preflight Command Failed] {}", err.trim());
+                }
+            }
+            o.status.success()
+        })
         .unwrap_or(false)
 }
 
@@ -602,9 +684,16 @@ fn brew_install(packages: &[&str]) -> bool {
     args.extend(packages.iter().copied());
     std::process::Command::new("brew")
         .args(&args)
-
         .output()
-        .map(|o| { if !o.status.success() { let err = String::from_utf8_lossy(&o.stderr); if !err.trim().is_empty() { eprintln!("[Preflight Command Failed] {}", err.trim()); } } o.status.success() })
+        .map(|o| {
+            if !o.status.success() {
+                let err = String::from_utf8_lossy(&o.stderr);
+                if !err.trim().is_empty() {
+                    eprintln!("[Preflight Command Failed] {}", err.trim());
+                }
+            }
+            o.status.success()
+        })
         .unwrap_or(false)
 }
 

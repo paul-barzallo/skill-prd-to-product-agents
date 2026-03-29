@@ -22,8 +22,8 @@ pub fn init(skill_root: &Path, use_temp_dir: bool) -> Result<WorkerGuard> {
 
     let file_appender = tracing_appender::rolling::never(&log_dir, LOG_FILE_NAME);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-    let env_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_LEVEL));
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(DEFAULT_LOG_LEVEL));
 
     let subscriber = tracing_subscriber::fmt()
         .with_env_filter(env_filter)

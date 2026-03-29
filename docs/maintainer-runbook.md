@@ -90,6 +90,7 @@ pre-commit install --hook-type pre-commit --hook-type pre-push
 - `cli-tools/*/target/` and `cli-tools/*/target-staging/` are local build outputs.
 - `bin/` is only for publishable project-scope binaries.
 - Do not hand-edit binary bundles or checksum manifests unless you are intentionally performing release maintenance.
+- The build workflow now proposes tracked binary refreshes through a PR; do not bypass that reviewed path with direct binary pushes to `main`.
 - If build outputs changed, review `.github/workflows/build-skill-binaries.yml` and `docs/repo-release-checklist.md` together.
 
 ## 4. Pull request expectations
@@ -105,10 +106,11 @@ Before opening a PR:
 
 When a review or audit matters for future decisions:
 
-1. store or summarize it under `docs/audits/`
+1. keep the working notes outside the repo if they are temporary or exploratory
 2. update `docs/current-status.md` if priorities or risks changed
-3. update `docs/open-gaps.md` if it exposed a real gap
+3. update `docs/open-gaps.md` or `docs/known-limitations.md` if it exposed a real gap or durable limit
 4. write an ADR if it closed a long-lived structural question
+5. record any repository-contract change in `CHANGELOG.md`
 
 ## 6. When to stop and ask for review
 

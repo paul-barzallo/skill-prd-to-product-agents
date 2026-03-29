@@ -1,17 +1,18 @@
-mod common;
-mod validate;
-mod operations;
-mod git;
-mod audit;
-mod reporting;
-mod capabilities;
 mod agents;
-mod database;
-mod governance;
-mod dependencies;
+mod audit;
 mod board;
+mod capabilities;
+mod common;
+mod database;
+mod dependencies;
 mod encoding;
+mod git;
+mod github;
+mod governance;
 mod logging;
+mod operations;
+mod reporting;
+mod validate;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -19,7 +20,11 @@ use std::path::PathBuf;
 use std::process;
 
 #[derive(Parser)]
-#[command(name = "prdtp-agents-functions-cli", version, about = "Product agents workspace CLI")]
+#[command(
+    name = "prdtp-agents-functions-cli",
+    version,
+    about = "Product agents workspace CLI"
+)]
 struct Cli {
     /// Workspace root path (required)
     #[arg(long = "workspace", global = true)]
@@ -81,10 +86,15 @@ enum Commands {
         #[command(subcommand)]
         sub: DependenciesCommands,
     },
-    /// GitHub board synchronization
+    /// GitHub issues/PR snapshot synchronization
     Board {
         #[command(subcommand)]
         sub: BoardCommands,
+    },
+    /// GitHub mutations routed through the runtime CLI
+    Github {
+        #[command(subcommand)]
+        sub: github::GithubCommands,
     },
 }
 
@@ -92,8 +102,12 @@ enum Commands {
 enum ValidateCommands {
     /// Validate full workspace structure and YAML files
     Workspace,
-    /// Validate whether a configured workspace is operationally ready
+    /// Validate whether a production-ready workspace satisfies the strong operational gate
     Readiness,
+    /// Validate pull-request metadata, labels, commit subjects, and release gate expectations
+    PrGovernance(validate::pr_governance::PrGovernanceArgs),
+    /// Validate only the final release gate expectations for a PR targeting main
+    ReleaseGate(validate::pr_governance::ReleaseGateArgs),
     /// Validate prompts have required sections
     Prompts,
     /// Validate agent hierarchy and contracts
@@ -183,6 +197,8 @@ enum AuditCommands {
     Sync,
     /// Replay JSON spool entries into the ledger
     ReplaySpool,
+    /// Export structured audit evidence as JSONL
+    Export(audit::export::ExportArgs),
 }
 
 #[derive(Subcommand)]
@@ -203,6 +219,8 @@ enum ReportCommands {
 enum CapabilitiesCommands {
     /// Detect environment capabilities and write workspace-capabilities.yaml
     Detect(capabilities::detect::DetectArgs),
+    /// Explicitly authorize or de-authorize a capability
+    Authorize(capabilities::detect::AuthorizeArgs),
     /// Quick preflight capability check
     Check,
 }
@@ -254,6 +272,7 @@ fn command_name(command: &Commands) -> &'static str {
         Commands::Governance { .. } => "governance",
         Commands::Dependencies { .. } => "dependencies",
         Commands::Board { .. } => "board",
+        Commands::Github { .. } => "github",
     }
 }
 
@@ -262,6 +281,10 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         Commands::Validate { sub } => match sub {
             ValidateCommands::Workspace => validate::workspace::run(workspace),
             ValidateCommands::Readiness => validate::readiness::run(workspace),
+            ValidateCommands::PrGovernance(args) => validate::pr_governance::run(workspace, args),
+            ValidateCommands::ReleaseGate(args) => {
+                validate::pr_governance::run_release_gate(workspace, args)
+            }
             ValidateCommands::Prompts => validate::prompts::run(workspace),
             ValidateCommands::Agents => validate::agents::run(workspace),
             ValidateCommands::Governance => validate::governance::run(workspace),
@@ -295,6 +318,7 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         Commands::Audit { sub } => match sub {
             AuditCommands::Sync => audit::sync::run(workspace),
             AuditCommands::ReplaySpool => audit::replay::run(workspace),
+            AuditCommands::Export(args) => audit::export::run(workspace, args),
         },
         Commands::Report { sub } => match sub {
             ReportCommands::Snapshot => reporting::snapshot::run(workspace),
@@ -305,6 +329,7 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         },
         Commands::Capabilities { sub } => match sub {
             CapabilitiesCommands::Detect(args) => capabilities::detect::run(workspace, args),
+            CapabilitiesCommands::Authorize(args) => capabilities::detect::authorize(workspace, args),
             CapabilitiesCommands::Check => capabilities::detect::check(workspace),
         },
         Commands::Agents { sub } => match sub {
@@ -315,7 +340,9 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
             DatabaseCommands::Migrate => database::migrate(workspace),
         },
         Commands::Governance { sub } => match sub {
-            GovernanceCommands::ImmutableToken(args) => governance::run_immutable_token(workspace, args),
+            GovernanceCommands::ImmutableToken(args) => {
+                governance::run_immutable_token(workspace, args)
+            }
             GovernanceCommands::Configure(args) => governance::configure(workspace, args),
         },
         Commands::Dependencies { sub } => match sub {
@@ -324,18 +351,32 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         Commands::Board { sub } => match sub {
             BoardCommands::Sync(args) => board::run(workspace, args),
         },
+        Commands::Github { sub } => github::run(workspace, sub),
     }
 }
 
 fn main() {
     let cli = Cli::parse();
     let command = cli.command;
-    
+    if std::env::var_os("PRDTP_AUDIT_CORRELATION_ID").is_none() {
+        std::env::set_var(
+            "PRDTP_AUDIT_CORRELATION_ID",
+            format!(
+                "cli-{}-{}",
+                chrono::Utc::now().format("%Y%m%dT%H%M%S"),
+                std::process::id()
+            ),
+        );
+    }
+
     let raw_workspace = cli.workspace.unwrap_or_else(|| {
-        eprintln!("{} --workspace must be explicitly provided", "ERROR:".red().bold());
+        eprintln!(
+            "{} --workspace must be explicitly provided",
+            "ERROR:".red().bold()
+        );
         process::exit(1);
     });
-    
+
     let workspace = raw_workspace.canonicalize().unwrap_or(raw_workspace);
     let command_label = command_name(&command);
 

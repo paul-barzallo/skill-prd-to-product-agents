@@ -4,8 +4,6 @@ agent: software-architect
 tools:
   - search
   - read
-  - execute
-  - edit/editFiles
 model:
   - Claude Opus 4.5
   - GPT-4.1
@@ -33,6 +31,7 @@ Use this prompt when the architecture problem is systemic, ambiguous, or spans m
 
 - Keep the output decision-oriented, not implementation-heavy.
 - If the result changes execution, report back to `pm-orchestrator` recommending `tech-lead` delegation.
+- This is an analysis-only path. Do not run shell commands, runtime CLI commands, or Git closure steps from this prompt.
 
 ## Exit
 
@@ -41,11 +40,6 @@ Report back to `pm-orchestrator` with:
 - **Task**: architecture analysis requested
 - **Status**: done | blocked | partial
 - **Summary**: Up to 3 sentences of outcome
-- **Artifacts changed**: files created or modified
+- **Artifacts changed**: none in this analysis-only path; name the follow-up owner if documents or code need changes
 - **Findings**: issues discovered, if any
 - **Next recommendation**: suggested next delegation or action
-
-## Write
-
-- Record progress or new findings using permitted calls in your boundary to `prdtp-agents-functions-cli state *`
-- Always use `prdtp-agents-functions-cli git finalize` to close the operational branch and commit the new state.

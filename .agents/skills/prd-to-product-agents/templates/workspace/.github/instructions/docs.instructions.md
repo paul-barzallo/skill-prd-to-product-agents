@@ -12,7 +12,7 @@ See `docs/project/source-of-truth-map.md` for the full map of every artifact to 
 ## Principles
 
 - Domain data (stories, epics, decisions, risks, gates, milestones, acceptance criteria) lives here as the **single source of truth**
-- GitHub Issues, GitHub Projects, and Pull Requests are the execution layer for task assignment, status, and code review
+- GitHub Issues and Pull Requests are the execution layer for task assignment, status, and code review
 - If GitHub task metadata disagrees with canonical docs on scope, acceptance, or release intent, `docs/project/*` wins and GitHub must be updated
 - YAML files must use spaces (not tabs) for indentation
 - Operational YAML state (`handoffs.yaml`, `findings.yaml`, `releases.yaml`) is mutated through `prdtp-agents-functions-cli state *`, not direct line edits
@@ -34,7 +34,7 @@ Primary stewardship does not mean exclusive mutation rights. For coordination fi
 | `releases.yaml` | devops-release-engineer | devops-release-engineer creates / updates release tracker entries via `state release create` / `state release update` |
 | `handoffs.yaml` | pm-orchestrator | any agent may create a handoff entry via `state handoff create`; the assignee may claim / complete it via `state handoff update`; pm-orchestrator may reconcile or cancel routing state via `state handoff update` |
 | `findings.yaml` | qa-lead | qa-lead, software-architect, tech-lead, and devops-release-engineer may create findings via `state finding create`; findings currently target product-owner, tech-lead, or pm-orchestrator; qa-lead, pm-orchestrator, or the current target role may transition status via `state finding update` |
-| `board.md` | pm-orchestrator | pm-orchestrator refreshes the delivery snapshot from GitHub Issues/PRs via `board sync` and keeps operational pointers aligned |
+| `board.md` | pm-orchestrator | pm-orchestrator refreshes the derived execution snapshot from GitHub Issues/PRs via `board sync`; it is not canonical product truth |
 | `context-summary.md` | pm-orchestrator | pm-orchestrator authors and updates |
 | `change-log.md` | pm-orchestrator | pm-orchestrator authors and updates |
 | `open-questions.md` | product-owner / software-architect | product-owner manages scope questions; software-architect manages technical questions |

@@ -894,7 +894,9 @@ fn watch_refreshes_snapshot_after_a_file_change() {
         .spawn()
         .expect("spawn watch process");
 
-    thread::sleep(Duration::from_millis(1200));
+    // Give the watcher enough time to cross coarse Windows mtime boundaries
+    // before mutating the file under load.
+    thread::sleep(Duration::from_millis(2200));
     write_file(
         &project_root,
         "src/checkout.rs",

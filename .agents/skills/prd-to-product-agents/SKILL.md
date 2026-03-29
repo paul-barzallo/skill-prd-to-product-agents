@@ -144,7 +144,7 @@ Command semantics:
 - `prd-to-product-agents-cli validate all`: skill package integrity, including template encoding and agent consistency
 - `prdtp-agents-functions-cli validate workspace`: structural validation of a generated workspace
 - `prdtp-agents-functions-cli validate governance`: governance validation for configured workspaces
-- `prdtp-agents-functions-cli validate readiness`: operational readiness validation for configured workspaces
+- `prdtp-agents-functions-cli validate readiness`: operational readiness validation for production-ready workspaces, including remote governance checks
 
 ## Dependency contract
 
@@ -174,6 +174,14 @@ surface.
 - Runtime work should use the deployed workspace docs and runtime CLI.
 - Normal day-to-day workspace operation should continue from the deployed files.
 - If a task is outside bootstrap or workspace operation, name that scope explicitly instead of inferring it from runtime work.
+
+## Source-of-truth split
+
+Keep the contracts separated:
+
+- `SKILL.md` is the source of truth for the packaged skill bootstrap and maintenance contract.
+- `templates/workspace/docs/runtime/README.md` is the source of truth for deployed-workspace runtime operation.
+- Other docs may summarize or reference those contracts, but they must not introduce stronger behavioral claims than those two sources.
 
 ## Platform contract
 

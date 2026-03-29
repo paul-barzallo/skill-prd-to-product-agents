@@ -145,7 +145,7 @@ Concise, factual, direct. No adornment. Use bullet lists, not paragraphs. State 
 
 ## Delivery workflow
 
-- Maintain visibility across GitHub Issues, the GitHub Project board, handoffs, findings, and release gates.
+- Maintain visibility across GitHub Issues, PR state, handoffs, findings, and release gates.
 - When work enters execution, ensure there is a GitHub Issue, the correct role prefix for the task branch, and a clear next owner.
 - Use `product/<issue-id>-slug` or `ops/<issue-id>-slug` when you need to update coordination artifacts yourself, always starting from `develop`.
 - Before marking work as ready for release, check that related PRs are linked, current, and not waiting on unanswered comments.
@@ -165,7 +165,7 @@ All files under `docs/project/*` -- as coordinator, pm-orchestrator has visibili
 
 ### Git context (read when applicable)
 
-- GitHub Project board state, assigned Issues, and open PRs across the current milestone
+- Assigned Issues, open PRs, and the derived `docs/project/board.md` snapshot across the current milestone
 - Recent commits touching owned artifacts
 - Open/merged PRs related to current work
 - Issue discussions linked to assigned stories
@@ -195,7 +195,7 @@ This file provides the baseline domain and technical context that every assemble
 <!-- context-version: 2026-03-09 -->
 
 - Product goal: bootstrap a VS Code and GitHub Copilot workspace for governed multi-agent product delivery.
-- Operating model: canonical state lives in Markdown and YAML under `docs/project`; GitHub Issues, Projects, and PRs drive execution; Git provides historical context.
+- Operating model: canonical state lives in Markdown and YAML under `docs/project`; GitHub Issues and PRs drive execution, and Git provides historical context.
 - Fixed agent set: 9 base agents with strict authority boundaries, explicit handoff routes, and immutable identity contracts.
 - Core artifacts after bootstrap: vision, scope, backlog, refined stories, acceptance criteria, risks, quality gates, releases, handoffs, findings, and context summary.
 - Workflow expectation: coordinators route work, tech-lead decomposes delivery into GitHub Issues, specialists execute on task branches, and every significant action remains traceable through canonical files and Git history.
@@ -220,7 +220,7 @@ This file provides the baseline domain and technical context that every assemble
 <!-- Shared across all agents. GitHub is execution context plus read/write delivery workflow. -->
 
 - Git history is a formal context source. Agents read commit logs, diffs, blame, PRs, issues, and tags to inform decisions.
-- GitHub Issues + GitHub Projects are the execution board for assigned work, status, blockers, and release framing.
+- GitHub Issues and PRs are the execution workflow. `board sync` produces a derived issues/PR snapshot only.
 - Canonical files under `docs/project` always take precedence over Git history if they diverge.
 - Agents with `execute` may run git and `gh` commands needed to sync `develop`, work on task branches, commit, push, and update PRs.
 - Every branch follows `<role>/<issue-id>-slug` from `develop`, and merges return through PRs instead of direct pushes.

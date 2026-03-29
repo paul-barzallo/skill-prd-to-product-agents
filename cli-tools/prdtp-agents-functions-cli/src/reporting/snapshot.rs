@@ -111,22 +111,20 @@ pub fn run(workspace: &Path) -> Result<()> {
     );
 
     println!("  Stories: {}", snapshot.metrics.total_stories);
-    println!("  Handoffs: {} ({} pending)", snapshot.metrics.total_handoffs, snapshot.metrics.pending_handoffs);
-    println!("  Findings: {} ({} open)", snapshot.metrics.total_findings, snapshot.metrics.open_findings);
-    println!("  Releases: {}", snapshot.metrics.total_releases);
     println!(
-        "{} Wrote {}",
-        "OK:".green().bold(),
-        output_path.display()
+        "  Handoffs: {} ({} pending)",
+        snapshot.metrics.total_handoffs, snapshot.metrics.pending_handoffs
     );
+    println!(
+        "  Findings: {} ({} open)",
+        snapshot.metrics.total_findings, snapshot.metrics.open_findings
+    );
+    println!("  Releases: {}", snapshot.metrics.total_releases);
+    println!("{} Wrote {}", "OK:".green().bold(), output_path.display());
     Ok(())
 }
 
-fn read_yaml_list(
-    workspace: &Path,
-    rel_path: &str,
-    key: &str,
-) -> Result<Vec<serde_json::Value>> {
+fn read_yaml_list(workspace: &Path, rel_path: &str, key: &str) -> Result<Vec<serde_json::Value>> {
     let path = workspace.join(rel_path);
     if !path.exists() {
         tracing::warn!(path = %rel_path, key = %key, "report snapshot source file missing; using empty list");

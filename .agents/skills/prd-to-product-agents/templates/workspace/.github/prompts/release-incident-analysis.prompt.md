@@ -4,8 +4,6 @@ agent: devops-release-engineer
 tools:
   - search
   - read
-  - execute
-  - edit/editFiles
 model:
   - Claude Opus 4.5
   - GPT-4.1
@@ -34,6 +32,7 @@ Use this prompt when a release or environment incident requires deeper reasoning
 
 - Treat safety and rollback clarity as first-class outputs.
 - If code changes are required, report back to `pm-orchestrator`; route a lateral finding to `tech-lead` for environment issues.
+- This is an analysis-only path. Do not run shell commands, runtime CLI commands, or Git closure steps from this prompt.
 
 ## Exit
 
@@ -42,11 +41,6 @@ Report back to `pm-orchestrator` with:
 - **Task**: incident analysis requested
 - **Status**: done | blocked | partial
 - **Summary**: Up to 3 sentences of outcome
-- **Artifacts changed**: files created or modified
+- **Artifacts changed**: none in this analysis-only path; name the follow-up owner if documents or code need changes
 - **Findings**: issues discovered, if any
 - **Next recommendation**: suggested next delegation or action
-
-## Write
-
-- Record progress or new findings using permitted calls in your boundary to `prdtp-agents-functions-cli state *`
-- Always use `prdtp-agents-functions-cli git finalize` to close the operational branch and commit the new state.

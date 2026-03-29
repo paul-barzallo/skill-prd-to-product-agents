@@ -83,7 +83,10 @@ pub fn run(workspace: &Path) -> Result<()> {
     println!("\n{}", "Checking assembly sources...".bold());
     let shared_ctx = agents_dir.join("context/shared-context.md");
     if !shared_ctx.exists() {
-        tracing::error!(path = ".github/agents/context/shared-context.md", "shared context source missing");
+        tracing::error!(
+            path = ".github/agents/context/shared-context.md",
+            "shared context source missing"
+        );
         eprintln!("  {} context/shared-context.md — missing", "✗".red());
         errors += 1;
     } else {
@@ -92,7 +95,10 @@ pub fn run(workspace: &Path) -> Result<()> {
 
     let divider = agents_dir.join("CONTEXT_ZONE_DIVIDER.txt");
     if !divider.exists() {
-        tracing::error!(path = ".github/agents/CONTEXT_ZONE_DIVIDER.txt", "context zone divider source missing");
+        tracing::error!(
+            path = ".github/agents/CONTEXT_ZONE_DIVIDER.txt",
+            "context zone divider source missing"
+        );
         eprintln!("  {} CONTEXT_ZONE_DIVIDER.txt — missing", "✗".red());
         errors += 1;
     } else {

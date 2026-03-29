@@ -12,11 +12,15 @@ pub struct EncodingArgs {
     pub target: Option<std::path::PathBuf>,
 }
 
-const LF_EXTENSIONS: &[&str] = &[
-    "md", "txt", "yaml", "yml", "json", "jsonc", "sql", "sh",
-];
+const LF_EXTENSIONS: &[&str] = &["md", "txt", "yaml", "yml", "json", "jsonc", "sql", "sh"];
 const MOJIBAKE_EXTENSIONS: &[&str] = &["md", "txt"];
-const IGNORED_DIRS: &[&str] = &[".git", ".state", ".bootstrap-overlays", "target", "node_modules"];
+const IGNORED_DIRS: &[&str] = &[
+    ".git",
+    ".state",
+    ".bootstrap-overlays",
+    "target",
+    "node_modules",
+];
 
 /// UTF-8 BOM bytes: EF BB BF
 fn has_bom(bytes: &[u8]) -> bool {

@@ -133,15 +133,22 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
     if cmd_exists("winget") {
         let ok = Command::new("winget")
             .args([
-                "install", "--id", winget_id, "-e", "--silent",
-                "--accept-package-agreements", "--accept-source-agreements",
+                "install",
+                "--id",
+                winget_id,
+                "-e",
+                "--silent",
+                "--accept-package-agreements",
+                "--accept-source-agreements",
             ])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-        if ok { return true; }
+        if ok {
+            return true;
+        }
     }
     if cmd_exists("choco") {
         let ok = Command::new("choco")
@@ -151,7 +158,9 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-        if ok { return true; }
+        if ok {
+            return true;
+        }
     }
     if cmd_exists("scoop") {
         let ok = Command::new("scoop")
@@ -161,7 +170,9 @@ fn win_install(winget_id: &str, choco_pkg: &str, scoop_pkg: &str) -> bool {
             .status()
             .map(|s| s.success())
             .unwrap_or(false);
-        if ok { return true; }
+        if ok {
+            return true;
+        }
     }
     false
 }
@@ -201,31 +212,23 @@ pub fn run(_workspace: &std::path::Path, args: CheckArgs) -> Result<()> {
     let mut missing_all: Vec<&str> = Vec::new();
 
     for tool in TOOLS {
-        let status = Command::new(tool.check_cmd)
-            .args(tool.check_args)
-            .output();
+        let status = Command::new(tool.check_cmd).args(tool.check_args).output();
 
         match status {
             Ok(output) if output.status.success() => {
                 let ver = String::from_utf8_lossy(&output.stdout);
                 let ver_line = ver.lines().next().unwrap_or("").trim();
                 tracing::info!(tool = %tool.name, version = %ver_line, "dependency available");
-                println!(
-                    "  {} {} — {}",
-                    "✓".green().bold(),
-                    tool.name,
-                    ver_line
-                );
+                println!("  {} {} — {}", "✓".green().bold(), tool.name, ver_line);
             }
             _ => {
-                let tag = if tool.required { "REQUIRED" } else { "optional" };
+                let tag = if tool.required {
+                    "REQUIRED"
+                } else {
+                    "optional"
+                };
                 tracing::warn!(tool = %tool.name, required = tool.required, "dependency missing");
-                println!(
-                    "  {} {} — not found ({})",
-                    "✗".red().bold(),
-                    tool.name,
-                    tag
-                );
+                println!("  {} {} — not found ({})", "✗".red().bold(), tool.name, tag);
                 if !args.install {
                     println!("    Install: {}", tool.install_hint);
                 }

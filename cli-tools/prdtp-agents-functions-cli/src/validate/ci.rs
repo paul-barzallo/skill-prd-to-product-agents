@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use colored::Colorize;
 use serde_yaml::Value;
 use std::collections::{BTreeSet, HashMap};
@@ -8,7 +8,10 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::common::enums::{FindingStatus, FindingType, HandoffReason, HandoffStatus, HandoffType, ReleaseStatus, Role, Severity};
+use crate::common::enums::{
+    FindingStatus, FindingType, HandoffReason, HandoffStatus, HandoffType, ReleaseStatus, Role,
+    Severity,
+};
 use crate::operations;
 
 #[derive(Subcommand)]
@@ -23,7 +26,7 @@ pub enum CiCommands {
     RawSqlPrompts,
     /// Ensure runtime-generated template state artifacts are not checked in
     TemplateState,
-    /// Ensure prompts declare required tool contracts
+    /// Ensure prompts and agents declare coherent tool contracts
     PromptToolContracts,
     /// Ensure prompts only reference labels defined in github-governance.yaml
     PromptLabelContracts,
@@ -54,6 +57,48 @@ const EXECUTE_TOKENS: &[&str] = &[
     "open prs and their status",
     "git history",
     "prdtp-agents-functions-cli agents assemble",
+    "prdtp-agents-functions-cli git finalize",
+    "prdtp-agents-functions-cli state ",
+    "git finalize",
+];
+
+const PROMPTS_REQUIRING_EXECUTE: &[&str] = &[
+    ".github/prompts/bootstrap-from-prd.prompt.md",
+    ".github/prompts/clarify-prd.prompt.md",
+    ".github/prompts/client-review-uat.prompt.md",
+    ".github/prompts/daily-standup.prompt.md",
+    ".github/prompts/enrich-agents-from-architecture.prompt.md",
+    ".github/prompts/enrich-agents-from-implementation.prompt.md",
+    ".github/prompts/enrich-agents-from-prd.prompt.md",
+    ".github/prompts/post-release-monitoring.prompt.md",
+    ".github/prompts/release-readiness.prompt.md",
+    ".github/prompts/security-check.prompt.md",
+    ".github/prompts/small-backend-change.prompt.md",
+    ".github/prompts/small-doc-update.prompt.md",
+    ".github/prompts/small-frontend-change.prompt.md",
+    ".github/prompts/validation-pack.prompt.md",
+];
+
+const PROMPTS_FORBIDDEN_EXECUTE: &[&str] = &[
+    ".github/prompts/deep-architecture-analysis.prompt.md",
+    ".github/prompts/release-incident-analysis.prompt.md",
+];
+
+const AGENTS_REQUIRING_EXECUTE: &[&str] = &[
+    ".github/agents/backend-developer.agent.md",
+    ".github/agents/devops-release-engineer.agent.md",
+    ".github/agents/frontend-developer.agent.md",
+    ".github/agents/pm-orchestrator.agent.md",
+    ".github/agents/product-owner.agent.md",
+    ".github/agents/qa-lead.agent.md",
+    ".github/agents/software-architect.agent.md",
+    ".github/agents/tech-lead.agent.md",
+    ".github/agents/ux-designer.agent.md",
+];
+
+const AGENTS_WITH_SUBAGENT_TOOL: &[&str] = &[
+    ".github/agents/pm-orchestrator.agent.md",
+    ".github/agents/tech-lead.agent.md",
 ];
 
 const EDIT_TOKENS: &[&str] = &[
@@ -66,7 +111,8 @@ const EDIT_TOKENS: &[&str] = &[
     "write security checks and findings",
 ];
 
-const RAW_SQL_PATTERN: &str = r"(?i)(INSERT INTO|SELECT .+ FROM|UPDATE .+ SET|DELETE FROM|CREATE TABLE)";
+const RAW_SQL_PATTERN: &str =
+    r"(?i)(INSERT INTO|SELECT .+ FROM|UPDATE .+ SET|DELETE FROM|CREATE TABLE)";
 const COPILOT_CONTRACT_DOCS: &[&str] = &[
     ".github/copilot-instructions.md",
     ".github/instructions/agents.instructions.md",
@@ -78,9 +124,12 @@ const COPILOT_CONTRACT_DOCS: &[&str] = &[
     "docs/runtime/runtime-platform-compatibility.md",
     "docs/runtime/capability-contract.md",
     "docs/runtime/runtime-error-recovery.md",
+    "docs/runtime/enterprise-readiness-sandbox.md",
     "docs/runtime/state-sync-design.md",
     "docs/project/source-of-truth-map.md",
     "docs/project/board.md",
+    ".github/agents/context/shared-context.md",
+    ".github/agents/identity/pm-orchestrator.md",
     ".github/agents/identity/devops-release-engineer.md",
     ".github/agents/devops-release-engineer.agent.md",
     ".github/ISSUE_TEMPLATE/feature-task.yml",
@@ -116,6 +165,18 @@ const COPILOT_CONTRACT_FORBIDDEN: &[(&str, &str)] = &[
         "unless a valid time-limited token has been created",
         "immutable-token wording must stay local and compensating, not authoritative",
     ),
+    (
+        "Execution layer: GitHub Issues, GitHub Project, and Pull Requests",
+        "board snapshots must not claim GitHub Project as part of the current execution layer",
+    ),
+    (
+        "GitHub Issues, GitHub Projects, and Pull Requests are the execution layer",
+        "docs must not describe GitHub Project as part of the current execution layer",
+    ),
+    (
+        "GitHub Project board state",
+        "GitHub Project must not be treated as current operational state",
+    ),
 ];
 const COPILOT_ROLE_DRIFT_PATTERNS: &[(&str, &str)] = &[
     (
@@ -134,10 +195,7 @@ const COPILOT_ROLE_DRIFT_PATTERNS: &[(&str, &str)] = &[
         "`config/<issue-id>-slug`",
         "branch examples must use `ops/<issue-id>-slug`",
     ),
-    (
-        "role:config",
-        "role labels must use `role:ops`",
-    ),
+    ("role:config", "role labels must use `role:ops`"),
 ];
 
 pub fn run(workspace: &Path, sub: CiCommands) -> Result<()> {
@@ -184,13 +242,22 @@ fn prompt_files(workspace: &Path) -> Vec<PathBuf> {
         .into_iter()
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().is_file())
-        .filter(|entry| entry.path().extension().map(|ext| ext == "md").unwrap_or(false))
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .map(|ext| ext == "md")
+                .unwrap_or(false)
+        })
         .map(|entry| entry.into_path())
         .collect()
 }
 
 fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
-    for entry in WalkDir::new(source).into_iter().filter_map(|entry| entry.ok()) {
+    for entry in WalkDir::new(source)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
         let relative = entry.path().strip_prefix(source)?;
         let target = destination.join(relative);
         if entry.file_type().is_dir() {
@@ -226,7 +293,10 @@ where
 
 fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating CI pre-commit fixtures");
-    println!("{}", "=== CI Validate: Pre-commit Fixtures ===".cyan().bold());
+    println!(
+        "{}",
+        "=== CI Validate: Pre-commit Fixtures ===".cyan().bold()
+    );
     let tmp_root = temp_workspace("precommit")?;
     let previous_finalize = std::env::var("FINALIZE_WORK_UNIT_ALLOW_COMMIT").ok();
     std::env::set_var("FINALIZE_WORK_UNIT_ALLOW_COMMIT", "1");
@@ -249,7 +319,9 @@ fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
             }
             Err(error) => {
                 let text = format!("{error:#}");
-                if !text.contains("not valid YAML") && !text.contains("No YAML parser found for staged operational YAML") {
+                if !text.contains("not valid YAML")
+                    && !text.contains("No YAML parser found for staged operational YAML")
+                {
                     tracing::error!(error = %text, "unexpected error while validating malformed YAML fixture");
                     bail!("unexpected YAML fixture error: {text}");
                 }
@@ -354,7 +426,10 @@ fn yaml_schemas(workspace: &Path) -> Result<()> {
             .map_err(|error| anyhow::anyhow!("{}: {error}", data_path.display()))?;
         if !matches!(parsed, Value::Mapping(_)) {
             tracing::error!(path = %data_path.display(), "schema-backed yaml document is not a mapping object");
-            bail!("{}: top-level YAML document must be an object", data_path.display());
+            bail!(
+                "{}: top-level YAML document must be an object",
+                data_path.display()
+            );
         }
         checked += 1;
     }
@@ -397,39 +472,122 @@ fn template_state(workspace: &Path) -> Result<()> {
 
     if !failures.is_empty() {
         tracing::error!(artifacts = ?failures, "template includes generated runtime artifacts");
-        bail!("template includes generated runtime artifacts:\n  {}", failures.join("\n  "));
+        bail!(
+            "template includes generated runtime artifacts:\n  {}",
+            failures.join("\n  ")
+        );
     }
     print_pass("template state is clean");
     Ok(())
 }
 
 fn prompt_tool_contracts(workspace: &Path) -> Result<()> {
-    tracing::info!(workspace = %workspace.display(), "validating prompt tool contracts");
-    println!("{}", "=== CI Validate: Prompt Tool Contracts ===".cyan().bold());
-    let list_pattern = regex::Regex::new(r"(?m)^\s*-\s+(.+?)\s*$").unwrap();
+    tracing::info!(workspace = %workspace.display(), "validating prompt and agent tool contracts");
+    println!(
+        "{}",
+        "=== CI Validate: Prompt Tool Contracts ===".cyan().bold()
+    );
     let mut failures = Vec::new();
 
     for path in prompt_files(workspace) {
         let text = fs::read_to_string(&path)?;
-        let parts: Vec<&str> = text.splitn(3, "---").collect();
-        if parts.len() < 3 {
+        let Some((tools, body)) = frontmatter_tools_and_body(&text) else {
             continue;
-        }
-        let frontmatter = parts[1];
-        let body = parts[2].to_lowercase();
-        let tools: BTreeSet<String> = list_pattern
-            .captures_iter(frontmatter)
-            .filter_map(|capture| capture.get(1).map(|m| m.as_str().trim().to_string()))
-            .collect();
+        };
+        let body = body.to_lowercase();
         let rel = path.strip_prefix(workspace).unwrap_or(&path);
+        let rel_key = rel.to_string_lossy().replace('\\', "/");
+        let invalid_reasons = invalid_handoff_reason_examples(&text);
 
         if EXECUTE_TOKENS.iter().any(|token| body.contains(token)) && !tools.contains("execute") {
             tracing::warn!(path = %rel.display(), "prompt appears to require execute tool but does not declare it");
-            failures.push(format!("{} requires execute but does not declare it", rel.display()));
+            failures.push(format!(
+                "{} requires execute but does not declare it",
+                rel.display()
+            ));
         }
-        if EDIT_TOKENS.iter().any(|token| body.contains(token)) && !tools.contains("edit/editFiles") {
+        if EDIT_TOKENS.iter().any(|token| body.contains(token)) && !tools.contains("edit/editFiles")
+        {
             tracing::warn!(path = %rel.display(), "prompt appears to require edit/editFiles but does not declare it");
-            failures.push(format!("{} requires edit/editFiles but does not declare it", rel.display()));
+            failures.push(format!(
+                "{} requires edit/editFiles but does not declare it",
+                rel.display()
+            ));
+        }
+        if PROMPTS_REQUIRING_EXECUTE.contains(&rel_key.as_str()) && !tools.contains("execute") {
+            failures.push(format!(
+                "{} is part of the approved execute contract and must declare execute",
+                rel.display()
+            ));
+        }
+        if PROMPTS_FORBIDDEN_EXECUTE.contains(&rel_key.as_str()) && tools.contains("execute") {
+            failures.push(format!(
+                "{} must not declare execute because this workflow is analysis-only",
+                rel.display()
+            ));
+        }
+        if !invalid_reasons.is_empty() {
+            failures.push(format!(
+                "{} uses invalid handoff reason example(s): {}",
+                rel.display(),
+                invalid_reasons.join(", ")
+            ));
+        }
+    }
+
+    let agents_dir = workspace.join(".github/agents");
+    if agents_dir.is_dir() {
+        for entry in WalkDir::new(&agents_dir)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.file_type().is_file())
+            .filter(|entry| {
+                entry
+                    .path()
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(|name| name.ends_with(".agent.md"))
+                    .unwrap_or(false)
+            })
+        {
+            let path = entry.path();
+            let text = fs::read_to_string(path)?;
+            let Some((tools, _body)) = frontmatter_tools_and_body(&text) else {
+                failures.push(format!(
+                    "{} is missing YAML frontmatter",
+                    path.strip_prefix(workspace).unwrap_or(path).display()
+                ));
+                continue;
+            };
+            let rel = path.strip_prefix(workspace).unwrap_or(path);
+            let rel_key = rel.to_string_lossy().replace('\\', "/");
+            let has_execute = tools.contains("execute");
+            let has_agent_tool = tools.contains("agent");
+
+            if AGENTS_REQUIRING_EXECUTE.contains(&rel_key.as_str()) && !has_execute {
+                failures.push(format!(
+                    "{} must declare execute because runtime CLI task closure depends on it",
+                    rel.display()
+                ));
+            }
+            if has_execute && !AGENTS_REQUIRING_EXECUTE.contains(&rel_key.as_str()) {
+                failures.push(format!(
+                    "{} declares execute outside the approved role contract",
+                    rel.display()
+                ));
+            }
+            if has_agent_tool && !AGENTS_WITH_SUBAGENT_TOOL.contains(&rel_key.as_str()) {
+                failures.push(format!(
+                    "{} declares the agent tool outside the approved coordinator contract",
+                    rel.display()
+                ));
+            }
+            if !has_agent_tool && AGENTS_WITH_SUBAGENT_TOOL.contains(&rel_key.as_str()) {
+                failures.push(format!(
+                    "{} must declare the agent tool because it is a coordinator role",
+                    rel.display()
+                ));
+            }
         }
     }
 
@@ -437,13 +595,16 @@ fn prompt_tool_contracts(workspace: &Path) -> Result<()> {
         tracing::error!(failures = ?failures, "prompt tool contracts validation failed");
         bail!("prompt tool contracts failed:\n  {}", failures.join("\n  "));
     }
-    print_pass("prompt tool contracts are consistent");
+    print_pass("prompt and agent tool contracts are consistent");
     Ok(())
 }
 
 fn prompt_label_contracts(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating prompt label contracts");
-    println!("{}", "=== CI Validate: Prompt Label Contracts ===".cyan().bold());
+    println!(
+        "{}",
+        "=== CI Validate: Prompt Label Contracts ===".cyan().bold()
+    );
     let gov_path = workspace.join(".github/github-governance.yaml");
     if !gov_path.exists() {
         tracing::info!(path = %gov_path.display(), "github governance file not found; prompt label validation skipped");
@@ -453,9 +614,7 @@ fn prompt_label_contracts(workspace: &Path) -> Result<()> {
 
     let gov_raw = fs::read_to_string(&gov_path)?;
     let gov: Value = serde_yaml::from_str(&gov_raw)?;
-    let labels = gov
-        .get("github")
-        .and_then(|value| value.get("labels"));
+    let labels = gov.get("github").and_then(|value| value.get("labels"));
     let mut lookup: HashMap<&str, BTreeSet<String>> = HashMap::new();
     for key in ["role", "kind", "priority"] {
         let values = labels
@@ -487,7 +646,10 @@ fn prompt_label_contracts(workspace: &Path) -> Result<()> {
             if let Some(valid_labels) = lookup.get(prefix) {
                 if !valid_labels.is_empty() && !valid_labels.contains(label) {
                     tracing::warn!(path = %rel.display(), label, "prompt references undefined governance label");
-                    failures.push(format!("{} references undefined label '{label}'", rel.display()));
+                    failures.push(format!(
+                        "{} references undefined label '{label}'",
+                        rel.display()
+                    ));
                 }
             }
         }
@@ -495,7 +657,10 @@ fn prompt_label_contracts(workspace: &Path) -> Result<()> {
 
     if !failures.is_empty() {
         tracing::error!(failures = ?failures, "prompt label contracts validation failed");
-        bail!("prompt label contracts failed:\n  {}", failures.join("\n  "));
+        bail!(
+            "prompt label contracts failed:\n  {}",
+            failures.join("\n  ")
+        );
     }
     print_pass("prompt label contracts are valid");
     Ok(())
@@ -504,7 +669,11 @@ fn prompt_label_contracts(workspace: &Path) -> Result<()> {
 fn expect_err(result: Result<()>, expected: &str, context: &str) -> Result<()> {
     match result {
         Ok(()) => {
-            tracing::error!(context, expected, "negative CI assertion unexpectedly succeeded");
+            tracing::error!(
+                context,
+                expected,
+                "negative CI assertion unexpectedly succeeded"
+            );
             bail!("{context}: expected failure containing '{expected}'")
         }
         Err(error) => {
@@ -519,7 +688,13 @@ fn expect_err(result: Result<()>, expected: &str, context: &str) -> Result<()> {
     }
 }
 
-fn yaml_entry_field(workspace: &Path, relative_path: &str, list_key: &str, id: &str, field: &str) -> Result<String> {
+fn yaml_entry_field(
+    workspace: &Path,
+    relative_path: &str,
+    list_key: &str,
+    id: &str,
+    field: &str,
+) -> Result<String> {
     let content = fs::read_to_string(workspace.join(relative_path))?;
     let yaml: Value = serde_yaml::from_str(&content)?;
     let entries = yaml
@@ -545,7 +720,11 @@ fn ensure_yaml_list(workspace: &Path, relative_path: &str, list_key: &str) -> Re
     let content = fs::read_to_string(workspace.join(relative_path))?;
     let yaml: Value = serde_yaml::from_str(&content)?;
     if !yaml.get(list_key).and_then(Value::as_sequence).is_some() {
-        tracing::error!(path = relative_path, list_key, "expected top-level YAML sequence missing");
+        tracing::error!(
+            path = relative_path,
+            list_key,
+            "expected top-level YAML sequence missing"
+        );
         bail!("{relative_path}: top-level key '{list_key}' must be a YAML sequence");
     }
     Ok(())
@@ -556,133 +735,99 @@ fn operational_state(workspace: &Path) -> Result<()> {
     println!("{}", "=== CI Validate: Operational State ===".cyan().bold());
 
     with_workspace_copy(workspace, "operational-state", |workspace| {
-    tracing::debug!(workspace = %workspace.display(), "created temporary workspace copy for operational state validation");
-    operations::handoff::create(
-        workspace,
-        operations::handoff::CreateHandoffArgs {
-            from_role: Role::PmOrchestrator,
-            to_role: Role::TechLead,
-            handoff_type: HandoffType::Normal,
-            entity: "US-TEST".to_string(),
-            reason: HandoffReason::NewWork,
-            details: None,
-            id: Some("ho-test-001".to_string()),
-        },
-    )?;
-    operations::handoff::update(
-        workspace,
-        operations::handoff::UpdateHandoffArgs {
-            handoff_id: "ho-test-001".to_string(),
-            new_status: HandoffStatus::Claimed,
-            agent_role: Role::TechLead,
-        },
-    )?;
-    operations::handoff::update(
-        workspace,
-        operations::handoff::UpdateHandoffArgs {
-            handoff_id: "ho-test-001".to_string(),
-            new_status: HandoffStatus::Done,
-            agent_role: Role::TechLead,
-        },
-    )?;
-    expect_err(
-        operations::handoff::update(
-            workspace,
-            operations::handoff::UpdateHandoffArgs {
-                handoff_id: "ho-test-001".to_string(),
-                new_status: HandoffStatus::Pending,
-                agent_role: Role::TechLead,
-            },
-        ),
-        "Invalid transition",
-        "handoff invalid transition",
-    )?;
-    expect_err(
+        tracing::debug!(workspace = %workspace.display(), "created temporary workspace copy for operational state validation");
         operations::handoff::create(
             workspace,
             operations::handoff::CreateHandoffArgs {
                 from_role: Role::PmOrchestrator,
                 to_role: Role::TechLead,
                 handoff_type: HandoffType::Normal,
-                entity: "US-DUP".to_string(),
+                entity: "US-TEST".to_string(),
                 reason: HandoffReason::NewWork,
                 details: None,
                 id: Some("ho-test-001".to_string()),
             },
-        ),
-        "already exists",
-        "handoff duplicate id",
-    )?;
-    expect_err(
+        )?;
         operations::handoff::update(
             workspace,
             operations::handoff::UpdateHandoffArgs {
-                handoff_id: "ho-nonexist".to_string(),
+                handoff_id: "ho-test-001".to_string(),
                 new_status: HandoffStatus::Claimed,
                 agent_role: Role::TechLead,
             },
-        ),
-        "not found",
-        "handoff missing entry",
-    )?;
-    ensure_yaml_list(workspace, "docs/project/handoffs.yaml", "handoffs")?;
-    if yaml_entry_field(workspace, "docs/project/handoffs.yaml", "handoffs", "ho-test-001", "status")? != "done" {
-        bail!("handoff lifecycle did not end in done");
-    }
+        )?;
+        operations::handoff::update(
+            workspace,
+            operations::handoff::UpdateHandoffArgs {
+                handoff_id: "ho-test-001".to_string(),
+                new_status: HandoffStatus::Done,
+                agent_role: Role::TechLead,
+            },
+        )?;
+        expect_err(
+            operations::handoff::update(
+                workspace,
+                operations::handoff::UpdateHandoffArgs {
+                    handoff_id: "ho-test-001".to_string(),
+                    new_status: HandoffStatus::Pending,
+                    agent_role: Role::TechLead,
+                },
+            ),
+            "Invalid transition",
+            "handoff invalid transition",
+        )?;
+        expect_err(
+            operations::handoff::create(
+                workspace,
+                operations::handoff::CreateHandoffArgs {
+                    from_role: Role::PmOrchestrator,
+                    to_role: Role::TechLead,
+                    handoff_type: HandoffType::Normal,
+                    entity: "US-DUP".to_string(),
+                    reason: HandoffReason::NewWork,
+                    details: None,
+                    id: Some("ho-test-001".to_string()),
+                },
+            ),
+            "already exists",
+            "handoff duplicate id",
+        )?;
+        expect_err(
+            operations::handoff::update(
+                workspace,
+                operations::handoff::UpdateHandoffArgs {
+                    handoff_id: "ho-nonexist".to_string(),
+                    new_status: HandoffStatus::Claimed,
+                    agent_role: Role::TechLead,
+                },
+            ),
+            "not found",
+            "handoff missing entry",
+        )?;
+        ensure_yaml_list(workspace, "docs/project/handoffs.yaml", "handoffs")?;
+        if yaml_entry_field(
+            workspace,
+            "docs/project/handoffs.yaml",
+            "handoffs",
+            "ho-test-001",
+            "status",
+        )? != "done"
+        {
+            bail!("handoff lifecycle did not end in done");
+        }
 
-    operations::finding::create(
-        workspace,
-        operations::finding::CreateFindingArgs {
-            source_role: Role::QaLead,
-            target_role: Role::TechLead,
-            finding_type: FindingType::Bug,
-            severity: Severity::High,
-            entity: "US-TEST".to_string(),
-            title: "CI test finding".to_string(),
-            id: Some("fi-test-001".to_string()),
-        },
-    )?;
-    operations::finding::update(
-        workspace,
-        operations::finding::UpdateFindingArgs {
-            finding_id: "fi-test-001".to_string(),
-            new_status: FindingStatus::Triaged,
-            agent_role: Role::TechLead,
-        },
-    )?;
-    operations::finding::update(
-        workspace,
-        operations::finding::UpdateFindingArgs {
-            finding_id: "fi-test-001".to_string(),
-            new_status: FindingStatus::InProgress,
-            agent_role: Role::TechLead,
-        },
-    )?;
-    operations::finding::update(
-        workspace,
-        operations::finding::UpdateFindingArgs {
-            finding_id: "fi-test-001".to_string(),
-            new_status: FindingStatus::Resolved,
-            agent_role: Role::TechLead,
-        },
-    )?;
-    expect_err(
         operations::finding::create(
             workspace,
             operations::finding::CreateFindingArgs {
                 source_role: Role::QaLead,
                 target_role: Role::TechLead,
                 finding_type: FindingType::Bug,
-                severity: Severity::Low,
-                entity: "US-DUP".to_string(),
-                title: "dup".to_string(),
+                severity: Severity::High,
+                entity: "US-TEST".to_string(),
+                title: "CI test finding".to_string(),
                 id: Some("fi-test-001".to_string()),
             },
-        ),
-        "already exists",
-        "finding duplicate id",
-    )?;
-    expect_err(
+        )?;
         operations::finding::update(
             workspace,
             operations::finding::UpdateFindingArgs {
@@ -690,52 +835,75 @@ fn operational_state(workspace: &Path) -> Result<()> {
                 new_status: FindingStatus::Triaged,
                 agent_role: Role::TechLead,
             },
-        ),
-        "Invalid transition",
-        "finding terminal update",
-    )?;
-    ensure_yaml_list(workspace, "docs/project/findings.yaml", "findings")?;
-    if yaml_entry_field(workspace, "docs/project/findings.yaml", "findings", "fi-test-001", "status")? != "resolved" {
-        tracing::error!(workspace = %workspace.display(), "finding lifecycle did not end in resolved state");
-        bail!("finding lifecycle did not end in resolved");
-    }
+        )?;
+        operations::finding::update(
+            workspace,
+            operations::finding::UpdateFindingArgs {
+                finding_id: "fi-test-001".to_string(),
+                new_status: FindingStatus::InProgress,
+                agent_role: Role::TechLead,
+            },
+        )?;
+        operations::finding::update(
+            workspace,
+            operations::finding::UpdateFindingArgs {
+                finding_id: "fi-test-001".to_string(),
+                new_status: FindingStatus::Resolved,
+                agent_role: Role::TechLead,
+            },
+        )?;
+        expect_err(
+            operations::finding::create(
+                workspace,
+                operations::finding::CreateFindingArgs {
+                    source_role: Role::QaLead,
+                    target_role: Role::TechLead,
+                    finding_type: FindingType::Bug,
+                    severity: Severity::Low,
+                    entity: "US-DUP".to_string(),
+                    title: "dup".to_string(),
+                    id: Some("fi-test-001".to_string()),
+                },
+            ),
+            "already exists",
+            "finding duplicate id",
+        )?;
+        expect_err(
+            operations::finding::update(
+                workspace,
+                operations::finding::UpdateFindingArgs {
+                    finding_id: "fi-test-001".to_string(),
+                    new_status: FindingStatus::Triaged,
+                    agent_role: Role::TechLead,
+                },
+            ),
+            "Invalid transition",
+            "finding terminal update",
+        )?;
+        ensure_yaml_list(workspace, "docs/project/findings.yaml", "findings")?;
+        if yaml_entry_field(
+            workspace,
+            "docs/project/findings.yaml",
+            "findings",
+            "fi-test-001",
+            "status",
+        )? != "resolved"
+        {
+            tracing::error!(workspace = %workspace.display(), "finding lifecycle did not end in resolved state");
+            bail!("finding lifecycle did not end in resolved");
+        }
 
-    operations::release::create(
-        workspace,
-        operations::release::CreateReleaseArgs {
-            name: "CI Test Release".to_string(),
-            target_date: "2026-01-01".to_string(),
-            agent_role: Role::DevopsReleaseEngineer,
-            stories: Some("US-TEST".to_string()),
-            notes: None,
-            id: Some("R1".to_string()),
-        },
-    )?;
-    operations::release::update(
-        workspace,
-        operations::release::UpdateReleaseArgs {
-            release_ref: "R1".to_string(),
-            new_status: ReleaseStatus::Ready,
-            agent_role: Role::DevopsReleaseEngineer,
-        },
-    )?;
-    operations::release::update(
-        workspace,
-        operations::release::UpdateReleaseArgs {
-            release_ref: "R1".to_string(),
-            new_status: ReleaseStatus::Approved,
-            agent_role: Role::DevopsReleaseEngineer,
-        },
-    )?;
-    operations::release::update(
-        workspace,
-        operations::release::UpdateReleaseArgs {
-            release_ref: "R1".to_string(),
-            new_status: ReleaseStatus::Deployed,
-            agent_role: Role::DevopsReleaseEngineer,
-        },
-    )?;
-    expect_err(
+        operations::release::create(
+            workspace,
+            operations::release::CreateReleaseArgs {
+                name: "CI Test Release".to_string(),
+                target_date: "2026-01-01".to_string(),
+                agent_role: Role::DevopsReleaseEngineer,
+                stories: Some("US-TEST".to_string()),
+                notes: None,
+                id: Some("R1".to_string()),
+            },
+        )?;
         operations::release::update(
             workspace,
             operations::release::UpdateReleaseArgs {
@@ -743,45 +911,77 @@ fn operational_state(workspace: &Path) -> Result<()> {
                 new_status: ReleaseStatus::Ready,
                 agent_role: Role::DevopsReleaseEngineer,
             },
-        ),
-        "Invalid transition",
-        "release terminal update",
-    )?;
-    expect_err(
-        operations::release::create(
-            workspace,
-            operations::release::CreateReleaseArgs {
-                name: "Dup".to_string(),
-                target_date: "2026-01-01".to_string(),
-                agent_role: Role::DevopsReleaseEngineer,
-                stories: None,
-                notes: None,
-                id: Some("R1".to_string()),
-            },
-        ),
-        "already exists",
-        "release duplicate id",
-    )?;
-    expect_err(
+        )?;
         operations::release::update(
             workspace,
             operations::release::UpdateReleaseArgs {
-                release_ref: "R999".to_string(),
-                new_status: ReleaseStatus::Ready,
+                release_ref: "R1".to_string(),
+                new_status: ReleaseStatus::Approved,
                 agent_role: Role::DevopsReleaseEngineer,
             },
-        ),
-        "not found",
-        "release missing entry",
-    )?;
-    ensure_yaml_list(workspace, "docs/project/releases.yaml", "releases")?;
-    if yaml_entry_field(workspace, "docs/project/releases.yaml", "releases", "R1", "status")? != "deployed" {
-        tracing::error!(workspace = %workspace.display(), "release lifecycle did not end in deployed state");
-        bail!("release lifecycle did not end in deployed");
-    }
+        )?;
+        operations::release::update(
+            workspace,
+            operations::release::UpdateReleaseArgs {
+                release_ref: "R1".to_string(),
+                new_status: ReleaseStatus::Deployed,
+                agent_role: Role::DevopsReleaseEngineer,
+            },
+        )?;
+        expect_err(
+            operations::release::update(
+                workspace,
+                operations::release::UpdateReleaseArgs {
+                    release_ref: "R1".to_string(),
+                    new_status: ReleaseStatus::Ready,
+                    agent_role: Role::DevopsReleaseEngineer,
+                },
+            ),
+            "Invalid transition",
+            "release terminal update",
+        )?;
+        expect_err(
+            operations::release::create(
+                workspace,
+                operations::release::CreateReleaseArgs {
+                    name: "Dup".to_string(),
+                    target_date: "2026-01-01".to_string(),
+                    agent_role: Role::DevopsReleaseEngineer,
+                    stories: None,
+                    notes: None,
+                    id: Some("R1".to_string()),
+                },
+            ),
+            "already exists",
+            "release duplicate id",
+        )?;
+        expect_err(
+            operations::release::update(
+                workspace,
+                operations::release::UpdateReleaseArgs {
+                    release_ref: "R999".to_string(),
+                    new_status: ReleaseStatus::Ready,
+                    agent_role: Role::DevopsReleaseEngineer,
+                },
+            ),
+            "not found",
+            "release missing entry",
+        )?;
+        ensure_yaml_list(workspace, "docs/project/releases.yaml", "releases")?;
+        if yaml_entry_field(
+            workspace,
+            "docs/project/releases.yaml",
+            "releases",
+            "R1",
+            "status",
+        )? != "deployed"
+        {
+            tracing::error!(workspace = %workspace.display(), "release lifecycle did not end in deployed state");
+            bail!("release lifecycle did not end in deployed");
+        }
 
-    print_pass("operational state lifecycle and negative checks passed");
-    Ok(())
+        print_pass("operational state lifecycle and negative checks passed");
+        Ok(())
     })
 }
 
@@ -790,73 +990,79 @@ fn degraded_runtime(workspace: &Path) -> Result<()> {
     println!("{}", "=== CI Validate: Degraded Runtime ===".cyan().bold());
 
     with_workspace_copy(workspace, "degraded-runtime", |workspace| {
-    tracing::debug!(workspace = %workspace.display(), "created temporary workspace copy for degraded runtime validation");
-    let state_dir = workspace.join(".state");
-    let db_path = state_dir.join("project_memory.db");
-    let pending_path = state_dir.join("sqlite-bootstrap.pending.md");
-    let degraded_log = state_dir.join("state-sync-degraded.log");
-    let degraded_ops_dir = state_dir.join("degraded-ops");
+        tracing::debug!(workspace = %workspace.display(), "created temporary workspace copy for degraded runtime validation");
+        let state_dir = workspace.join(".state");
+        let db_path = state_dir.join("project_memory.db");
+        let pending_path = state_dir.join("sqlite-bootstrap.pending.md");
+        let degraded_log = state_dir.join("state-sync-degraded.log");
+        let degraded_ops_dir = state_dir.join("degraded-ops");
 
-    let _ = fs::remove_file(&db_path);
-    let _ = fs::remove_file(&pending_path);
-    let _ = fs::remove_file(&degraded_log);
-    let _ = fs::remove_dir_all(&degraded_ops_dir);
+        let _ = fs::remove_file(&db_path);
+        let _ = fs::remove_file(&pending_path);
+        let _ = fs::remove_file(&degraded_log);
+        let _ = fs::remove_dir_all(&degraded_ops_dir);
 
-    crate::database::init_with_mode(workspace, crate::database::InitArgs { force: false }, true)?;
+        crate::database::init_with_mode(
+            workspace,
+            crate::database::InitArgs { force: false },
+            true,
+        )?;
 
-    if db_path.exists() {
-        tracing::error!(path = %db_path.display(), "degraded runtime unexpectedly created sqlite database");
-        bail!("degraded runtime should not create project_memory.db");
-    }
-    if !pending_path.is_file() {
-        tracing::error!(path = %pending_path.display(), "degraded runtime did not create pending marker");
-        bail!("degraded runtime did not create sqlite-bootstrap.pending.md");
-    }
-    let pending_text = fs::read_to_string(&pending_path)?;
-    if !pending_text.contains("DEGRADED") || !pending_text.contains("database init") {
-        tracing::error!(path = %pending_path.display(), "pending marker content is incomplete");
-        bail!("sqlite-bootstrap.pending.md content is incomplete");
-    }
+        if db_path.exists() {
+            tracing::error!(path = %db_path.display(), "degraded runtime unexpectedly created sqlite database");
+            bail!("degraded runtime should not create project_memory.db");
+        }
+        if !pending_path.is_file() {
+            tracing::error!(path = %pending_path.display(), "degraded runtime did not create pending marker");
+            bail!("degraded runtime did not create sqlite-bootstrap.pending.md");
+        }
+        let pending_text = fs::read_to_string(&pending_path)?;
+        if !pending_text.contains("DEGRADED") || !pending_text.contains("database init") {
+            tracing::error!(path = %pending_path.display(), "pending marker content is incomplete");
+            bail!("sqlite-bootstrap.pending.md content is incomplete");
+        }
 
-    crate::audit::sync::run(workspace)?;
-    if !degraded_log.is_file() {
-        tracing::error!(path = %degraded_log.display(), "degraded runtime did not create degraded log");
-        bail!("degraded runtime did not write state-sync-degraded.log");
-    }
-    let degraded_text = fs::read_to_string(&degraded_log)?;
-    if !degraded_text.contains("SQLite unavailable") {
-        tracing::error!(path = %degraded_log.display(), "degraded runtime log missing sqlite unavailable marker");
-        bail!("state-sync-degraded.log missing SQLite unavailable marker");
-    }
+        crate::audit::sync::run(workspace)?;
+        if !degraded_log.is_file() {
+            tracing::error!(path = %degraded_log.display(), "degraded runtime did not create degraded log");
+            bail!("degraded runtime did not write state-sync-degraded.log");
+        }
+        let degraded_text = fs::read_to_string(&degraded_log)?;
+        if !degraded_text.contains("SQLite unavailable") {
+            tracing::error!(path = %degraded_log.display(), "degraded runtime log missing sqlite unavailable marker");
+            bail!("state-sync-degraded.log missing SQLite unavailable marker");
+        }
 
-    crate::operations::environment::record(
-        workspace,
-        crate::operations::environment::RecordEventArgs {
-            env_name: crate::common::enums::Environment::Prod,
-            event_type: crate::common::enums::EventType::IncidentDetected,
-            reported_by: Role::DevopsReleaseEngineer,
-            build_version: None,
-            severity: Some(Severity::High),
-            notes: Some("ci degraded test".to_string()),
-            id: Some("ee-degraded-001".to_string()),
-        },
-    )?;
+        crate::operations::environment::record(
+            workspace,
+            crate::operations::environment::RecordEventArgs {
+                env_name: crate::common::enums::Environment::Prod,
+                event_type: crate::common::enums::EventType::IncidentDetected,
+                reported_by: Role::DevopsReleaseEngineer,
+                build_version: None,
+                severity: Some(Severity::High),
+                notes: Some("ci degraded test".to_string()),
+                id: Some("ee-degraded-001".to_string()),
+            },
+        )?;
 
-    if !degraded_ops_dir.is_dir() {
-        tracing::error!(path = %degraded_ops_dir.display(), "degraded runtime did not create degraded ops spool directory");
-        bail!("degraded runtime did not create degraded-ops spool directory");
-    }
-    let spool_found = fs::read_dir(&degraded_ops_dir)?
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .any(|name| name.starts_with("environment_event-ee-degraded-001-") && name.ends_with(".json"));
-    if !spool_found {
-        tracing::error!(path = %degraded_ops_dir.display(), "degraded runtime did not spool environment event json");
-        bail!("degraded runtime did not spool environment_event JSON record");
-    }
+        if !degraded_ops_dir.is_dir() {
+            tracing::error!(path = %degraded_ops_dir.display(), "degraded runtime did not create degraded ops spool directory");
+            bail!("degraded runtime did not create degraded-ops spool directory");
+        }
+        let spool_found = fs::read_dir(&degraded_ops_dir)?
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .any(|name| {
+                name.starts_with("environment_event-ee-degraded-001-") && name.ends_with(".json")
+            });
+        if !spool_found {
+            tracing::error!(path = %degraded_ops_dir.display(), "degraded runtime did not spool environment event json");
+            bail!("degraded runtime did not spool environment_event JSON record");
+        }
 
-    print_pass("degraded runtime wrote pending marker, degraded log, and JSON spool");
-    Ok(())
+        print_pass("degraded runtime wrote pending marker, degraded log, and JSON spool");
+        Ok(())
     })
 }
 
@@ -905,7 +1111,12 @@ fn reporting(workspace: &Path) -> Result<()> {
 
 fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "running CI copilot runtime contract validation");
-    println!("{}", "=== CI Validate: Copilot Runtime Contract ===".cyan().bold());
+    println!(
+        "{}",
+        "=== CI Validate: Copilot Runtime Contract ==="
+            .cyan()
+            .bold()
+    );
 
     let mut docs = HashMap::new();
     let mut failures = Vec::new();
@@ -932,7 +1143,9 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
     let Some(compatibility) = docs.get("docs/runtime/runtime-platform-compatibility.md") else {
         bail!("copilot runtime contract failed:\n  docs/runtime/runtime-platform-compatibility.md: required runtime contract document missing");
     };
-    if !compatibility.contains("GitHub.com") || !compatibility.to_ascii_lowercase().contains("degraded") {
+    if !compatibility.contains("GitHub.com")
+        || !compatibility.to_ascii_lowercase().contains("degraded")
+    {
         failures.push(
             "docs/runtime/runtime-platform-compatibility.md must describe GitHub.com as a degraded surface"
                 .to_string(),
@@ -940,8 +1153,27 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
     }
 
     let required_snippets = [
-        (".github/project-governance.md", "`ops`"),
-        ("docs/project/board.md", "| ops |"),
+        (".github/project-governance.md", "`role:ops`"),
+        (
+            ".github/project-governance.md",
+            "future extension",
+        ),
+        (
+            "docs/project/board.md",
+            "Derived execution snapshot only. It is not a canonical source of truth.",
+        ),
+        (
+            "docs/project/source-of-truth-map.md",
+            "Derived reporting and execution snapshots",
+        ),
+        (
+            ".github/instructions/agents.instructions.md",
+            "Prompt frontmatter should omit `execute` whenever the workflow can complete safely without shell or runtime-command use.",
+        ),
+        (
+            ".github/copilot-instructions.md",
+            "Prompt frontmatter narrows that access for bounded workflows that do not need command execution.",
+        ),
         (
             ".github/agents/identity/devops-release-engineer.md",
             "`ops/<issue-id>-slug`",
@@ -974,9 +1206,59 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
     }
 
     if !failures.is_empty() {
-        bail!("copilot runtime contract failed:\n  {}", failures.join("\n  "));
+        bail!(
+            "copilot runtime contract failed:\n  {}",
+            failures.join("\n  ")
+        );
     }
 
     print_pass("runtime docs and instructions match the Copilot-first contract");
     Ok(())
+}
+
+fn frontmatter_tools_and_body(text: &str) -> Option<(BTreeSet<String>, &str)> {
+    let mut parts = text.splitn(3, "---");
+    let prefix = parts.next()?;
+    let frontmatter = parts.next()?;
+    let body = parts.next()?;
+    if !prefix.trim().is_empty() {
+        return None;
+    }
+
+    let parsed: Value = serde_yaml::from_str(frontmatter).ok()?;
+    let tools = parsed
+        .get("tools")
+        .and_then(|value| value.as_sequence())
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str().map(|tool| tool.trim().to_string()))
+        .collect::<BTreeSet<_>>();
+    Some((tools, body))
+}
+
+fn invalid_handoff_reason_examples(text: &str) -> Vec<String> {
+    let pattern = regex::Regex::new(r#"--reason\s+(?:\"([^\"]+)\"|'([^']+)'|([^\s\\]+))"#)
+        .expect("handoff reason regex must compile");
+    let valid = HandoffReason::value_variants()
+        .iter()
+        .map(|reason| reason.to_string())
+        .collect::<BTreeSet<_>>();
+
+    pattern
+        .captures_iter(text)
+        .filter_map(|captures| {
+            let reason = captures
+                .get(1)
+                .or_else(|| captures.get(2))
+                .or_else(|| captures.get(3))?
+                .as_str()
+                .trim();
+            if reason.contains('<') || reason.contains('>') || reason.contains('{') || reason.contains('}') {
+                return None;
+            }
+            (!valid.contains(reason)).then(|| reason.to_string())
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }

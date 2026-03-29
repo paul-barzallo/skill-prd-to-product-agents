@@ -22,8 +22,6 @@ repo-level release or validation task explicitly requires that reference.
 | `known-limitations.md` | Repository-level limits that should remain explicit. |
 | `maintainer-runbook.md` | Practical operating guide for repository maintenance. |
 | `test-matrix.md` | Matrix of repository validation commands and their coverage. |
-| `audits/README.md` | Entry point for repository-level audits and review history. |
-| `audits/index.md` | Status tracker for finalized repository audits and their follow-up. |
 | `decisions/README.md` | Entry point for repository ADRs and long-lived choices. |
 | `project-memory/README.md` | Planning baseline, roadmap, and issue specs for the proposed `project-memory-cli` initiative. |
 | `project-memory-cli-reference.md` | Command reference for the repository-side `project-memory-cli`. |
@@ -35,7 +33,7 @@ repo-level release or validation task explicitly requires that reference.
 - `docs/` is the source of truth for repository maintenance.
 - `skill-dev-cli` is the project maintenance CLI documented here.
 - Do not use this directory to document unrelated packaged or generated content.
-- Historical or future audits should live under `docs/audits/`.
+- Temporary audit notes stay outside the repo; only stable conclusions belong in the maintained docs under `docs/`.
 
 ## Directory ownership by scope
 

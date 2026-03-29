@@ -20,10 +20,7 @@ pub struct WorkspaceArgs {
 
 /// Remove bootstrap-deployed artifacts per manifest.
 pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
-    let target = args
-        .target
-        .as_deref()
-        .unwrap_or(Path::new("."));
+    let target = args.target.as_deref().unwrap_or(Path::new("."));
     let target = target
         .canonicalize()
         .unwrap_or_else(|_| target.to_path_buf());
@@ -64,11 +61,7 @@ pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
 
         if !is_safe_relative(&entry.path) {
             tracing::warn!(path = %entry.path, "unsafe cleanup path skipped");
-            eprintln!(
-                "  {} unsafe path skipped: {}",
-                "WARN:".yellow(),
-                entry.path
-            );
+            eprintln!("  {} unsafe path skipped: {}", "WARN:".yellow(), entry.path);
             continue;
         }
 
@@ -115,7 +108,9 @@ pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
             if args.dry_run {
                 println!("  {} {extra}", "DELETE:".red());
             } else {
-                fs::remove_file(&full).map_err(|e| anyhow::anyhow!("Failed to delete file {}: {}", full.display(), e))?;
+                fs::remove_file(&full).map_err(|e| {
+                    anyhow::anyhow!("Failed to delete file {}: {}", full.display(), e)
+                })?;
                 deleted += 1;
             }
         }
@@ -136,7 +131,9 @@ pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
             if args.dry_run {
                 println!("  {} {extra_dir}/ (recursive)", "DELETE:".red());
             } else {
-                fs::remove_dir_all(&full).map_err(|e| anyhow::anyhow!("Failed to delete directory {}: {}", full.display(), e))?;
+                fs::remove_dir_all(&full).map_err(|e| {
+                    anyhow::anyhow!("Failed to delete directory {}: {}", full.display(), e)
+                })?;
             }
         }
     }
@@ -148,7 +145,13 @@ pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
             if args.dry_run {
                 println!("  {} .git/ (recursive)", "DELETE:".red());
             } else {
-                fs::remove_dir_all(&git_dir).map_err(|e| anyhow::anyhow!("Failed to delete git directory {}: {}", git_dir.display(), e))?;
+                fs::remove_dir_all(&git_dir).map_err(|e| {
+                    anyhow::anyhow!(
+                        "Failed to delete git directory {}: {}",
+                        git_dir.display(),
+                        e
+                    )
+                })?;
             }
         }
     }
@@ -164,7 +167,13 @@ pub fn workspace(_skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
                     .map(|mut d| d.next().is_none())
                     .unwrap_or(false);
                 if is_empty {
-                    fs::remove_dir(&full).map_err(|e| anyhow::anyhow!("Failed to delete empty directory {}: {}", full.display(), e))?;
+                    fs::remove_dir(&full).map_err(|e| {
+                        anyhow::anyhow!(
+                            "Failed to delete empty directory {}: {}",
+                            full.display(),
+                            e
+                        )
+                    })?;
                 }
             }
         }
@@ -245,8 +254,8 @@ fn is_safe_relative(path: &str) -> bool {
     let p = Path::new(path);
     for component in p.components() {
         match component {
-            std::path::Component::ParentDir 
-            | std::path::Component::RootDir 
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
             | std::path::Component::Prefix(_) => return false,
             _ => {}
         }
@@ -260,7 +269,3 @@ fn is_host_file(path: &str) -> bool {
         "AGENTS.md" | ".instructions.md" | ".gitignore" | ".gitattributes"
     )
 }
-
-
-
-

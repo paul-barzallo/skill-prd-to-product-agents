@@ -41,5 +41,6 @@ dist/
 coverage/
 htmlcov/
 .project-memory/
+docs/audits/
 *.zip
 *.7z

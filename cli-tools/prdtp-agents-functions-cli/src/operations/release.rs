@@ -3,9 +3,9 @@ use clap::Args;
 use colored::Colorize;
 use std::path::Path;
 
+use crate::common::audit;
 use crate::common::enums::{ReleaseStatus, Role};
 use crate::common::yaml_ops;
-use crate::common::audit;
 
 #[derive(Args)]
 pub struct CreateReleaseArgs {
@@ -56,20 +56,28 @@ pub fn create(workspace: &Path, args: CreateReleaseArgs) -> Result<()> {
 
     // Authority check
     if args.agent_role != Role::DevopsReleaseEngineer {
-        bail!("Only devops-release-engineer can create releases (got: {})", args.agent_role);
+        bail!(
+            "Only devops-release-engineer can create releases (got: {})",
+            args.agent_role
+        );
     }
 
     // Date format validation
     let date_re = regex::Regex::new(r"^\d{4}-\d{2}-\d{2}$")?;
     if !date_re.is_match(&args.target_date) {
-        bail!("Invalid date format '{}'. Expected YYYY-MM-DD", args.target_date);
+        bail!(
+            "Invalid date format '{}'. Expected YYYY-MM-DD",
+            args.target_date
+        );
     }
 
     let yaml_path = workspace.join(RELEASES_FILE);
     let header = "# Release tracker - operational state (source of truth)\n\nreleases: []\n";
     let content = yaml_ops::ensure_yaml_file(&yaml_path, header)?;
 
-    let id = args.id.unwrap_or_else(|| yaml_ops::next_release_id(&content));
+    let id = args
+        .id
+        .unwrap_or_else(|| yaml_ops::next_release_id(&content));
 
     if yaml_ops::entry_exists(&content, &id) {
         bail!("Release with ID '{id}' already exists");
@@ -78,7 +86,11 @@ pub fn create(workspace: &Path, args: CreateReleaseArgs) -> Result<()> {
     let today = yaml_ops::today_utc();
     let stories_yaml = match &args.stories {
         Some(s) => {
-            let items: Vec<&str> = s.split(',').map(|i| i.trim()).filter(|i| !i.is_empty()).collect();
+            let items: Vec<&str> = s
+                .split(',')
+                .map(|i| i.trim())
+                .filter(|i| !i.is_empty())
+                .collect();
             if items.is_empty() {
                 String::new()
             } else {
@@ -142,7 +154,10 @@ pub fn update(workspace: &Path, args: UpdateReleaseArgs) -> Result<()> {
     println!("{}", "=== Update Release ===".cyan().bold());
 
     if args.agent_role != Role::DevopsReleaseEngineer {
-        bail!("Only devops-release-engineer can update releases (got: {})", args.agent_role);
+        bail!(
+            "Only devops-release-engineer can update releases (got: {})",
+            args.agent_role
+        );
     }
 
     let yaml_path = workspace.join(RELEASES_FILE);
@@ -181,13 +196,20 @@ pub fn update(workspace: &Path, args: UpdateReleaseArgs) -> Result<()> {
     if let Some(start) = content.find(&old_pattern) {
         let block_start = content[..start].rfind("  - id:").unwrap_or(start);
         let rest = &content[block_start..];
-        let next_entry = rest[1..].find("  - id:").map(|i| block_start + 1 + i).unwrap_or(content.len());
+        let next_entry = rest[1..]
+            .find("  - id:")
+            .map(|i| block_start + 1 + i)
+            .unwrap_or(content.len());
         let block = &content[block_start..next_entry];
 
         let old_status_line = format!("status: {current_status}");
         let new_status_line = format!("status: {}", args.new_status);
         let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!("{}{new_block}{}", &content[..block_start], &content[next_entry..]);
+        let updated = format!(
+            "{}{new_block}{}",
+            &content[..block_start],
+            &content[next_entry..]
+        );
 
         yaml_ops::atomic_write(&yaml_path, &updated)?;
     } else {

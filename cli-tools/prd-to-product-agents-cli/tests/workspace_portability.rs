@@ -96,7 +96,10 @@ fn collect_text_files(root: &Path, current: &Path, files: &mut Vec<(String, Path
 }
 
 fn is_text_contract_file(path: &Path) -> bool {
-    let name = path.file_name().and_then(|value| value.to_str()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
     if name == "AGENTS.md" || name == ".instructions.md" {
         return true;
     }

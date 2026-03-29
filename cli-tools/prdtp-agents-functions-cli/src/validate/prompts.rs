@@ -19,7 +19,9 @@ pub fn run(workspace: &Path) -> Result<()> {
     if !prompts_dir.exists() {
         tracing::error!(path = ".github/prompts", "prompt directory not found");
         eprintln!("{} .github/prompts/ not found", "ERROR:".red().bold());
-        return Err(validation_failure("prompt directory not found: .github/prompts"));
+        return Err(validation_failure(
+            "prompt directory not found: .github/prompts",
+        ));
     }
 
     let mut errors = 0u32;
@@ -77,8 +79,8 @@ pub fn run(workspace: &Path) -> Result<()> {
         let refs_yaml = content.contains("handoffs.yaml")
             || content.contains("findings.yaml")
             || content.contains("releases.yaml");
-        let refs_state_ops = content.contains("state-ops")
-            || content.contains("prdtp-agents-functions-cli state");
+        let refs_state_ops =
+            content.contains("state-ops") || content.contains("prdtp-agents-functions-cli state");
         if refs_yaml && !refs_state_ops {
             tracing::warn!(path = %rel.display(), "prompt references yaml state files without state-ops guidance");
             eprintln!(
@@ -98,5 +100,11 @@ pub fn run(workspace: &Path) -> Result<()> {
     println!("\n{}", "────────────────────────────".dimmed());
     println!("Scanned {scanned} prompt file(s)");
     println!("Fully valid {fully_valid} prompt file(s)");
-    finalize_validation("prompts", errors, warnings, Some(scanned), "All prompts valid")
+    finalize_validation(
+        "prompts",
+        errors,
+        warnings,
+        Some(scanned),
+        "All prompts valid",
+    )
 }

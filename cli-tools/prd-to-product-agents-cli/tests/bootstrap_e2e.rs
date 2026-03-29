@@ -1,5 +1,5 @@
-use std::fs;
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -92,11 +92,19 @@ fn assert_generated_workspace_has_lf_text_files(target: &Path) {
 }
 
 fn force_crlf(path: &Path) {
-    let content = fs::read_to_string(path)
-        .unwrap_or_else(|error| panic!("failed to read '{}' for CRLF rewrite: {error}", path.display()));
+    let content = fs::read_to_string(path).unwrap_or_else(|error| {
+        panic!(
+            "failed to read '{}' for CRLF rewrite: {error}",
+            path.display()
+        )
+    });
     let crlf = content.replace("\r\n", "\n").replace('\n', "\r\n");
-    fs::write(path, crlf)
-        .unwrap_or_else(|error| panic!("failed to write CRLF content to '{}': {error}", path.display()));
+    fs::write(path, crlf).unwrap_or_else(|error| {
+        panic!(
+            "failed to write CRLF content to '{}': {error}",
+            path.display()
+        )
+    });
 }
 
 fn count_overlay_files(target: &Path) -> usize {
@@ -172,8 +180,8 @@ fn bootstrap_creates_valid_workspace() {
         missing_agents.join("\n  ")
     );
 
-    let vision = fs::read_to_string(target.join("docs/project/vision.md"))
-        .expect("vision.md should exist");
+    let vision =
+        fs::read_to_string(target.join("docs/project/vision.md")).expect("vision.md should exist");
     assert!(!vision.contains("{{PROJECT_NAME}}"));
     assert!(!vision.contains("REPLACE_ME_GITHUB_OWNER"));
 
@@ -181,8 +189,8 @@ fn bootstrap_creates_valid_workspace() {
     assert!(state_dir.join("bootstrap-manifest.txt").exists());
     assert!(state_dir.join("bootstrap-report.md").exists());
 
-    let manifest_content =
-        fs::read_to_string(state_dir.join("bootstrap-manifest.txt")).expect("manifest should be readable");
+    let manifest_content = fs::read_to_string(state_dir.join("bootstrap-manifest.txt"))
+        .expect("manifest should be readable");
     let data_lines: Vec<&str> = manifest_content
         .lines()
         .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
@@ -190,7 +198,11 @@ fn bootstrap_creates_valid_workspace() {
     assert!(!data_lines.is_empty(), "Manifest has no data lines");
     for line in &data_lines {
         let cols: Vec<&str> = line.split('\t').collect();
-        assert_eq!(cols.len(), 4, "Manifest line has wrong column count: {line}");
+        assert_eq!(
+            cols.len(),
+            4,
+            "Manifest line has wrong column count: {line}"
+        );
     }
 
     assert!(
@@ -200,8 +212,8 @@ fn bootstrap_creates_valid_workspace() {
 
     assert_generated_workspace_has_lf_text_files(target);
 
-    let report =
-        fs::read_to_string(state_dir.join("bootstrap-report.md")).expect("report should be readable");
+    let report = fs::read_to_string(state_dir.join("bootstrap-report.md"))
+        .expect("report should be readable");
     assert!(report.contains("Status: FULL") || report.contains("Status: DEGRADED"));
     assert!(report.contains("## Binary Bundle Integrity"));
     assert!(report.contains("Workspace State: bootstrapped"));
@@ -420,7 +432,10 @@ fn bootstrap_fails_when_binary_bundle_checksum_is_invalid() {
         .output()
         .expect("failed to execute CLI");
 
-    assert!(!output.status.success(), "bootstrap unexpectedly succeeded with invalid checksum manifest");
+    assert!(
+        !output.status.success(),
+        "bootstrap unexpectedly succeeded with invalid checksum manifest"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("skill bootstrap bundle integrity failed")

@@ -1,0 +1,113 @@
+name: Enterprise Readiness Sandbox
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sandbox-readiness:
+    runs-on: ubuntu-latest
+    env:
+      SANDBOX_REPO: ${{ vars.PRDTP_SANDBOX_REPO }}
+      RELEASE_GATE_LOGIN: ${{ vars.PRDTP_SANDBOX_RELEASE_GATE_LOGIN }}
+      REVIEWER_PRODUCT: ${{ vars.PRDTP_SANDBOX_REVIEWER_PRODUCT }}
+      REVIEWER_ARCHITECTURE: ${{ vars.PRDTP_SANDBOX_REVIEWER_ARCHITECTURE }}
+      REVIEWER_TECH_LEAD: ${{ vars.PRDTP_SANDBOX_REVIEWER_TECH_LEAD }}
+      REVIEWER_QA: ${{ vars.PRDTP_SANDBOX_REVIEWER_QA }}
+      REVIEWER_DEVOPS: ${{ vars.PRDTP_SANDBOX_REVIEWER_DEVOPS }}
+      REVIEWER_INFRA: ${{ vars.PRDTP_SANDBOX_REVIEWER_INFRA }}
+      GH_TOKEN: ${{ secrets.PRDTP_SANDBOX_GH_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate sandbox configuration
+        run: |
+          set -euo pipefail
+          for value in \
+            "$SANDBOX_REPO" \
+            "$RELEASE_GATE_LOGIN" \
+            "$REVIEWER_PRODUCT" \
+            "$REVIEWER_ARCHITECTURE" \
+            "$REVIEWER_TECH_LEAD" \
+            "$REVIEWER_QA" \
+            "$REVIEWER_DEVOPS" \
+            "$REVIEWER_INFRA" \
+            "$GH_TOKEN"; do
+            if [[ -z "$value" ]]; then
+              echo "Missing sandbox variables or secrets. Configure the PRDTP_SANDBOX_* variables and PRDTP_SANDBOX_GH_TOKEN secret before running this workflow." >&2
+              exit 1
+            fi
+          done
+
+      - name: Bootstrap temporary workspace
+        id: bootstrap
+        run: |
+          set -euo pipefail
+          workspace="$(mktemp -d)"
+          echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
+          cargo run --quiet --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- \
+            --skill-root . \
+            bootstrap workspace \
+            --target "$workspace"
+
+      - name: Configure governance skeleton
+        run: |
+          set -euo pipefail
+          owner="${SANDBOX_REPO%%/*}"
+          repo="${SANDBOX_REPO##*/}"
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            governance configure \
+            --owner "$owner" \
+            --repo "$repo" \
+            --release-gate-login "$RELEASE_GATE_LOGIN" \
+            --reviewer-product "$REVIEWER_PRODUCT" \
+            --reviewer-architecture "$REVIEWER_ARCHITECTURE" \
+            --reviewer-tech-lead "$REVIEWER_TECH_LEAD" \
+            --reviewer-qa "$REVIEWER_QA" \
+            --reviewer-devops "$REVIEWER_DEVOPS" \
+            --reviewer-infra "$REVIEWER_INFRA"
+
+      - name: Promote temp workspace to production-ready contract
+        run: |
+          python - <<'PY'
+          import pathlib
+          import re
+
+          workspace = pathlib.Path(r"${{ steps.bootstrap.outputs.workspace }}")
+          governance = workspace / ".github" / "github-governance.yaml"
+          raw = governance.read_text(encoding="utf-8")
+          raw = raw.replace("status: configured", "status: production-ready")
+          raw = re.sub(
+              r"(branch_protection:\n)(\s+enabled:\s+)false",
+              r"\1\2true",
+              raw,
+              count=1,
+          )
+          raw = re.sub(
+              r"(project:\n)(\s+enabled:\s+)true",
+              r"\1\2false",
+              raw,
+              count=1,
+          )
+          governance.write_text(raw, encoding="utf-8")
+          PY
+
+      - name: Refresh capabilities and validate sandbox gate
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            capabilities detect
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            validate governance
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            validate readiness

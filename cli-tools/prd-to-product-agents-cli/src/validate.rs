@@ -1,9 +1,11 @@
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use clap::Args;
 use colored::Colorize;
 use prdtp_agents_shared::workspace_paths;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use uuid::Uuid;
 use walkdir::WalkDir;
 
 use crate::util;
@@ -17,6 +19,18 @@ pub struct GeneratedArgs {
     #[arg(long)]
     pub record_checksums: bool,
 }
+
+const AGENT_LINE_BUDGET: usize = 500;
+const FRESHNESS_PATHS: &[&str] = &[
+    "docs/project/vision.md",
+    "docs/project/scope.md",
+    "docs/project/backlog.yaml",
+    "docs/project/stakeholders.md",
+    "docs/project/glossary.md",
+    "docs/project/architecture/overview.md",
+    "docs/project/refined-stories.yaml",
+    "docs/project/decisions",
+];
 
 /// Run all skill-side validations in sequence.
 pub fn all(skill_root: &Path) -> Result<()> {
@@ -77,6 +91,15 @@ pub fn all(skill_root: &Path) -> Result<()> {
         }
     }
 
+    print!("  Runtime smoke... ");
+    match runtime_smoke(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
     print!("  Copilot runtime contract... ");
     match copilot_runtime_contract(skill_root) {
         Ok(()) => println!("{}", "PASS".green()),
@@ -95,6 +118,329 @@ pub fn all(skill_root: &Path) -> Result<()> {
 
 fn template_root(skill_root: &Path) -> std::path::PathBuf {
     skill_root.join("templates").join("workspace")
+}
+
+fn runtime_smoke(skill_root: &Path) -> Result<()> {
+    let repo_root = repo_root_for_runtime_smoke(skill_root)?;
+    let runtime_manifest = repo_root
+        .join("cli-tools")
+        .join("prdtp-agents-functions-cli")
+        .join("Cargo.toml");
+    if !runtime_manifest.is_file() {
+        bail!(
+            "runtime smoke requires repository sources at {}",
+            runtime_manifest.display()
+        );
+    }
+
+    let workspace =
+        std::env::temp_dir().join(format!("prdtp-runtime-smoke-{}", Uuid::new_v4().simple()));
+    fs::create_dir_all(&workspace)?;
+    copy_dir_recursive(&template_root(skill_root), &workspace)?;
+
+    let smoke_result = (|| -> Result<()> {
+        run_command(
+            "git",
+            &["init", "-b", "main"],
+            Some(&workspace),
+            "initializing runtime smoke repository",
+        )?;
+        run_command(
+            "git",
+            &["config", "user.name", "Runtime Smoke"],
+            Some(&workspace),
+            "configuring git user.name for runtime smoke",
+        )?;
+        run_command(
+            "git",
+            &["config", "user.email", "runtime-smoke@example.com"],
+            Some(&workspace),
+            "configuring git user.email for runtime smoke",
+        )?;
+        run_command(
+            "git",
+            &["add", "."],
+            Some(&workspace),
+            "staging template files for runtime smoke",
+        )?;
+        run_command(
+            "git",
+            &["commit", "-m", "chore: GH-1 seed runtime smoke workspace"],
+            Some(&workspace),
+            "creating initial runtime smoke commit",
+        )?;
+
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["capabilities", "detect"],
+        )?;
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &[
+                "capabilities",
+                "authorize",
+                "--capability",
+                "git",
+                "--enabled",
+                "true",
+                "--source",
+                "runtime-smoke",
+                "--mode",
+                "full",
+            ],
+        )?;
+
+        let caps_path = workspace
+            .join(".github")
+            .join("workspace-capabilities.yaml");
+        let caps_raw = fs::read_to_string(&caps_path)
+            .with_context(|| format!("reading {}", caps_path.display()))?;
+        let caps_yaml: serde_yaml::Value = serde_yaml::from_str(&caps_raw)
+            .with_context(|| format!("parsing {}", caps_path.display()))?;
+        if caps_yaml["capabilities"]["sqlite"]["detected"]["installed"]
+            .as_bool()
+            .is_none()
+        {
+            bail!("runtime smoke generated an unreadable capability snapshot");
+        }
+
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &[
+                "governance",
+                "configure",
+                "--owner",
+                "acme-org",
+                "--repo",
+                "copilot-workspace",
+                "--release-gate-login",
+                "acme-devops",
+                "--reviewer-product",
+                "@acme-product",
+                "--reviewer-architecture",
+                "@acme-arch",
+                "--reviewer-tech-lead",
+                "@acme-techlead",
+                "--reviewer-qa",
+                "@acme-qa",
+                "--reviewer-devops",
+                "@acme-devops",
+                "--reviewer-infra",
+                "@acme-infra",
+            ],
+        )?;
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["validate", "governance"],
+        )?;
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["validate", "ci", "prompt-tool-contracts"],
+        )?;
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["validate", "ci", "copilot-runtime-contract"],
+        )?;
+        run_runtime_cli(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["agents", "assemble", "--verify"],
+        )?;
+
+        let vision_path = workspace.join("docs").join("project").join("vision.md");
+        let mut vision = fs::read_to_string(&vision_path)
+            .with_context(|| format!("reading {}", vision_path.display()))?;
+        vision.push_str("\nRuntime smoke dirty change.\n");
+        util::write_utf8_lf(&vision_path, &vision)?;
+
+        let branch_output = run_runtime_cli_capture(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &[
+                "git",
+                "checkout-task-branch",
+                "--role",
+                "backend-developer",
+                "--issue-id",
+                "GH-42",
+                "--slug",
+                "runtime-smoke",
+                "--base",
+                "main",
+            ],
+        )?;
+        if branch_output.status.success() {
+            bail!("runtime smoke expected checkout-task-branch to fail on a dirty worktree");
+        }
+        let branch_combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&branch_output.stdout),
+            String::from_utf8_lossy(&branch_output.stderr)
+        );
+        if !branch_combined.contains("Refusing to switch branches with local changes present") {
+            bail!(
+                "runtime smoke saw an unexpected branch failure: {}",
+                branch_combined.trim()
+            );
+        }
+
+        let readiness_output = run_runtime_cli_capture(
+            &runtime_manifest,
+            &repo_root,
+            &workspace,
+            &["validate", "readiness"],
+        )?;
+        if readiness_output.status.success() {
+            bail!("runtime smoke expected validate readiness to fail until production-ready");
+        }
+        let readiness_combined = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&readiness_output.stdout),
+            String::from_utf8_lossy(&readiness_output.stderr)
+        );
+        if !readiness_combined.contains("production-ready") {
+            bail!(
+                "runtime smoke readiness failure did not explain the production-ready requirement: {}",
+                readiness_combined.trim()
+            );
+        }
+
+        Ok(())
+    })();
+
+    let cleanup_result = fs::remove_dir_all(&workspace);
+    if let Err(error) = cleanup_result {
+        tracing::warn!(path = %workspace.display(), error = %error, "failed to clean runtime smoke workspace");
+    }
+
+    smoke_result
+}
+
+fn repo_root_for_runtime_smoke(skill_root: &Path) -> Result<PathBuf> {
+    for ancestor in skill_root.ancestors() {
+        if ancestor
+            .join("cli-tools")
+            .join("prdtp-agents-functions-cli")
+            .join("Cargo.toml")
+            .is_file()
+        {
+            return Ok(ancestor.to_path_buf());
+        }
+    }
+    bail!(
+        "could not locate repository root from {}; runtime smoke is repository-only",
+        skill_root.display()
+    )
+}
+
+fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
+    for entry in WalkDir::new(source)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+    {
+        let relative = entry.path().strip_prefix(source)?;
+        let target = destination.join(relative);
+        if entry.file_type().is_dir() {
+            fs::create_dir_all(&target)?;
+        } else {
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)?;
+            }
+            fs::copy(entry.path(), &target).with_context(|| {
+                format!("copying {} -> {}", entry.path().display(), target.display())
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn run_command(name: &str, args: &[&str], cwd: Option<&Path>, context: &str) -> Result<()> {
+    let mut command = Command::new(name);
+    command.args(args);
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    let output = command.output().with_context(|| context.to_string())?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let combined = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("{stdout}\n{stderr}")
+    };
+    bail!("{context}: {}", combined.trim());
+}
+
+fn run_runtime_cli(
+    manifest_path: &Path,
+    repo_root: &Path,
+    workspace: &Path,
+    args: &[&str],
+) -> Result<()> {
+    let output = run_runtime_cli_capture(manifest_path, repo_root, workspace, args)?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let combined = if stderr.is_empty() {
+        stdout
+    } else if stdout.is_empty() {
+        stderr
+    } else {
+        format!("{stdout}\n{stderr}")
+    };
+    bail!(
+        "runtime smoke command failed (`{}`): {}",
+        args.join(" "),
+        combined.trim()
+    );
+}
+
+fn run_runtime_cli_capture(
+    manifest_path: &Path,
+    repo_root: &Path,
+    workspace: &Path,
+    args: &[&str],
+) -> Result<Output> {
+    let mut command = Command::new("cargo");
+    command
+        .current_dir(repo_root)
+        .args([
+            "run",
+            "--quiet",
+            "--manifest-path",
+            &manifest_path.to_string_lossy(),
+            "--",
+            "--workspace",
+            &workspace.to_string_lossy(),
+        ])
+        .args(args);
+    let output = command
+        .output()
+        .with_context(|| format!("running runtime smoke command `{}`", args.join(" ")))?;
+    Ok(output)
 }
 
 fn template_encoding(skill_root: &Path) -> Result<()> {
@@ -123,7 +469,10 @@ fn template_encoding(skill_root: &Path) -> Result<()> {
     if errors.is_empty() {
         Ok(())
     } else {
-        bail!("Template encoding validation failed:\n  {}", errors.join("\n  "))
+        bail!(
+            "Template encoding validation failed:\n  {}",
+            errors.join("\n  ")
+        )
     }
 }
 
@@ -136,13 +485,13 @@ fn template_agent_consistency(skill_root: &Path) -> Result<()> {
         .replace("\r\n", "\n")
         .trim_end()
         .to_string();
-    let shared_context = fs::read_to_string(context_dir.join("shared-context.md"))?
-        .replace("\r\n", "\n");
+    let shared_context =
+        fs::read_to_string(context_dir.join("shared-context.md"))?.replace("\r\n", "\n");
 
     let mut mismatches = Vec::new();
     for name in workspace_paths::AGENT_NAMES {
-        let identity = fs::read_to_string(identity_dir.join(format!("{name}.md")))?
-            .replace("\r\n", "\n");
+        let identity =
+            fs::read_to_string(identity_dir.join(format!("{name}.md")))?.replace("\r\n", "\n");
         let context = fs::read_to_string(context_dir.join(format!("{name}.md")))
             .unwrap_or_default()
             .replace("\r\n", "\n");
@@ -244,7 +593,10 @@ fn verify_checksum_manifest(bundle_dir: &Path, manifest_name: &str, label: &str)
     }
 
     for file_name in &actual_files {
-        if !expected.iter().any(|(_, expected_name)| expected_name == file_name) {
+        if !expected
+            .iter()
+            .any(|(_, expected_name)| expected_name == file_name)
+        {
             errors.push(format!(
                 "{} contains untracked bundled file {file_name}",
                 bundle_dir.display()
@@ -289,6 +641,18 @@ fn copilot_runtime_contract(skill_root: &Path) -> Result<()> {
             "run any shell command",
             "execute must not be documented as arbitrary shell access",
         ),
+        (
+            "Execution layer: GitHub Issues, GitHub Project, and Pull Requests",
+            "board snapshots must not claim GitHub Project as part of the current execution layer",
+        ),
+        (
+            "GitHub Issues, GitHub Projects, and Pull Requests are the execution layer",
+            "docs must not describe GitHub Project as part of the current execution layer",
+        ),
+        (
+            "GitHub Project board state",
+            "GitHub Project must not be treated as current operational state",
+        ),
     ];
 
     let mut failures = Vec::new();
@@ -319,23 +683,27 @@ fn copilot_runtime_contract(skill_root: &Path) -> Result<()> {
     if failures.is_empty() {
         Ok(())
     } else {
-        bail!("copilot runtime contract failed:\n  {}", failures.join("\n  "))
+        bail!(
+            "copilot runtime contract failed:\n  {}",
+            failures.join("\n  ")
+        )
     }
 }
 
 /// Validate a generated workspace structure.
 pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
-    let workspace = args
-        .workspace
-        .as_deref()
-        .unwrap_or(Path::new("."));
+    let workspace = args.workspace.as_deref().unwrap_or(Path::new("."));
     let workspace = workspace
         .canonicalize()
         .unwrap_or_else(|_| workspace.to_path_buf());
 
     println!(
         "{}",
-        format!("--- Validating generated workspace: {} ---", workspace.display()).cyan()
+        format!(
+            "--- Validating generated workspace: {} ---",
+            workspace.display()
+        )
+        .cyan()
     );
 
     let mut errors: Vec<String> = Vec::new();
@@ -359,16 +727,16 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
     for agent in agents {
         let agent_md = agents_dir.join(format!("{agent}.agent.md"));
         if !agent_md.exists() {
-            errors.push(format!("missing agent file: .github/agents/{agent}.agent.md"));
+            errors.push(format!(
+                "missing agent file: .github/agents/{agent}.agent.md"
+            ));
             continue;
         }
 
         // Check for model frontmatter
         let content = fs::read_to_string(&agent_md).unwrap_or_default();
         if !content.contains("model:") {
-            errors.push(format!(
-                "agent {agent}.agent.md missing model: frontmatter"
-            ));
+            errors.push(format!("agent {agent}.agent.md missing model: frontmatter"));
         }
 
         // Check for CONTEXT ZONE divider
@@ -409,8 +777,7 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
             .into_iter()
             .filter_map(|e| e.ok())
             .filter(|e| {
-                e.file_type().is_file()
-                    && e.path().extension().map_or(false, |ext| ext == "md")
+                e.file_type().is_file() && e.path().extension().map_or(false, |ext| ext == "md")
             })
         {
             let content = fs::read_to_string(entry.path()).unwrap_or_default();
@@ -434,7 +801,8 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
                 warnings.push(format!("{yf}: contains tab characters (YAML uses spaces)"));
             }
             // Check for unresolved placeholders
-            if content.contains("REPLACE_ME") || content.contains("TODO") || content.contains("TBD") {
+            if content.contains("REPLACE_ME") || content.contains("TODO") || content.contains("TBD")
+            {
                 warnings.push(format!("{yf}: contains unresolved placeholders"));
             }
         }
@@ -472,6 +840,13 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
                 }
             }
         }
+
+        let line_count = content.lines().count();
+        if line_count > AGENT_LINE_BUDGET {
+            warnings.push(format!(
+                "SIZE-BUDGET: .github/agents/{agent}.agent.md is {line_count} lines (budget {AGENT_LINE_BUDGET})"
+            ));
+        }
     }
 
     // ── Step 7: Governance ───────────────────────────────────
@@ -481,12 +856,7 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
         let gov_content = fs::read_to_string(&gov_path).unwrap_or_default();
         let readiness = util::yaml_scalar_from_str(&gov_content, "readiness.status");
         if let Some(status) = &readiness {
-            let valid = [
-                "template",
-                "bootstrapped",
-                "configured",
-                "production-ready",
-            ];
+            let valid = ["template", "bootstrapped", "configured", "production-ready"];
             if !valid.contains(&status.as_str()) {
                 errors.push(format!(
                     "github-governance.yaml: invalid readiness status '{status}'"
@@ -496,18 +866,26 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
     }
 
     // ── Record checksums if requested ────────────────────────
-    if args.record_checksums {
-        let checksum_path = workspace.join(".state").join("content-checksums.json");
-        let mut checksums = serde_json::Map::new();
-        for file in required_files {
-            let fp = workspace.join(file);
-            if fp.exists() {
-                if let Ok(hash) = util::file_hash(&fp) {
-                    checksums.insert(file.to_string(), serde_json::Value::String(hash));
-                }
-            }
+    println!("  Step 8: Context freshness...");
+    let current_checksums = collect_context_checksums(&workspace)?;
+    let (baseline_source, baseline_checksums) = read_context_checksum_baseline(&workspace)?;
+    if let Some(source) = baseline_source.as_ref() {
+        if source.ends_with("content-checksums.json") {
+            warnings.push(
+                "freshness baseline loaded from legacy .state/content-checksums.json; rerun with --record-checksums to migrate to .state/context-checksums.json".to_string(),
+            );
         }
-        let json = serde_json::to_string_pretty(&checksums)?;
+
+        for changed in diff_context_checksums(&baseline_checksums, &current_checksums) {
+            warnings.push(format!(
+                "context freshness: canonical file changed since baseline: {changed}"
+            ));
+        }
+    }
+
+    if args.record_checksums {
+        let checksum_path = workspace.join(".state").join("context-checksums.json");
+        let json = serde_json::to_string_pretty(&current_checksums)?;
         util::write_utf8_lf(&checksum_path, &json)?;
     }
 
@@ -517,10 +895,7 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
     let mut report = vec![
         "# Workspace Validation".to_string(),
         String::new(),
-        format!(
-            "- Result: {}",
-            if pass { "PASS" } else { "FAIL" }
-        ),
+        format!("- Result: {}", if pass { "PASS" } else { "FAIL" }),
         format!("- Errors: {}", errors.len()),
         format!("- Warnings: {}", warnings.len()),
         format!("- Timestamp: {}", util::now_utc()),
@@ -570,6 +945,87 @@ pub fn generated(_skill_root: &Path, args: GeneratedArgs) -> Result<()> {
     Ok(())
 }
 
+fn collect_context_checksums(
+    workspace: &Path,
+) -> Result<serde_json::Map<String, serde_json::Value>> {
+    let mut entries: Vec<(String, String)> = Vec::new();
+
+    for relative in FRESHNESS_PATHS {
+        let full_path = workspace.join(relative);
+        if !full_path.exists() {
+            continue;
+        }
+
+        if full_path.is_dir() {
+            let mut dir_entries = WalkDir::new(&full_path)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter(|entry| entry.file_type().is_file())
+                .map(|entry| entry.into_path())
+                .collect::<Vec<_>>();
+            dir_entries.sort();
+
+            for path in dir_entries {
+                let rel = util::to_relative_posix(&path, workspace);
+                entries.push((rel, util::file_hash(&path)?));
+            }
+        } else {
+            let rel = util::to_relative_posix(&full_path, workspace);
+            entries.push((rel, util::file_hash(&full_path)?));
+        }
+    }
+
+    entries.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let mut checksums = serde_json::Map::new();
+    for (path, hash) in entries {
+        checksums.insert(path, serde_json::Value::String(hash));
+    }
+    Ok(checksums)
+}
+
+fn read_context_checksum_baseline(
+    workspace: &Path,
+) -> Result<(Option<String>, serde_json::Map<String, serde_json::Value>)> {
+    let preferred = workspace.join(".state").join("context-checksums.json");
+    if preferred.is_file() {
+        let content = fs::read_to_string(&preferred)
+            .with_context(|| format!("reading {}", preferred.display()))?;
+        let parsed = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&content)
+            .with_context(|| format!("parsing {}", preferred.display()))?;
+        return Ok((Some(preferred.to_string_lossy().to_string()), parsed));
+    }
+
+    let legacy = workspace.join(".state").join("content-checksums.json");
+    if legacy.is_file() {
+        let content =
+            fs::read_to_string(&legacy).with_context(|| format!("reading {}", legacy.display()))?;
+        let parsed = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&content)
+            .with_context(|| format!("parsing {}", legacy.display()))?;
+        return Ok((Some(legacy.to_string_lossy().to_string()), parsed));
+    }
+
+    Ok((None, serde_json::Map::new()))
+}
+
+fn diff_context_checksums(
+    baseline: &serde_json::Map<String, serde_json::Value>,
+    current: &serde_json::Map<String, serde_json::Value>,
+) -> Vec<String> {
+    let mut changed = Vec::new();
+
+    for (path, current_hash) in current {
+        let baseline_hash = baseline.get(path).and_then(|value| value.as_str());
+        let current_hash = current_hash.as_str();
+        if baseline_hash != current_hash {
+            changed.push(path.clone());
+        }
+    }
+
+    changed.sort();
+    changed
+}
+
 /// Check that the packaged skill contains no runtime artifacts.
 pub fn package_hygiene(skill_root: &Path) -> Result<()> {
     let mut errors: Vec<String> = Vec::new();
@@ -588,10 +1044,7 @@ pub fn package_hygiene(skill_root: &Path) -> Result<()> {
                 continue;
             }
             // Allow README.md and memory-schema.sql in template .state
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
             if name == "README.md" || name == "memory-schema.sql" {
                 continue;
             }
@@ -611,12 +1064,7 @@ pub fn package_hygiene(skill_root: &Path) -> Result<()> {
         .filter(|e| e.file_type().is_file())
     {
         let name = entry.file_name().to_string_lossy();
-        if name.ends_with(".new")
-            && !entry
-                .path()
-                .to_string_lossy()
-                .contains("templates")
-        {
+        if name.ends_with(".new") && !entry.path().to_string_lossy().contains("templates") {
             let rel = util::to_relative_posix(entry.path(), skill_root);
             errors.push(format!("pending merge marker: {rel}"));
         }
@@ -635,10 +1083,7 @@ pub fn package_hygiene(skill_root: &Path) -> Result<()> {
         .filter(|e| e.file_type().is_file())
     {
         if entry.file_name() == "project_memory.db"
-            && !entry
-                .path()
-                .to_string_lossy()
-                .contains("templates")
+            && !entry.path().to_string_lossy().contains("templates")
         {
             let rel = util::to_relative_posix(entry.path(), skill_root);
             errors.push(format!("SQLite DB in skill package: {rel}"));
@@ -654,7 +1099,9 @@ pub fn package_hygiene(skill_root: &Path) -> Result<()> {
 
 /// Validate platform compatibility claims in documentation.
 pub fn platform_claims(skill_root: &Path) -> Result<()> {
-    let platform_doc = skill_root.join("references").join("skill-platform-compatibility.md");
+    let platform_doc = skill_root
+        .join("references")
+        .join("skill-platform-compatibility.md");
     if !platform_doc.exists() {
         // Not mandatory; skip if missing
         println!(
@@ -679,9 +1126,8 @@ pub fn platform_claims(skill_root: &Path) -> Result<()> {
 
     // Reject unsupported "Full" claims
     if content.contains("| Full |") {
-        errors.push(
-            "platform-compatibility.md contains unsupported 'Full' status claim".to_string(),
-        );
+        errors
+            .push("platform-compatibility.md contains unsupported 'Full' status claim".to_string());
     }
 
     if !errors.is_empty() {

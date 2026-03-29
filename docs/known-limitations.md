@@ -11,7 +11,8 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 
 ## Packaging limitations
 
-- Published binary integrity is checked through checksum manifests, but that is not the same as full enterprise provenance or attestation.
+- Published binary integrity is checked through checksum manifests, a reviewed refresh PR, dependency review, and CI build provenance attestation, but that is still not the same as a fully closed enterprise supply-chain story.
+- The current release path still lacks a first-class SBOM and downstream verification of attestations/checksums as a blocking consumer-side gate.
 - Local Rust build outputs are still easy to confuse with shipped artifacts if hygiene slips.
 - Release packaging discipline depends on maintainers respecting the documented boundaries around `bin/` and build outputs.
 
@@ -19,13 +20,14 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 
 - Repository docs can still drift if code changes are made without updating the corresponding maintainer references.
 - Repository docs do not replace code and validator review when contract-sensitive behavior changes.
-- Audit knowledge is only beginning to be structured; historical context is not yet fully consolidated under `docs/audits/`.
+- Temporary audit knowledge now stays outside the repo, so durable follow-up still depends on maintainers summarizing the real conclusions back into stable docs.
 - The repository, skill package, and deployed workspace still share source control, so boundary drift can reappear if scope labels are not kept explicit in docs and tests.
 
 ## Process limitations
 
-- The repository still lacks a full maintainer runbook.
-- The repository still lacks issue templates for turning findings into consistent tracked work.
+- Maintainer support and escalation flow is still minimal even though the runbook and issue templates now exist.
+- Binary refresh now routes through a reviewed PR, but reviewers still need to inspect tracked binaries and checksums before merge.
+- GitHub Issue mutation is now wrapped by the runtime CLI, but the broader GitHub write surface is still intentionally narrower than the full `gh` CLI and must stay that way unless new wrappers, tests, and docs land together.
 - Decision history is only now being formalized; some older choices still live mainly in code and scattered docs.
 
 ## Scope limitations

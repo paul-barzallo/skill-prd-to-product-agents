@@ -143,17 +143,17 @@ Every sub-agent delegation must end with a structured report returned to the del
 
 - **Canonical truth**: `docs/project/*` (Markdown/YAML files).
 - **Context system**: read `docs/runtime/context-system-runtime.md` for the files-first retrieval order, derivative surfaces, and recovery rules.
-- **Execution layer**: GitHub Issues, GitHub Projects, branches, commits and PRs.
+- **Execution layer**: GitHub Issues, branches, commits and PRs. `docs/project/board.md` is a derived issues/PR snapshot, not a source of truth.
 - **Historical context**: Git (commits, PRs, issues, tags) for traceability.
-- **Operational capability contract**: `.github/workspace-capabilities.yaml` is the persisted policy snapshot consulted by Git, GitHub automation, SQLite audit, reporting, and markdownlint commands.
-- **GitHub governance contract**: `.github/github-governance.yaml` defines readiness, reviewers, labels, Project metadata, and release-gate expectations.
+- **Operational capability contract**: `.github/workspace-capabilities.yaml` is the persisted detection + authorization snapshot consulted by Git, GitHub automation, SQLite audit, reporting, and markdownlint commands.
+- **GitHub governance contract**: `.github/github-governance.yaml` defines readiness, reviewers, labels, reserved future project metadata, and release-gate expectations.
 - A passive audit ledger exists at `.state/project_memory.db` but is managed automatically by infrastructure. Agents do not interact with it.
 - Governance immutability is driven only by `.github/immutable-files.txt`. Seeded project docs under `docs/project/` remain editable after bootstrap by their owning roles.
 - Operational YAML transitions are driven through `prdtp-agents-functions-cli state` subcommands. Direct edits to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` are out of contract even when the file is canonical state.
 - If Git capability is disabled, the workspace runs in local-only mode and change evidence is written to `.state/local-history/` instead of commits or PRs.
 - `prdtp-agents-functions-cli git finalize` is the supported closure path for completed work in both Git and local-only modes.
 - Agents must not run `git commit` directly for task work. Use `prdtp-agents-functions-cli git finalize` so staged files, commit metadata, validation, and work-unit evidence are enforced together.
-- In Git-enabled workspaces, `prdtp-agents-functions-cli git finalize` executes the shared pre-commit validator before commit creation and may then use `git commit --no-verify` so the same governance checks hold even if the host cannot execute shell hooks reliably.
+- In Git-enabled workspaces, `prdtp-agents-functions-cli git finalize` executes the shared pre-commit validator and governance checks before commit creation. If validation fails, no commit is created.
 - The installed `pre-commit` hook blocks normal direct `git commit` attempts and tells the caller to use `prdtp-agents-functions-cli git finalize` instead.
 - If SQLite capability is disabled, audit falls back to spool-only mode under `.state/audit-spool/` and `.state/degraded-ops/`.
 - `docs/project/management-dashboard.md` is the executive summary view generated from canonical docs plus the execution layer.
@@ -175,11 +175,12 @@ Every sub-agent delegation must end with a structured report returned to the del
 | devops-release-engineer | `ops/` | release, CI, deployment and environment changes |
 | pm-orchestrator | `product/` | coordination snapshots, planning and flow updates |
 
-- Daily work starts from a GitHub Issue and uses `develop` as the base branch.
+- In Git-enabled workspaces, daily work starts from a GitHub Issue and uses `develop` as the base branch.
 - Task branches follow `<role>/<issue-id>-slug`.
 - PRs must use `.github/PULL_REQUEST_TEMPLATE.md` and include one `role:*`, one `kind:*`, and one `priority:*` label.
 - Authors must review PR comments and commit comments before asking for merge.
 - `devops-release-engineer` is the final approval gate before merge.
+- If Git capability is disabled, task-branch creation and PR flow are out of contract; work closes through `prdtp-agents-functions-cli git finalize`, which records local-only evidence under `.state/local-history/`.
 
 ### Model routing
 
@@ -203,7 +204,7 @@ Model selection is part of the agent contract in VS Code / IDE environments. The
 
 ### Execute Scope
 
-All agents declare `execute` as a controlled platform permission. The canonical runtime binary lives under `.agents/bin/prd-to-product-agents/`; CI may install `prdtp-agents-functions-cli` into `PATH`, but the workspace-local copy is the contract.
+`execute` is a controlled platform permission. Role frontmatter may include it when runtime CLI closure, governance, or technical validation require it. Prompt frontmatter must omit it for bounded workflows that do not need command execution. The canonical runtime binary lives under `.agents/bin/prd-to-product-agents/`; CI may install `prdtp-agents-functions-cli` into `PATH`, but the workspace-local copy is the contract.
 
 > **Full command reference**: [docs/runtime/prdtp-agents-functions-cli-reference.md](docs/runtime/prdtp-agents-functions-cli-reference.md)
 
@@ -224,7 +225,7 @@ All agents declare `execute` as a controlled platform permission. The canonical 
 | `prdtp-agents-functions-cli capabilities detect` | Tool detection -> workspace-capabilities.yaml |
 | `prdtp-agents-functions-cli validate workspace/prompts/agents/models` | Structural validation |
 | `prdtp-agents-functions-cli validate governance` | Governance validation for configured workspaces |
-| `prdtp-agents-functions-cli validate readiness` | Operational readiness validation for configured workspaces |
+| `prdtp-agents-functions-cli validate readiness` | Strong operational readiness validation for production-ready workspaces |
 
 #### Per-agent permitted calls
 

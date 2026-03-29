@@ -61,7 +61,7 @@ Notes:
 
 - `--workspace` is optional in the implementation; if omitted, validation runs
   against the current directory.
-- `--record-checksums` writes `.state/content-checksums.json` for freshness
+- `--record-checksums` writes `.state/context-checksums.json` for freshness
   tracking.
 
 ### `validate package-hygiene`

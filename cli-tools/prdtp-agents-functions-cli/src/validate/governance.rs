@@ -19,13 +19,7 @@ pub fn run(workspace: &Path) -> Result<()> {
 
     if !gov_path.exists() {
         eprintln!("  {} .github/github-governance.yaml not found", "✗".red());
-        return finalize_validation(
-            "governance",
-            1,
-            warnings,
-            None,
-            "Governance checks passed",
-        );
+        return finalize_validation("governance", 1, warnings, None, "Governance checks passed");
     }
 
     let content = fs::read_to_string(&gov_path)?;
@@ -102,7 +96,11 @@ pub fn run(workspace: &Path) -> Result<()> {
         &["github", "reviewers", "tech_lead"],
         "github.reviewers.tech_lead",
     );
-    errors += check_scalar(&parsed, &["github", "reviewers", "qa"], "github.reviewers.qa");
+    errors += check_scalar(
+        &parsed,
+        &["github", "reviewers", "qa"],
+        "github.reviewers.qa",
+    );
     errors += check_scalar(
         &parsed,
         &["github", "reviewers", "devops"],
@@ -132,7 +130,10 @@ pub fn run(workspace: &Path) -> Result<()> {
         );
         errors += 1;
     } else {
-        println!("  {} github-governance.yaml is placeholder-free", "✓".green());
+        println!(
+            "  {} github-governance.yaml is placeholder-free",
+            "✓".green()
+        );
     }
 
     println!("\n{}", "Checking CODEOWNERS...".bold());

@@ -85,16 +85,25 @@ failing the clarity gate or a script producing an unexpected error.
 
 ## Branching
 
-Before making any changes, create a working branch from `develop` using the
-controlled branch-checkout script:
+Before making Git changes, read `.github/workspace-capabilities.yaml`.
+
+If `capabilities.git.authorized.enabled=true`, create a working branch from
+`develop` using the controlled branch-checkout script:
 
 ```shell
 prdtp-agents-functions-cli git checkout-task-branch --role pm-orchestrator --issue-id "<issue-id>" --slug bootstrap-from-prd
 ```
 
 If no issue ID exists yet, stop and create or identify the tracking issue first.
-This workflow requires `--issue-id` and uses the `product/` branch prefix from
-the runtime contract. Never commit to `main` or `develop` directly.
+Create that issue through `prdtp-agents-functions-cli github issue create`.
+This Git-authorized path requires `--issue-id` and uses the `product/` branch
+prefix from the runtime contract. Never commit to `main` or `develop` directly.
+
+If `capabilities.git.authorized.enabled=false`, do not call
+`git checkout-task-branch` and do not treat an issue ID as a hard prerequisite.
+Stay in local-only mode and close the workflow through
+`prdtp-agents-functions-cli git finalize`, which writes auditable evidence under
+`.state/local-history/` instead of creating a Git commit.
 
 ## Process
 
@@ -203,15 +212,17 @@ prdtp-agents-functions-cli state handoff create \
     --to-role "software-architect" \
     --handoff-type "normal" \
     --entity "technical-framing" \
-    --reason "new-work" \
+    --reason "new_work" \
     --details "PRD clarity gate passed. Canonical docs initialized. Technical framing needed."
 ```
 
 ### 8. Commit all changes
 
-After updating canonical docs and creating handoffs, commit all modified files
-on your working branch before completing the workflow, using the supported
-closure path:
+After updating canonical docs and creating handoffs, close the workflow through
+the supported finalize path before completing it.
+
+If Git is enabled, use your working branch and include the issue reference plus
+commit message:
 
 ```shell
 prdtp-agents-functions-cli git finalize \
@@ -219,6 +230,20 @@ prdtp-agents-functions-cli git finalize \
   --summary "Initialized canonical product memory from PRD." \
   --issue-ref "GH-<id>" \
   --commit-message "docs(ops): GH-<id> initialize canonical memory from PRD" \
+  --files-changed "docs/project/vision.md,docs/project/scope.md,docs/project/backlog.yaml,docs/project/acceptance-criteria.md,docs/project/handoffs.yaml" \
+  --canonical-docs-changed "docs/project/vision.md,docs/project/scope.md,docs/project/backlog.yaml,docs/project/acceptance-criteria.md" \
+  --handoffs "docs/project/handoffs.yaml" \
+  --validation-status passed
+```
+
+If Git is disabled, run the same closure path without `--issue-ref` and
+`--commit-message`; local-only mode records evidence instead of creating a Git
+commit:
+
+```shell
+prdtp-agents-functions-cli git finalize \
+  --agent-role "pm-orchestrator" \
+  --summary "Initialized canonical product memory from PRD." \
   --files-changed "docs/project/vision.md,docs/project/scope.md,docs/project/backlog.yaml,docs/project/acceptance-criteria.md,docs/project/handoffs.yaml" \
   --canonical-docs-changed "docs/project/vision.md,docs/project/scope.md,docs/project/backlog.yaml,docs/project/acceptance-criteria.md" \
   --handoffs "docs/project/handoffs.yaml" \

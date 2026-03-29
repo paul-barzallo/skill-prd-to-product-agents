@@ -39,9 +39,7 @@ fn get_required_immutable_entries(workspace: &Path) -> Vec<String> {
         if let Ok(rd) = fs::read_dir(&identity_dir) {
             let mut idents: Vec<String> = rd
                 .filter_map(|e| e.ok())
-                .filter(|e| {
-                    e.path().extension().map_or(false, |x| x == "md")
-                })
+                .filter(|e| e.path().extension().map_or(false, |x| x == "md"))
                 .map(|e| {
                     format!(
                         ".github/agents/identity/{}",
@@ -60,28 +58,42 @@ fn get_required_immutable_entries(workspace: &Path) -> Vec<String> {
 
 fn get_staged_files(workspace: &Path) -> Vec<String> {
     let output = std::process::Command::new("git")
-        .args(["-C", &workspace.to_string_lossy(), "diff", "--cached", "--name-only", "--diff-filter=ACMR"])
+        .args([
+            "-C",
+            &workspace.to_string_lossy(),
+            "diff",
+            "--cached",
+            "--name-only",
+            "--diff-filter=ACMR",
+        ])
         .output();
     match output {
-        Ok(o) if o.status.success() => {
-            String::from_utf8_lossy(&o.stdout)
-                .lines()
-                .filter(|l| !l.is_empty())
-                .map(|l| normalize_repo_path(l))
-                .collect()
-        }
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|l| normalize_repo_path(l))
+            .collect(),
         _ => Vec::new(),
     }
 }
 
 fn get_current_branch(workspace: &Path) -> Option<String> {
     let output = std::process::Command::new("git")
-        .args(["-C", &workspace.to_string_lossy(), "branch", "--show-current"])
+        .args([
+            "-C",
+            &workspace.to_string_lossy(),
+            "branch",
+            "--show-current",
+        ])
         .output()
         .ok()?;
     if output.status.success() {
         let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if branch.is_empty() { None } else { Some(branch) }
+        if branch.is_empty() {
+            None
+        } else {
+            Some(branch)
+        }
     } else {
         None
     }
@@ -106,7 +118,10 @@ fn validate_yaml_structural(workspace: &Path, rel_path: &str) -> Result<()> {
 }
 
 pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
-    let ws = args.workspace_root.canonicalize().unwrap_or_else(|_| workspace.to_path_buf());
+    let ws = args
+        .workspace_root
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
 
     // --- Commit path guard ---
     // These env vars bypass governance controls and are strictly for:
@@ -114,7 +129,8 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
     //   - FINALIZE_WORK_UNIT_ALLOW_COMMIT: the `git finalize` subcommand's automated commit
     // They must NEVER be set manually by users or in production CI.
     let bootstrap_allow = std::env::var("BOOTSTRAP_ALLOW_MAIN_COMMIT").unwrap_or_default() == "1";
-    let finalize_allow = std::env::var("FINALIZE_WORK_UNIT_ALLOW_COMMIT").unwrap_or_default() == "1";
+    let finalize_allow =
+        std::env::var("FINALIZE_WORK_UNIT_ALLOW_COMMIT").unwrap_or_default() == "1";
 
     if !bootstrap_allow && !finalize_allow {
         bail!("Direct git commit is out of contract in this workspace. Use prdtp-agents-functions-cli git finalize.");
@@ -122,16 +138,28 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
 
     // AUDIT TRAIL: Require explicit logging if bypass tokens are used.
     if bootstrap_allow || finalize_allow {
-        let bypass_type = if bootstrap_allow { "BOOTSTRAP_ALLOW_MAIN_COMMIT" } else { "FINALIZE_WORK_UNIT_ALLOW_COMMIT" };
+        let bypass_type = if bootstrap_allow {
+            "BOOTSTRAP_ALLOW_MAIN_COMMIT"
+        } else {
+            "FINALIZE_WORK_UNIT_ALLOW_COMMIT"
+        };
         eprintln!("[AUDIT_LOG_BYPASS] Commit intercepted by hook. Governance constraint bypassed via authorized environment variable: {}", bypass_type);
-        
+
         let audit_dir = ws.join(".state/audit-spool");
         let _ = std::fs::create_dir_all(&audit_dir);
         let audit_file = audit_dir.join("governance.log");
         use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(audit_file) {
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(audit_file)
+        {
             let timestamp = chrono::Utc::now().to_rfc3339();
-            let _ = writeln!(file, "[{timestamp}] COMMIT BYPASS: {bypass_type} triggered for workspace {}", ws.display());
+            let _ = writeln!(
+                file,
+                "[{timestamp}] COMMIT BYPASS: {bypass_type} triggered for workspace {}",
+                ws.display()
+            );
         }
     }
 
@@ -156,7 +184,10 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
     let staged: Vec<String> = if args.staged_files.is_empty() {
         get_staged_files(&ws)
     } else {
-        args.staged_files.iter().map(|f| normalize_repo_path(f)).collect()
+        args.staged_files
+            .iter()
+            .map(|f| normalize_repo_path(f))
+            .collect()
     };
 
     // --- Immutable files manifest ---
@@ -202,7 +233,11 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
     }
 
     // Check manifest paths exist (skip operational YAML that may not exist yet)
-    let operational_yaml = ["docs/project/handoffs.yaml", "docs/project/findings.yaml", "docs/project/releases.yaml"];
+    let operational_yaml = [
+        "docs/project/handoffs.yaml",
+        "docs/project/findings.yaml",
+        "docs/project/releases.yaml",
+    ];
     let missing_paths: Vec<&str> = manifest_entries
         .iter()
         .filter(|e| !operational_yaml.contains(&e.as_str()) && !ws.join(e).exists())
@@ -218,7 +253,8 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
     // --- Immutable file edit detection ---
     let mut immutable_bypass = false;
     let mut immutable_bypass_reason = String::new();
-    let mut immutable_bypass_files: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut immutable_bypass_files: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
     let token_path = ws.join(".state/.immutable-edit-token");
 
     if bootstrap_allow {
@@ -228,7 +264,10 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
         if let Ok(content) = fs::read_to_string(&token_path) {
             // Verify integrity before trusting the token
             if !crate::governance::verify_token_integrity(&content, &ws) {
-                eprintln!("{} Immutable-edit token integrity check failed. Ignoring token.", "WARN:".yellow().bold());
+                eprintln!(
+                    "{} Immutable-edit token integrity check failed. Ignoring token.",
+                    "WARN:".yellow().bold()
+                );
                 let _ = fs::remove_file(&token_path);
             } else if let Ok(token) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(expires) = token.get("expires_epoch").and_then(|v| v.as_i64()) {
@@ -248,7 +287,10 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
                                 .collect();
                         }
                     } else {
-                        eprintln!("{} Immutable-edit token has expired. Removing.", "WARN:".yellow().bold());
+                        eprintln!(
+                            "{} Immutable-edit token has expired. Removing.",
+                            "WARN:".yellow().bold()
+                        );
                         let _ = fs::remove_file(&token_path);
                     }
                 }
@@ -375,7 +417,10 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
             }
         }
     } else {
-        eprintln!("{} gitleaks not installed -- secrets scanning skipped.", "WARN:".yellow().bold());
+        eprintln!(
+            "{} gitleaks not installed -- secrets scanning skipped.",
+            "WARN:".yellow().bold()
+        );
     }
 
     println!("{}", "Pre-commit validation passed.".green());
@@ -397,7 +442,9 @@ fn which_command(name: &str) -> bool {
 /// verifies agent assembly if identity/context sources changed, and validates
 /// operational YAML structural integrity.
 pub fn run_governance_checks(workspace: &Path, changed_files: &[String]) -> Result<()> {
-    let ws = workspace.canonicalize().unwrap_or_else(|_| workspace.to_path_buf());
+    let ws = workspace
+        .canonicalize()
+        .unwrap_or_else(|_| workspace.to_path_buf());
 
     // --- Immutable files manifest ---
     let manifest_path = ws.join(".github/immutable-files.txt");
@@ -488,10 +535,7 @@ pub fn run_governance_checks(workspace: &Path, changed_files: &[String]) -> Resu
     // --- Operational YAML structural validation ---
     let yaml_changed: Vec<&String> = normalized
         .iter()
-        .filter(|f| {
-            f.starts_with("docs/project/")
-                && (f.ends_with(".yaml") || f.ends_with(".yml"))
-        })
+        .filter(|f| f.starts_with("docs/project/") && (f.ends_with(".yaml") || f.ends_with(".yml")))
         .collect();
     for yaml_file in &yaml_changed {
         validate_yaml_structural(&ws, yaml_file)?;

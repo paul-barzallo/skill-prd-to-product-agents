@@ -31,7 +31,7 @@ Status vocabulary:
 | Tool | Minimum version | Notes |
 | --- | --- | --- |
 | git | 2.30 | Required for branch and commit operations |
-| gh | 2.0 | Optional; used for board sync and GitHub automation |
+| gh | 2.0 | Optional; used for board snapshot sync and remote GitHub governance checks |
 | gitleaks | 8.0 | CI gate downloads a pinned version; local hook warns when missing |
 | sqlite3 | any | Optional; used by the SQLite mirror |
 

@@ -9,11 +9,7 @@ use crate::common::yaml_ops;
 pub fn run(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "running audit sync");
     println!("{}", "=== Audit Sync ===".cyan().bold());
-    crate::common::capability_contract::require_policy_enabled(
-        workspace,
-        "sqlite",
-        "audit sync",
-    )?;
+    crate::common::capability_contract::require_policy_enabled(workspace, "sqlite", "audit sync")?;
 
     let db_path = match audit::sqlite_db_path(workspace) {
         Some(p) => p,
@@ -29,7 +25,10 @@ pub fn run(workspace: &Path) -> Result<()> {
             }
             std::fs::write(
                 &log_path,
-                format!("[{}] state-sync skipped: SQLite unavailable\n", yaml_ops::now_utc_iso()),
+                format!(
+                    "[{}] state-sync skipped: SQLite unavailable\n",
+                    yaml_ops::now_utc_iso()
+                ),
             )?;
             tracing::info!(log_path = %log_path.display(), "degraded audit sync log written");
             println!("{} Degraded sync log written", "OK:".yellow().bold());
@@ -73,7 +72,7 @@ pub fn run(workspace: &Path) -> Result<()> {
             changed_artifacts INTEGER DEFAULT 0,
             failures_count INTEGER DEFAULT 0,
             notes TEXT
-        );"
+        );",
     )?;
 
     let docs_path = workspace.join("docs/project");
@@ -188,7 +187,8 @@ pub fn run(workspace: &Path) -> Result<()> {
 
     // Record sync run
     let result = if failures > 0 { "partial" } else { "completed" };
-    let notes = format!("processed={processed} changed={changed} skipped={skipped} orphans={orphans}");
+    let notes =
+        format!("processed={processed} changed={changed} skipped={skipped} orphans={orphans}");
     conn.execute(
         "INSERT INTO sync_runs (id, triggered_by_role, started_at, finished_at, result, processed_artifacts, changed_artifacts, failures_count, notes) \
          VALUES (?1, 'pm-orchestrator', ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -208,24 +208,60 @@ pub fn run(workspace: &Path) -> Result<()> {
 
 fn determine_artifact_type(rel_path: &str) -> String {
     let lower = rel_path.to_lowercase();
-    if lower.contains("vision") { return "vision".into(); }
-    if lower.contains("scope") { return "scope".into(); }
-    if lower.contains("backlog") { return "backlog".into(); }
-    if lower.contains("refined-stories") { return "refined-stories".into(); }
-    if lower.contains("acceptance-criteria") { return "acceptance-criteria".into(); }
-    if lower.contains("handoffs") { return "handoff".into(); }
-    if lower.contains("findings") { return "finding".into(); }
-    if lower.contains("releases") { return "release".into(); }
-    if lower.contains("quality-gates") { return "gate".into(); }
-    if lower.contains("context-summary") { return "context-summary".into(); }
-    if lower.contains("architecture/") { return "architecture".into(); }
-    if lower.contains("decisions/") { return "decision".into(); }
-    if lower.contains("ux/") { return "ux".into(); }
-    if lower.contains("qa/") { return "report".into(); }
-    if lower.contains("release/") { return "release-tracker".into(); }
-    if lower.contains("board") { return "report".into(); }
-    if lower.contains("dashboard") { return "report".into(); }
-    if lower.contains("risks") { return "risk".into(); }
+    if lower.contains("vision") {
+        return "vision".into();
+    }
+    if lower.contains("scope") {
+        return "scope".into();
+    }
+    if lower.contains("backlog") {
+        return "backlog".into();
+    }
+    if lower.contains("refined-stories") {
+        return "refined-stories".into();
+    }
+    if lower.contains("acceptance-criteria") {
+        return "acceptance-criteria".into();
+    }
+    if lower.contains("handoffs") {
+        return "handoff".into();
+    }
+    if lower.contains("findings") {
+        return "finding".into();
+    }
+    if lower.contains("releases") {
+        return "release".into();
+    }
+    if lower.contains("quality-gates") {
+        return "gate".into();
+    }
+    if lower.contains("context-summary") {
+        return "context-summary".into();
+    }
+    if lower.contains("architecture/") {
+        return "architecture".into();
+    }
+    if lower.contains("decisions/") {
+        return "decision".into();
+    }
+    if lower.contains("ux/") {
+        return "ux".into();
+    }
+    if lower.contains("qa/") {
+        return "report".into();
+    }
+    if lower.contains("release/") {
+        return "release-tracker".into();
+    }
+    if lower.contains("board") {
+        return "report".into();
+    }
+    if lower.contains("dashboard") {
+        return "report".into();
+    }
+    if lower.contains("risks") {
+        return "risk".into();
+    }
     "other".into()
 }
 

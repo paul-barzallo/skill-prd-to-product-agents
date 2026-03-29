@@ -97,7 +97,11 @@ pub fn run(workspace: &Path) -> Result<()> {
         }
 
         if errors == 0 {
-            println!("  {} {name}.agent.md model(s): {:?}", "✓".green(), models_in_fm);
+            println!(
+                "  {} {name}.agent.md model(s): {:?}",
+                "✓".green(),
+                models_in_fm
+            );
         }
     }
 

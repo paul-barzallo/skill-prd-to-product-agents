@@ -17,22 +17,27 @@ pub struct SyncArgs {
 
 pub fn run(workspace: &Path, args: SyncArgs) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), repo = ?args.repo, output = ?args.output, "syncing GitHub board");
-    crate::common::capability_contract::require_policy_enabled(
-        workspace,
-        "gh",
-        "board sync",
-    )?;
+    crate::common::capability_contract::require_policy_enabled(workspace, "gh", "board sync")?;
 
     // Resolve repo
     let repo = match args.repo {
         Some(r) => r,
         None => {
             let output = Command::new("gh")
-                .args(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+                .args([
+                    "repo",
+                    "view",
+                    "--json",
+                    "nameWithOwner",
+                    "-q",
+                    ".nameWithOwner",
+                ])
                 .current_dir(workspace)
                 .output();
             match output {
-                Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Ok(o) if o.status.success() => {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                }
                 Ok(o) => {
                     let stderr = String::from_utf8_lossy(&o.stderr).trim().to_string();
                     if !stderr.is_empty() {
@@ -54,15 +59,24 @@ pub fn run(workspace: &Path, args: SyncArgs) -> Result<()> {
     // Fetch open issues
     let issues_out = Command::new("gh")
         .args([
-            "issue", "list", "--repo", &repo ,"--state", "open",
-            "--json", "number,title,labels,assignees,state",
-            "--limit", "200",
+            "issue",
+            "list",
+            "--repo",
+            &repo,
+            "--state",
+            "open",
+            "--json",
+            "number,title,labels,assignees,state",
+            "--limit",
+            "200",
         ])
         .current_dir(workspace)
         .output()?;
 
     if !issues_out.status.success() {
-        let stderr = String::from_utf8_lossy(&issues_out.stderr).trim().to_string();
+        let stderr = String::from_utf8_lossy(&issues_out.stderr)
+            .trim()
+            .to_string();
         if !stderr.is_empty() {
             tracing::debug!(repo = %repo, stderr = %stderr, "gh issue list failed");
         }
@@ -78,9 +92,16 @@ pub fn run(workspace: &Path, args: SyncArgs) -> Result<()> {
     // Fetch open PRs
     let prs_out = Command::new("gh")
         .args([
-            "pr", "list", "--repo", &repo, "--state", "open",
-            "--json", "number,title,labels,author,state,isDraft",
-            "--limit", "200",
+            "pr",
+            "list",
+            "--repo",
+            &repo,
+            "--state",
+            "open",
+            "--json",
+            "number,title,labels,author,state,isDraft",
+            "--limit",
+            "200",
         ])
         .current_dir(workspace)
         .output()?;
@@ -96,8 +117,7 @@ pub fn run(workspace: &Path, args: SyncArgs) -> Result<()> {
         );
     }
 
-    let prs: Vec<serde_json::Value> =
-        serde_json::from_slice(&prs_out.stdout).unwrap_or_default();
+    let prs: Vec<serde_json::Value> = serde_json::from_slice(&prs_out.stdout).unwrap_or_default();
 
     // Build Markdown
     let mut md = String::from("# Project Board\n\n");

@@ -13,15 +13,15 @@ release quality, and operational discipline.
 ## Priority 0
 
 - The empty legacy path `docs/project/` may still exist in some bootstrapped workspaces and should be cleaned up once no workspace tooling depends on it.
-- Audit remediation still needs consistent upkeep even though `docs/audits/index.md` now exists.
+- Audit remediation still needs consistent upkeep even when working notes stay outside the repo.
 - Repository changelog discipline must now be maintained consistently in `CHANGELOG.md`.
 
 ## Priority 1
 
 - Support and escalation guidance for maintainers is still minimal.
-- Release workflow behavior and release documentation still need periodic drift review.
+- Release workflow behavior and release documentation still need periodic drift review, especially around the reviewed binary-refresh PR path and any future provenance controls.
 - Published Unix binaries still need periodic verification that git executable bits remain intact across repository updates.
-- The relationship between issue templates and audit follow-up process is not yet documented in `docs/audits/`.
+- The relationship between issue templates and audit follow-up process is not yet documented in the maintainer-facing repo docs.
 
 ## Priority 2
 

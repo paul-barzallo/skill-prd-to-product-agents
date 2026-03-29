@@ -16,6 +16,10 @@ Este repositorio distribuye tooling y plantillas para `prd-to-product-agents`. L
 - valida integridad estructural del skill package mediante `prd-to-product-agents-cli validate all`
 - ejecuta una cadena de release gate mediante `skill-dev-cli test release-gate`
 - valida bundles por checksum local
+- adjunta attestation de build provenance en CI para artefactos publicados desde `.github/workflows/build-skill-binaries.yml`
+- ejecuta `actions/dependency-review-action` y `cargo deny` en `.github/workflows/dependency-review.yml`
+- exige evidencia remota de GitHub para el gate `production-ready` mediante `prdtp-agents-functions-cli validate readiness` y `validate release-gate`
+- registra operaciones sensibles del runtime en spool JSONL exportable mediante `prdtp-agents-functions-cli audit export`
 - documenta explicitamente que el bootstrap no aprovisiona GitHub remotamente ni deja el entorno operacionalmente listo por si solo
 
 ## Lo que este proyecto no promete hoy
@@ -25,7 +29,7 @@ No reportes como vulnerabilidad la mera ausencia de capacidades que el proyecto 
 - sandbox OS-level del agente
 - autorizacion fuerte externa para `immutable-token`
 - no repudio centralizado de toda la trazabilidad local
-- firma enterprise o provenance completa de todos los artefactos publicados
+- SBOM completo de release ni verificacion automatica downstream de attestations/checksums por parte del consumidor
 - paridad completa entre VS Code + Copilot y GitHub.com
 
 Si detectas que la documentacion afirma alguna de esas capacidades como si ya existieran, eso si es un hallazgo de seguridad o gobernanza valido.

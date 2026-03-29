@@ -71,12 +71,18 @@ pub fn create(workspace: &Path, args: CreateHandoffArgs) -> Result<()> {
     let reason = args.reason.to_string();
     let duplicate_pending = serde_yaml::from_str::<serde_yaml::Value>(&content)
         .ok()
-        .and_then(|yaml| yaml.get("handoffs").and_then(serde_yaml::Value::as_sequence).cloned())
+        .and_then(|yaml| {
+            yaml.get("handoffs")
+                .and_then(serde_yaml::Value::as_sequence)
+                .cloned()
+        })
         .map(|entries| {
             entries.iter().any(|entry| {
-                entry.get("entity").and_then(serde_yaml::Value::as_str) == Some(args.entity.as_str())
+                entry.get("entity").and_then(serde_yaml::Value::as_str)
+                    == Some(args.entity.as_str())
                     && entry.get("to").and_then(serde_yaml::Value::as_str) == Some(to_role.as_str())
-                    && entry.get("reason").and_then(serde_yaml::Value::as_str) == Some(reason.as_str())
+                    && entry.get("reason").and_then(serde_yaml::Value::as_str)
+                        == Some(reason.as_str())
                     && entry.get("status").and_then(serde_yaml::Value::as_str) == Some("pending")
             })
         })
@@ -124,7 +130,10 @@ pub fn create(workspace: &Path, args: CreateHandoffArgs) -> Result<()> {
         "handoff_created",
         "handoff",
         &id,
-        &format!("to={}, entity={}, reason={}", args.to_role, args.entity, args.reason),
+        &format!(
+            "to={}, entity={}, reason={}",
+            args.to_role, args.entity, args.reason
+        ),
     );
 
     tracing::info!(handoff_id = %id, entity = %args.entity, "handoff created");
@@ -171,8 +180,8 @@ pub fn update(workspace: &Path, args: UpdateHandoffArgs) -> Result<()> {
         );
     }
 
-    let target_role = yaml_ops::read_yaml_entry_field(&content, &args.handoff_id, "to")
-        .unwrap_or_default();
+    let target_role =
+        yaml_ops::read_yaml_entry_field(&content, &args.handoff_id, "to").unwrap_or_default();
 
     match args.new_status {
         HandoffStatus::Claimed | HandoffStatus::Done => {
@@ -206,7 +215,11 @@ pub fn update(workspace: &Path, args: UpdateHandoffArgs) -> Result<()> {
         let old_status_line = format!("status: {current_status}");
         let new_status_line = format!("status: {}", args.new_status);
         let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!("{}{new_block}{}", &content[..block_start], &content[next_entry..]);
+        let updated = format!(
+            "{}{new_block}{}",
+            &content[..block_start],
+            &content[next_entry..]
+        );
 
         yaml_ops::atomic_write(&yaml_path, &updated)?;
     } else {

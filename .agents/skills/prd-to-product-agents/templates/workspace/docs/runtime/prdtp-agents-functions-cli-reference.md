@@ -1,7 +1,7 @@
 
 # prdtp-agents-functions-cli Reference
 
-**Purpose**: Runtime workspace CLI - handles all daily operational tasks: state management, Git governance, validation, reporting, audit, agent assembly, database management, and board synchronization.
+**Purpose**: Runtime workspace CLI - handles all daily operational tasks: state management, Git governance, validation, reporting, audit, agent assembly, database management, and board snapshot synchronization.
 
 **Scope**: Deployed workspace operation only.
 
@@ -26,6 +26,8 @@ prdtp-agents-functions-cli --workspace . validate prompts
 prdtp-agents-functions-cli --workspace . validate agents
 prdtp-agents-functions-cli --workspace . validate governance
 prdtp-agents-functions-cli --workspace . validate readiness
+prdtp-agents-functions-cli --workspace . validate pr-governance --event-path "$GITHUB_EVENT_PATH"
+prdtp-agents-functions-cli --workspace . validate release-gate --event-path "$GITHUB_EVENT_PATH"
 prdtp-agents-functions-cli --workspace . validate models
 prdtp-agents-functions-cli --workspace . validate encoding
 prdtp-agents-functions-cli --workspace . validate ci reporting
@@ -38,7 +40,9 @@ prdtp-agents-functions-cli --workspace . validate ci copilot-runtime-contract
 | `prompts` | Validate prompts have required sections |
 | `agents` | Validate agent hierarchy and contracts |
 | `governance` | Validate a configured workspace has real repository identifiers, reviewers, CODEOWNERS, and no placeholders |
-| `readiness` | Validate structural integrity plus governance, agent assembly, encoding, and capability-contract prerequisites |
+| `readiness` | Validate the strong `production-ready` gate: structure, governance, assembly, encoding, capability contract, and remote GitHub controls |
+| `pr-governance` | Validate PR metadata, labels, required sections, commit subjects, and release gate preconditions from a GitHub event payload |
+| `release-gate` | Validate only the final release-gate approval path for PRs targeting `main` |
 | `models` | Validate model frontmatter against `agent-model-policy.yaml` |
 | `encoding` | Validate file encoding (BOM, CRLF, mojibake) |
 
@@ -67,7 +71,7 @@ prdtp-agents-functions-cli --workspace . validate ci copilot-runtime-contract
 | `yaml-schemas` | Parse schema-covered YAML objects under `docs/project/`. |
 | `raw-sql-prompts` | Reject raw SQL snippets in prompt Markdown. |
 | `template-state` | Ensure runtime-generated state artifacts are not committed into the template. |
-| `prompt-tool-contracts` | Ensure prompts declare required tool contracts. |
+| `prompt-tool-contracts` | Ensure prompts and assembled agents declare coherent tool contracts. |
 | `prompt-label-contracts` | Ensure prompts only reference labels defined in `github-governance.yaml`. |
 | `operational-state` | Run lifecycle and negative checks for handoffs, findings, and releases. |
 | `degraded-runtime` | Verify degraded runtime behavior when SQLite is deferred or unavailable. |
@@ -133,8 +137,8 @@ prdtp-agents-functions-cli --workspace . git install-hooks
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `checkout-task-branch` | Create or switch to a task branch with naming validation |
-| `finalize` | Pre-commit validation + atomic commit |
+| `checkout-task-branch` | Create or switch to a task branch with naming validation; refuses dirty worktrees and does not rebase or fast-forward implicitly |
+| `finalize` | Pre-commit validation + atomic commit; blocks commit creation if workspace validation fails |
 | `pre-commit-validate` | Governance, branch protection, immutable file validation |
 | `install-hooks` | Install git hooks into `.git/hooks/` |
 
@@ -147,12 +151,14 @@ Audit ledger operations.
 ```text
 prdtp-agents-functions-cli --workspace . audit sync
 prdtp-agents-functions-cli --workspace . audit replay-spool
+prdtp-agents-functions-cli --workspace . audit export
 ```
 
 | Subcommand | Purpose |
 | ---------- | ------- |
 | `sync` | Sync canonical docs into the SQLite audit ledger |
 | `replay-spool` | Replay JSON spool entries into the ledger |
+| `export` | Export structured audit evidence as JSONL from canonical state, spool, and work-unit records |
 
 ### report
 
@@ -180,6 +186,7 @@ Capability detection and checks.
 
 ```text
 prdtp-agents-functions-cli --workspace . capabilities detect
+prdtp-agents-functions-cli --workspace . capabilities authorize --capability git --enabled true --source devops-maintainer --mode full
 prdtp-agents-functions-cli --workspace . capabilities check
 ```
 
@@ -221,14 +228,14 @@ Notes:
 Governance operations.
 
 ```text
-prdtp-agents-functions-cli --workspace . governance immutable-token --reason "Fix typo in copilot-instructions.md"
+prdtp-agents-functions-cli --workspace . governance immutable-token --reason "Fix typo in copilot-instructions.md" --files .github/copilot-instructions.md
 prdtp-agents-functions-cli --workspace . governance configure --owner acme-org --repo product-workspace --release-gate-login acme-devops --reviewer-product @acme-product --reviewer-architecture @acme-arch --reviewer-tech-lead @acme-techlead --reviewer-qa @acme-qa --reviewer-devops @acme-devops --reviewer-infra @acme-infra
 ```
 
 | Subcommand | Purpose |
 | ---------- | ------- |
 | `immutable-token` | Generate a time-limited local bypass token for intentional maintenance of immutable governance files. |
-| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, regenerate `CODEOWNERS`, and move readiness to `configured`. |
+| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
 
 ### dependencies
 
@@ -240,10 +247,23 @@ prdtp-agents-functions-cli --workspace . dependencies check
 
 ### board
 
-GitHub board synchronization.
+GitHub issues/PR snapshot synchronization.
 
 ```text
 prdtp-agents-functions-cli --workspace . board sync
 ```
 
-Syncs GitHub issues and PRs to `docs/project/board.md`.
+Syncs GitHub issues and pull requests to `docs/project/board.md`. It is an execution snapshot, not a GitHub Project field synchronizer.
+
+### github issue
+
+GitHub Issue mutation wrappers.
+
+```text
+prdtp-agents-functions-cli --workspace . github issue create --title "Story: checkout flow" --body "..." --label role:backend
+prdtp-agents-functions-cli --workspace . github issue update --issue-ref GH-42 --title "Updated title"
+prdtp-agents-functions-cli --workspace . github issue comment --issue-ref GH-42 --body "Blocked by API contract"
+prdtp-agents-functions-cli --workspace . github issue label --issue-ref GH-42 --add status:blocked --remove status:ready
+```
+
+These commands are gated by `capabilities.gh.authorized.enabled=true`.

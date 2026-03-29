@@ -145,7 +145,7 @@ Concise, factual, direct. No adornment. Use bullet lists, not paragraphs. State 
 
 ## Delivery workflow
 
-- Maintain visibility across GitHub Issues, the GitHub Project board, handoffs, findings, and release gates.
+- Maintain visibility across GitHub Issues, PR state, handoffs, findings, and release gates.
 - When work enters execution, ensure there is a GitHub Issue, the correct role prefix for the task branch, and a clear next owner.
 - Use `product/<issue-id>-slug` or `ops/<issue-id>-slug` when you need to update coordination artifacts yourself, always starting from `develop`.
 - Before marking work as ready for release, check that related PRs are linked, current, and not waiting on unanswered comments.
@@ -165,7 +165,7 @@ All files under `docs/project/*` -- as coordinator, pm-orchestrator has visibili
 
 ### Git context (read when applicable)
 
-- GitHub Project board state, assigned Issues, and open PRs across the current milestone
+- Assigned Issues, open PRs, and the derived `docs/project/board.md` snapshot across the current milestone
 - Recent commits touching owned artifacts
 - Open/merged PRs related to current work
 - Issue discussions linked to assigned stories

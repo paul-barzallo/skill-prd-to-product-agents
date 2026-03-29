@@ -35,7 +35,7 @@ scope contracts.
 
 | Area | Main location | Purpose |
 | --- | --- | --- |
-| Maintainer docs | `docs/` | repository process, status, audits, and release guidance |
+| Maintainer docs | `docs/` | repository process, status, stable review outcomes, and release guidance |
 | Decisions | `docs/decisions/` | long-lived repository choices and ADRs |
 | Gap tracking | `docs/open-gaps.md`, `docs/known-limitations.md` | explicit maintenance debt and visible limits |
 | Operating guidance | `docs/maintainer-runbook.md`, `docs/test-matrix.md` | practical maintenance and validation usage |
@@ -109,5 +109,4 @@ If a higher-priority source contradicts a lower-priority source, the lower one i
 - runbook: `docs/maintainer-runbook.md`
 - test coverage map: `docs/test-matrix.md`
 - release review: `docs/repo-release-checklist.md`
-- audits and historical assessments: `docs/audits/README.md`
-- audit follow-up index: `docs/audits/index.md`
+- review outcomes and follow-up: `docs/current-status.md`, `docs/open-gaps.md`, `docs/known-limitations.md`

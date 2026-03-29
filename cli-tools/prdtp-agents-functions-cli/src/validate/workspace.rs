@@ -67,7 +67,10 @@ pub fn run(workspace: &Path) -> Result<()> {
     if shared.exists() {
         println!("  {} context/shared-context.md", "✓".green());
     } else {
-        tracing::error!(path = ".github/agents/context/shared-context.md", "shared agent context missing");
+        tracing::error!(
+            path = ".github/agents/context/shared-context.md",
+            "shared agent context missing"
+        );
         eprintln!("  {} context/shared-context.md — missing", "✗".red());
         errors += 1;
     }
@@ -100,7 +103,10 @@ pub fn run(workspace: &Path) -> Result<()> {
     }
 
     // ── Structural validation against schemas ────────────────────
-    println!("\n{}", "Validating YAML structure against schemas...".bold());
+    println!(
+        "\n{}",
+        "Validating YAML structure against schemas...".bold()
+    );
     let (se, sw) = validate_operational_yaml_structure(workspace);
     errors += se;
     warnings += sw;
@@ -118,7 +124,10 @@ pub fn run(workspace: &Path) -> Result<()> {
                 let fm = &content[3..end + 3];
                 if !fm.contains("model:") {
                     tracing::warn!(agent = %name, "agent frontmatter missing model field");
-                    eprintln!("  {} {name}.agent.md — missing model: in frontmatter", "⚠".yellow());
+                    eprintln!(
+                        "  {} {name}.agent.md — missing model: in frontmatter",
+                        "⚠".yellow()
+                    );
                     warnings += 1;
                 } else {
                     println!("  {} {name}.agent.md frontmatter OK", "✓".green());
@@ -126,7 +135,10 @@ pub fn run(workspace: &Path) -> Result<()> {
             }
         } else {
             tracing::warn!(agent = %name, "agent file missing yaml frontmatter");
-            eprintln!("  {} {name}.agent.md — no YAML frontmatter found", "⚠".yellow());
+            eprintln!(
+                "  {} {name}.agent.md — no YAML frontmatter found",
+                "⚠".yellow()
+            );
             warnings += 1;
         }
     }
@@ -140,12 +152,21 @@ pub fn run(workspace: &Path) -> Result<()> {
         if db.exists() {
             println!("  {} .state/project_memory.db exists", "✓".green());
         } else {
-            tracing::warn!(path = ".state/project_memory.db", "sqlite database missing during workspace validation");
-            eprintln!("  {} .state/project_memory.db — missing (SQLite may be disabled)", "⚠".yellow());
+            tracing::warn!(
+                path = ".state/project_memory.db",
+                "sqlite database missing during workspace validation"
+            );
+            eprintln!(
+                "  {} .state/project_memory.db — missing (SQLite may be disabled)",
+                "⚠".yellow()
+            );
             warnings += 1;
         }
     } else {
-        tracing::warn!(path = ".state", "workspace state directory missing during validation");
+        tracing::warn!(
+            path = ".state",
+            "workspace state directory missing during validation"
+        );
         eprintln!("  {} .state/ — missing", "⚠".yellow());
         warnings += 1;
     }
@@ -158,15 +179,14 @@ pub fn run(workspace: &Path) -> Result<()> {
             .min_depth(1)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .map_or(false, |ext| ext == "md")
-            })
+            .filter(|e| e.path().extension().map_or(false, |ext| ext == "md"))
             .count();
         println!("  {} Found {count} prompt files", "✓".green());
     } else {
-        tracing::warn!(path = ".github/prompts", "prompt directory missing during workspace validation");
+        tracing::warn!(
+            path = ".github/prompts",
+            "prompt directory missing during workspace validation"
+        );
         eprintln!("  {} .github/prompts/ — missing", "⚠".yellow());
         warnings += 1;
     }
@@ -183,8 +203,14 @@ fn validate_operational_yaml_structure(workspace: &Path) -> (u32, u32) {
     let mut warnings = 0u32;
 
     let valid_roles: &[&str] = &[
-        "pm-orchestrator", "product-owner", "ux-designer", "software-architect",
-        "tech-lead", "backend-developer", "frontend-developer", "qa-lead",
+        "pm-orchestrator",
+        "product-owner",
+        "ux-designer",
+        "software-architect",
+        "tech-lead",
+        "backend-developer",
+        "frontend-developer",
+        "qa-lead",
         "devops-release-engineer",
     ];
 
@@ -196,13 +222,29 @@ fn validate_operational_yaml_structure(workspace: &Path) -> (u32, u32) {
                 if let Some(list) = parsed.get("handoffs").and_then(|v| v.as_sequence()) {
                     for (i, entry) in list.iter().enumerate() {
                         let label = format!("handoffs[{i}]");
-                        check_enum_field(entry, "status", &["pending", "claimed", "done", "cancelled"], &label, &mut errors);
-                        check_enum_field(entry, "type", &["normal", "escalation", "rework", "approval"], &label, &mut errors);
+                        check_enum_field(
+                            entry,
+                            "status",
+                            &["pending", "claimed", "done", "cancelled"],
+                            &label,
+                            &mut errors,
+                        );
+                        check_enum_field(
+                            entry,
+                            "type",
+                            &["normal", "escalation", "rework", "approval"],
+                            &label,
+                            &mut errors,
+                        );
                         check_enum_field(entry, "from", valid_roles, &label, &mut warnings);
                         check_enum_field(entry, "to", valid_roles, &label, &mut warnings);
                         check_required_field(entry, "id", &label, &mut errors);
                     }
-                    println!("  {} handoffs.yaml — {count} entries validated", "✓".green(), count = list.len());
+                    println!(
+                        "  {} handoffs.yaml — {count} entries validated",
+                        "✓".green(),
+                        count = list.len()
+                    );
                 }
             }
         }
@@ -216,13 +258,35 @@ fn validate_operational_yaml_structure(workspace: &Path) -> (u32, u32) {
                 if let Some(list) = parsed.get("findings").and_then(|v| v.as_sequence()) {
                     for (i, entry) in list.iter().enumerate() {
                         let label = format!("findings[{i}]");
-                        check_enum_field(entry, "status", &["open", "triaged", "in_progress", "resolved", "wont_fix"], &label, &mut errors);
-                        check_enum_field(entry, "severity", &["low", "medium", "high", "critical"], &label, &mut errors);
-                        check_enum_field(entry, "type", &["bug", "risk", "ambiguity", "security", "ux", "architecture"], &label, &mut errors);
+                        check_enum_field(
+                            entry,
+                            "status",
+                            &["open", "triaged", "in_progress", "resolved", "wont_fix"],
+                            &label,
+                            &mut errors,
+                        );
+                        check_enum_field(
+                            entry,
+                            "severity",
+                            &["low", "medium", "high", "critical"],
+                            &label,
+                            &mut errors,
+                        );
+                        check_enum_field(
+                            entry,
+                            "type",
+                            &["bug", "risk", "ambiguity", "security", "ux", "architecture"],
+                            &label,
+                            &mut errors,
+                        );
                         check_required_field(entry, "id", &label, &mut errors);
                         check_required_field(entry, "title", &label, &mut errors);
                     }
-                    println!("  {} findings.yaml — {count} entries validated", "✓".green(), count = list.len());
+                    println!(
+                        "  {} findings.yaml — {count} entries validated",
+                        "✓".green(),
+                        count = list.len()
+                    );
                 }
             }
         }
@@ -236,11 +300,21 @@ fn validate_operational_yaml_structure(workspace: &Path) -> (u32, u32) {
                 if let Some(list) = parsed.get("releases").and_then(|v| v.as_sequence()) {
                     for (i, entry) in list.iter().enumerate() {
                         let label = format!("releases[{i}]");
-                        check_enum_field(entry, "status", &["planning", "ready", "approved", "deployed", "rolled_back"], &label, &mut errors);
+                        check_enum_field(
+                            entry,
+                            "status",
+                            &["planning", "ready", "approved", "deployed", "rolled_back"],
+                            &label,
+                            &mut errors,
+                        );
                         check_required_field(entry, "id", &label, &mut errors);
                         check_required_field(entry, "name", &label, &mut errors);
                     }
-                    println!("  {} releases.yaml — {count} entries validated", "✓".green(), count = list.len());
+                    println!(
+                        "  {} releases.yaml — {count} entries validated",
+                        "✓".green(),
+                        count = list.len()
+                    );
                 }
             }
         }
@@ -269,12 +343,7 @@ fn check_enum_field(
     }
 }
 
-fn check_required_field(
-    entry: &serde_yaml::Value,
-    field: &str,
-    label: &str,
-    counter: &mut u32,
-) {
+fn check_required_field(entry: &serde_yaml::Value, field: &str, label: &str, counter: &mut u32) {
     if entry.get(field).is_none() {
         tracing::error!(entry = %label, field = %field, "required field missing in operational yaml");
         eprintln!("  {} {label} — missing required field '{field}'", "✗".red());

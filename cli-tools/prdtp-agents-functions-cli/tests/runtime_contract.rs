@@ -1,5 +1,5 @@
-use std::fs;
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
@@ -31,8 +31,7 @@ fn repo_root() -> PathBuf {
 }
 
 fn is_skill_root(path: &Path) -> bool {
-    path.join("SKILL.md").is_file()
-        && path.join("templates").join("workspace").is_dir()
+    path.join("SKILL.md").is_file() && path.join("templates").join("workspace").is_dir()
 }
 
 fn skill_root() -> PathBuf {
@@ -91,7 +90,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
     fs::create_dir_all(dst).expect("failed to create destination directory");
     for entry in WalkDir::new(src) {
         let entry = entry.unwrap_or_else(|error| {
-            panic!("failed to walk source directory '{}': {error}", src.display())
+            panic!(
+                "failed to walk source directory '{}': {error}",
+                src.display()
+            )
         });
         let source = entry.path();
         let relative = source.strip_prefix(src).unwrap_or_else(|error| {
@@ -159,9 +161,81 @@ fn set_capability_policy(workspace: &Path, capability: &str, enabled: bool) {
     let caps_path = workspace.join(".github/workspace-capabilities.yaml");
     let raw = fs::read_to_string(&caps_path).expect("failed to read capabilities yaml");
     let mut parsed: Value = serde_yaml::from_str(&raw).expect("failed to parse capabilities yaml");
-    parsed["capabilities"][capability]["policy"]["enabled"] = Value::Bool(enabled);
-    fs::write(&caps_path, serde_yaml::to_string(&parsed).expect("failed to render capabilities yaml"))
-        .expect("failed to write capabilities yaml");
+    parsed["capabilities"][capability]["authorized"]["enabled"] = Value::Bool(enabled);
+    parsed["capabilities"][capability]["authorized"]["source"] =
+        Value::String("test-fixture".to_string());
+    fs::write(
+        &caps_path,
+        serde_yaml::to_string(&parsed).expect("failed to render capabilities yaml"),
+    )
+    .expect("failed to write capabilities yaml");
+}
+
+fn set_governance_status(workspace: &Path, status: &str) {
+    let governance_path = workspace.join(".github/github-governance.yaml");
+    let raw = fs::read_to_string(&governance_path).expect("failed to read governance yaml");
+    let mut parsed: Value = serde_yaml::from_str(&raw).expect("failed to parse governance yaml");
+    parsed["readiness"]["status"] = Value::String(status.to_string());
+    fs::write(
+        &governance_path,
+        serde_yaml::to_string(&parsed).expect("failed to render governance yaml"),
+    )
+    .expect("failed to write governance yaml");
+}
+
+fn set_governance_bool(workspace: &Path, path: &[&str], value: bool) {
+    let governance_path = workspace.join(".github/github-governance.yaml");
+    let raw = fs::read_to_string(&governance_path).expect("failed to read governance yaml");
+    let mut parsed: Value = serde_yaml::from_str(&raw).expect("failed to parse governance yaml");
+    let mut current = &mut parsed;
+    for key in &path[..path.len() - 1] {
+        current = current
+            .get_mut(*key)
+            .unwrap_or_else(|| panic!("missing governance key '{}'", key));
+    }
+    current[path[path.len() - 1]] = Value::Bool(value);
+    fs::write(
+        &governance_path,
+        serde_yaml::to_string(&parsed).expect("failed to render governance yaml"),
+    )
+    .expect("failed to write governance yaml");
+}
+
+fn init_git_repo(workspace: &Path) {
+    let output = Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(workspace)
+        .output()
+        .expect("failed to init git repo");
+    assert!(
+        output.status.success(),
+        "git init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let commands: &[&[&str]] = &[
+        &["config", "user.name", "Runtime Contract"],
+        &["config", "user.email", "runtime-contract@example.com"],
+        &["add", "."],
+        &[
+            "commit",
+            "-m",
+            "chore: GH-1 seed runtime contract workspace",
+        ],
+    ];
+    for args in commands {
+        let output = Command::new("git")
+            .args(*args)
+            .current_dir(workspace)
+            .output()
+            .expect("failed to execute git command");
+        assert!(
+            output.status.success(),
+            "git command {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
 }
 
 fn configure_governance(workspace: &Path) {
@@ -203,8 +277,14 @@ fn configure_governance(workspace: &Path) {
 fn branch_and_reason_contract_match_runtime_enums() {
     assert_eq!(Role::DevopsReleaseEngineer.branch_prefix(), "ops");
     assert_eq!(Role::PmOrchestrator.branch_prefix(), "product");
-    assert_eq!(HandoffReason::ReadyForRelease.to_string(), "ready_for_release");
-    assert_eq!(HandoffReason::EnvironmentIssue.to_string(), "environment_issue");
+    assert_eq!(
+        HandoffReason::ReadyForRelease.to_string(),
+        "ready_for_release"
+    );
+    assert_eq!(
+        HandoffReason::EnvironmentIssue.to_string(),
+        "environment_issue"
+    );
 }
 
 #[test]
@@ -323,8 +403,8 @@ fn governance_configure_happy_path_leaves_workspace_configured() {
     assert!(!governance.contains("REPLACE_ME"));
     assert!(!governance.contains("@team-"));
 
-    let codeowners =
-        fs::read_to_string(workspace.path().join(".github/CODEOWNERS")).expect("failed to read CODEOWNERS");
+    let codeowners = fs::read_to_string(workspace.path().join(".github/CODEOWNERS"))
+        .expect("failed to read CODEOWNERS");
     assert!(codeowners.contains("@acme-infra"));
     assert!(!codeowners.contains("@team-"));
 
@@ -337,11 +417,17 @@ fn governance_configure_happy_path_leaves_workspace_configured() {
 
     let readiness_output = run_cli(workspace.path(), &["validate", "readiness"], &[]);
     assert!(
-        readiness_output.status.success(),
-        "validate readiness failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        !readiness_output.status.success(),
+        "validate readiness unexpectedly passed:\nSTDOUT:\n{}\nSTDERR:\n{}",
         String::from_utf8_lossy(&readiness_output.stdout),
         String::from_utf8_lossy(&readiness_output.stderr)
     );
+    let readiness_combined = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&readiness_output.stdout),
+        String::from_utf8_lossy(&readiness_output.stderr)
+    );
+    assert!(readiness_combined.contains("production-ready"));
 }
 
 #[test]
@@ -349,10 +435,20 @@ fn governance_configure_requires_all_flags() {
     let workspace = make_workspace();
     let output = run_cli(
         workspace.path(),
-        &["governance", "configure", "--owner", "acme-org", "--repo", "copilot-workspace"],
+        &[
+            "governance",
+            "configure",
+            "--owner",
+            "acme-org",
+            "--repo",
+            "copilot-workspace",
+        ],
         &[],
     );
-    assert!(!output.status.success(), "configure unexpectedly succeeded with missing flags");
+    assert!(
+        !output.status.success(),
+        "configure unexpectedly succeeded with missing flags"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--release-gate-login"));
 }
@@ -376,7 +472,10 @@ fn audit_replay_spool_smoke_succeeds_on_empty_spool() {
 fn audit_sync_fails_when_sqlite_policy_disabled() {
     let workspace = make_workspace();
     let output = run_cli(workspace.path(), &["audit", "sync"], &[]);
-    assert!(!output.status.success(), "audit sync unexpectedly succeeded");
+    assert!(
+        !output.status.success(),
+        "audit sync unexpectedly succeeded"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("audit sync is out of contract"));
 }
@@ -391,7 +490,9 @@ fn report_dashboard_smoke_generates_dashboard() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let dashboard = workspace.path().join("docs/project/management-dashboard.md");
+    let dashboard = workspace
+        .path()
+        .join("docs/project/management-dashboard.md");
     let content = fs::read_to_string(&dashboard).expect("failed to read dashboard");
     assert!(content.contains("# Management Dashboard"));
 }
@@ -401,17 +502,229 @@ fn report_pack_fails_when_reporting_policy_disabled() {
     let workspace = make_workspace();
     set_capability_policy(workspace.path(), "reporting", false);
     let output = run_cli(workspace.path(), &["report", "pack"], &[]);
-    assert!(!output.status.success(), "report pack unexpectedly succeeded");
+    assert!(
+        !output.status.success(),
+        "report pack unexpectedly succeeded"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("report pack is out of contract"));
 }
 
 #[test]
+fn capabilities_detect_generates_parseable_yaml() {
+    let workspace = make_workspace();
+    init_git_repo(workspace.path());
+
+    let output = run_cli(workspace.path(), &["capabilities", "detect"], &[]);
+    assert!(
+        output.status.success(),
+        "capabilities detect failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let caps_path = workspace.path().join(".github/workspace-capabilities.yaml");
+    let content = fs::read_to_string(&caps_path).expect("failed to read capabilities yaml");
+    let parsed: Value = serde_yaml::from_str(&content).expect("capabilities yaml must parse");
+
+    assert_eq!(
+        parsed["capabilities"]["sqlite"]["detected"]["installed"].as_bool(),
+        Some(true)
+    );
+}
+
+#[test]
+fn checkout_task_branch_rejects_dirty_worktree() {
+    let workspace = make_workspace();
+    init_git_repo(workspace.path());
+    set_capability_policy(workspace.path(), "git", true);
+
+    let vision_path = workspace.path().join("docs/project/vision.md");
+    fs::write(&vision_path, "# Dirty change\n").expect("failed to dirty workspace");
+
+    let output = run_cli(
+        workspace.path(),
+        &[
+            "git",
+            "checkout-task-branch",
+            "--role",
+            "backend-developer",
+            "--issue-id",
+            "GH-42",
+            "--slug",
+            "dirty-worktree",
+            "--base",
+            "main",
+        ],
+        &[],
+    );
+
+    assert!(
+        !output.status.success(),
+        "checkout-task-branch unexpectedly succeeded on a dirty worktree"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Refusing to switch branches with local changes present"));
+}
+
+#[test]
+fn git_finalize_blocks_invalid_workspace_and_records_failure() {
+    let workspace = make_workspace();
+    init_git_repo(workspace.path());
+    set_capability_policy(workspace.path(), "git", true);
+
+    let checkout_output = Command::new("git")
+        .args(["checkout", "-b", "backend/gh-42-finalize-block"])
+        .current_dir(workspace.path())
+        .output()
+        .expect("failed to create task branch");
+    assert!(
+        checkout_output.status.success(),
+        "git checkout -b failed: {}",
+        String::from_utf8_lossy(&checkout_output.stderr)
+    );
+
+    fs::remove_file(workspace.path().join("docs/project/vision.md"))
+        .expect("failed to remove required file");
+
+    let output = run_cli(
+        workspace.path(),
+        &[
+            "git",
+            "finalize",
+            "--agent-role",
+            "backend-developer",
+            "--summary",
+            "blocked finalize",
+            "--issue-ref",
+            "GH-42",
+            "--commit-message",
+            "fix(backend): GH-42 blocked finalize",
+            "--auto-stage-all",
+        ],
+        &[],
+    );
+
+    assert!(
+        !output.status.success(),
+        "git finalize unexpectedly succeeded on an invalid workspace"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("Workspace validation failed before commit creation"));
+
+    let work_units_dir = workspace.path().join(".state/work-units");
+    let reports = fs::read_dir(&work_units_dir)
+        .expect("failed to list work-unit reports")
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .map(|ext| ext == "json")
+                .unwrap_or(false)
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        !reports.is_empty(),
+        "expected a blocked work-unit report to be written"
+    );
+
+    let newest_report = reports
+        .iter()
+        .max_by_key(|entry| entry.file_name())
+        .expect("missing blocked report");
+    let report_content =
+        fs::read_to_string(newest_report.path()).expect("failed to read blocked work-unit report");
+    assert!(report_content.contains("\"result\": \"validation-failed\""));
+}
+
+#[test]
+fn readiness_requires_remote_gh_controls_when_marked_production_ready() {
+    let workspace = make_workspace();
+    configure_governance(workspace.path());
+    set_governance_status(workspace.path(), "production-ready");
+    set_governance_bool(
+        workspace.path(),
+        &["github", "branch_protection", "enabled"],
+        true,
+    );
+    set_capability_policy(workspace.path(), "gh", false);
+
+    let output = run_cli(workspace.path(), &["validate", "readiness"], &[]);
+    assert!(
+        !output.status.success(),
+        "validate readiness unexpectedly passed without gh policy enabled"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("capabilities.gh.authorized.enabled=false"));
+}
+
+#[test]
+fn readiness_rejects_github_project_until_supported() {
+    let workspace = make_workspace();
+    configure_governance(workspace.path());
+    set_governance_status(workspace.path(), "production-ready");
+    set_governance_bool(workspace.path(), &["github", "project", "enabled"], true);
+
+    let output = run_cli(workspace.path(), &["validate", "readiness"], &[]);
+    assert!(
+        !output.status.success(),
+        "validate readiness unexpectedly accepted github.project.enabled=true"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("out of the current supported operational contract"));
+}
+
+#[test]
+fn prompt_tool_contracts_reject_execute_on_analysis_only_prompt() {
+    let workspace = make_workspace();
+    let prompt_path = workspace
+        .path()
+        .join(".github/prompts/deep-architecture-analysis.prompt.md");
+    let content = fs::read_to_string(&prompt_path).expect("failed to read prompt");
+    let mutated = content.replacen("  - read\n", "  - read\n  - execute\n", 1);
+    fs::write(&prompt_path, mutated).expect("failed to mutate prompt");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "prompt-tool-contracts"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "prompt-tool-contracts unexpectedly accepted execute on analysis-only prompt"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("must not declare execute because this workflow is analysis-only"));
+}
+
+#[test]
+fn copilot_runtime_contract_rejects_github_project_execution_layer_claim() {
+    let workspace = make_workspace();
+    let board_path = workspace.path().join("docs/project/board.md");
+    let mut content = fs::read_to_string(&board_path).expect("failed to read board.md");
+    content.push_str("\nExecution layer: GitHub Issues, GitHub Project, and Pull Requests\n");
+    fs::write(&board_path, content).expect("failed to mutate board.md");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "copilot-runtime-contract"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "copilot-runtime-contract unexpectedly accepted a GitHub Project execution-layer claim"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains(
+        "board snapshots must not claim GitHub Project as part of the current execution layer"
+    ));
+}
+
+#[test]
 fn copilot_runtime_contract_rejects_stale_claims() {
     let workspace = make_workspace();
-    let doc_path = workspace
-        .path()
-        .join("docs/runtime/runtime-operations.md");
+    let doc_path = workspace.path().join("docs/runtime/runtime-operations.md");
     let mut content = fs::read_to_string(&doc_path).expect("failed to read runtime operations");
     content.push_str("\nBootstrap initializes GitHub governance during the skill runtime.\n");
     fs::write(&doc_path, content).expect("failed to mutate runtime operations");

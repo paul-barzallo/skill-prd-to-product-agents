@@ -1,9 +1,10 @@
 mod bootstrap;
-mod validate;
+mod capabilities;
 mod clean;
-mod preflight;
 mod logging;
+mod preflight;
 mod util;
+mod validate;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -127,12 +128,15 @@ fn execute(command: Commands, skill_root: &std::path::Path) -> anyhow::Result<()
 fn main() {
     let cli = Cli::parse();
     let command = cli.command;
-    
+
     let raw_skill_root = cli.skill_root.unwrap_or_else(|| {
-        eprintln!("{} --skill-root must be explicitly provided", "ERROR:".red().bold());
+        eprintln!(
+            "{} --skill-root must be explicitly provided",
+            "ERROR:".red().bold()
+        );
         process::exit(1);
     });
-    
+
     let skill_root = util::resolve_skill_root(&raw_skill_root);
     let command_label = command_name(&command);
     let use_temp_log_dir = matches!(&command, Commands::Preflight { .. });

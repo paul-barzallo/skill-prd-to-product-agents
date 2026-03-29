@@ -72,8 +72,7 @@ pub fn to_relative_posix(full: &Path, base: &Path) -> String {
     } else {
         &full_str
     };
-    rel.trim_start_matches(['\\', '/'])
-        .replace('\\', "/")
+    rel.trim_start_matches(['\\', '/']).replace('\\', "/")
 }
 
 /// Read a YAML scalar value by dotted key path using serde_yaml.
@@ -168,7 +167,11 @@ pub fn command_exists(name: &str) -> bool {
                 log_command_failure(name, &["--version"], &output);
                 let err = String::from_utf8_lossy(&output.stderr);
                 if !err.trim().is_empty() {
-                    eprintln!("[Preflight Warning] '{}' exists but returned error on --version: {}", name, err.trim());
+                    eprintln!(
+                        "[Preflight Warning] '{}' exists but returned error on --version: {}",
+                        name,
+                        err.trim()
+                    );
                 }
                 return false;
             }
@@ -246,7 +249,12 @@ pub fn command_ok(name: &str, args: &[&str]) -> bool {
                 log_command_failure(name, args, &output);
                 let err = String::from_utf8_lossy(&output.stderr);
                 if !err.trim().is_empty() {
-                    eprintln!("[Preflight Warning] '{} {}' failed: {}", name, args.join(" "), err.trim());
+                    eprintln!(
+                        "[Preflight Warning] '{} {}' failed: {}",
+                        name,
+                        args.join(" "),
+                        err.trim()
+                    );
                 }
                 false
             }
@@ -317,11 +325,7 @@ pub fn backup_with_retention(path: &Path, keep: usize) -> Result<Option<std::pat
         let pattern = format!("{base_name}.backup-");
         let mut backups: Vec<_> = fs::read_dir(parent)?
             .filter_map(|e| e.ok())
-            .filter(|e| {
-                e.file_name()
-                    .to_string_lossy()
-                    .starts_with(&pattern)
-            })
+            .filter(|e| e.file_name().to_string_lossy().starts_with(&pattern))
             .collect();
         backups.sort_by(|a, b| b.file_name().cmp(&a.file_name()));
         for old in backups.iter().skip(keep) {
@@ -363,8 +367,7 @@ fn resolve_project_root(path: &Path) -> PathBuf {
 }
 
 fn is_skill_root(path: &Path) -> bool {
-    path.join("SKILL.md").is_file()
-        && path.join("templates").join("workspace").is_dir()
+    path.join("SKILL.md").is_file() && path.join("templates").join("workspace").is_dir()
 }
 
 fn is_repo_root(path: &Path) -> bool {

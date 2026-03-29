@@ -78,7 +78,7 @@ prdtp-agents-functions-cli state handoff create \
   --to-role       tech-lead \
   --handoff-type  rework \
   --entity        "US-007" \
-  --reason        new-work \
+  --reason        needs_rework \
   --details       "Client requested implementation rework after review"
 ```
 

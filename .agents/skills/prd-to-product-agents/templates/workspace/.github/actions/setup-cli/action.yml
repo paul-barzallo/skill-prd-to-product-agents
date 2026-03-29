@@ -15,7 +15,9 @@ runs:
         esac
         CLI="${BIN_DIR}/prdtp-agents-functions-cli-${SUFFIX}"
         chmod +x "$CLI"
-        sudo cp "$CLI" /usr/local/bin/prdtp-agents-functions-cli
+        mkdir -p "$RUNNER_TEMP/prdtp-runtime-cli"
+        cp "$CLI" "$RUNNER_TEMP/prdtp-runtime-cli/prdtp-agents-functions-cli"
+        echo "$RUNNER_TEMP/prdtp-runtime-cli" >> "$GITHUB_PATH"
 
     - name: Setup CLI (Windows)
       if: runner.os == 'Windows'

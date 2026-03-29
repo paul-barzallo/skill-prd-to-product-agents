@@ -1,3 +1,4 @@
+pub mod capabilities;
 pub mod enums;
 pub mod yaml_ops;
 pub mod audit;

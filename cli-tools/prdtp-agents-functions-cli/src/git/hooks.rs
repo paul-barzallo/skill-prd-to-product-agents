@@ -58,7 +58,10 @@ pub fn run(workspace: &Path) -> Result<()> {
     }
 
     tracing::debug!(hook_path = %hook_path.display(), "pre-commit hook file written");
-    println!("{} pre-commit hook installed at {}", "✓".green().bold(), hook_path.display());
+    println!(
+        "{} pre-commit hook installed at {}",
+        "✓".green().bold(),
+        hook_path.display()
+    );
     Ok(())
 }
-

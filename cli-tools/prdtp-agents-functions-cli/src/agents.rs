@@ -31,7 +31,10 @@ pub fn run(workspace: &Path, args: AssembleArgs) -> Result<()> {
         fs::read_to_string(&shared_context_file)?.replace("\r\n", "\n")
     } else {
         tracing::warn!(path = %shared_context_file.display(), "shared context file missing; assembling agents without shared context");
-        eprintln!("{} No shared-context.md found — agents will have no shared context", "WARN:".yellow().bold());
+        eprintln!(
+            "{} No shared-context.md found — agents will have no shared context",
+            "WARN:".yellow().bold()
+        );
         String::new()
     };
 
@@ -49,7 +52,12 @@ pub fn run(workspace: &Path, args: AssembleArgs) -> Result<()> {
     entries.sort_by_key(|e| e.file_name());
 
     for entry in &entries {
-        let name = entry.path().file_stem().unwrap().to_string_lossy().to_string();
+        let name = entry
+            .path()
+            .file_stem()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
         let identity_content = fs::read_to_string(entry.path())?.replace("\r\n", "\n");
         let context_file = context_dir.join(format!("{name}.md"));
         let agent_file = agents_dir.join(format!("{name}.agent.md"));
@@ -58,7 +66,10 @@ pub fn run(workspace: &Path, args: AssembleArgs) -> Result<()> {
             fs::read_to_string(&context_file)?.replace("\r\n", "\n")
         } else {
             tracing::warn!(agent = %name, path = %context_file.display(), "agent-specific context file missing; using empty context");
-            eprintln!("{} No context file for {name} — using empty context", "WARN:".yellow().bold());
+            eprintln!(
+                "{} No context file for {name} — using empty context",
+                "WARN:".yellow().bold()
+            );
             String::new()
         };
 
@@ -77,7 +88,10 @@ pub fn run(workspace: &Path, args: AssembleArgs) -> Result<()> {
                 let existing = fs::read_to_string(&agent_file)?.replace("\r\n", "\n");
                 if content.trim_end() != existing.trim_end() {
                     tracing::error!(agent = %name, path = %agent_file.display(), "assembled agent file differs from expected output");
-                    eprintln!("  {} {name}.agent.md differs from assembled output", "MISMATCH:".red());
+                    eprintln!(
+                        "  {} {name}.agent.md differs from assembled output",
+                        "MISMATCH:".red()
+                    );
                     mismatched += 1;
                 }
             }
@@ -88,10 +102,16 @@ pub fn run(workspace: &Path, args: AssembleArgs) -> Result<()> {
     }
 
     if args.verify {
-        tracing::info!(assembled, mismatched, "agent assembly verification completed");
+        tracing::info!(
+            assembled,
+            mismatched,
+            "agent assembly verification completed"
+        );
         println!("Verified {assembled} agent files: {mismatched} mismatch(es)");
         if mismatched > 0 {
-            bail!("Run 'prdtp-agents-functions-cli agents assemble' to regenerate .agent.md files.");
+            bail!(
+                "Run 'prdtp-agents-functions-cli agents assemble' to regenerate .agent.md files."
+            );
         }
     } else {
         tracing::info!(assembled, "agent assembly write completed");

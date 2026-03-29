@@ -280,13 +280,15 @@ fn repo_validation_workflow_includes_project_memory_cli_and_skill_source_paths()
 
 #[test]
 fn build_workflow_release_gate_runs_before_merge() {
+    let workflow_content = read_repo_file(".github/workflows/build-skill-binaries.yml");
     let workflow = read_workflow_yaml(".github/workflows/build-skill-binaries.yml");
     let release_gate = workflow_job(&workflow, "release-gate");
     let publish = workflow_job(&workflow, "publish");
 
-    let release_gate_if = mapping_get(release_gate, "if")
-        .as_str()
-        .expect("expected release-gate.if to be a string");
+    let release_gate_if = release_gate
+        .get(Value::String("if".to_string()))
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let publish_if = mapping_get(publish, "if")
         .as_str()
         .expect("expected publish.if to be a string");
@@ -296,12 +298,41 @@ fn build_workflow_release_gate_runs_before_merge() {
         "Release gate must not be restricted to post-merge execution only"
     );
     assert!(
-        release_gate_if.contains("github.actor != 'github-actions[bot]'"),
-        "Release gate should skip bot-authored publish pushes to avoid redundant loops"
+        workflow_content.contains("peter-evans/create-pull-request@v7"),
+        "Publish flow must create a reviewable PR instead of mutating main directly"
     );
     assert!(
         publish_if == "github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && github.actor != 'github-actions[bot]'",
         "Publish job must remain restricted to push on main"
+    );
+    assert!(
+        !workflow_content.contains("git push"),
+        "Build workflow must not push tracked binaries directly to main"
+    );
+}
+
+#[test]
+fn build_workflow_uses_least_privilege_until_binary_refresh_step() {
+    let workflow = read_workflow_yaml(".github/workflows/build-skill-binaries.yml");
+    let workflow_mapping = as_mapping(&workflow, "workflow");
+    let workflow_permissions = as_mapping(mapping_get(workflow_mapping, "permissions"), "permissions");
+    let publish = workflow_job(&workflow, "publish");
+    let publish_permissions = as_mapping(mapping_get(publish, "permissions"), "publish.permissions");
+
+    assert_eq!(
+        mapping_get(workflow_permissions, "contents").as_str(),
+        Some("read"),
+        "workflow-wide permissions should default to contents: read"
+    );
+    assert_eq!(
+        mapping_get(publish_permissions, "contents").as_str(),
+        Some("write"),
+        "publish job needs scoped contents: write to open the binary refresh PR"
+    );
+    assert_eq!(
+        mapping_get(publish_permissions, "pull-requests").as_str(),
+        Some("write"),
+        "publish job needs pull-requests: write to open the binary refresh PR"
     );
 }
 
@@ -369,22 +400,16 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
 #[test]
 fn build_workflow_skips_redundant_bot_publish_runs() {
     let workflow = read_workflow_yaml(".github/workflows/build-skill-binaries.yml");
-    let build = workflow_job(&workflow, "build");
-    let test = workflow_job(&workflow, "test");
-    let release_gate = workflow_job(&workflow, "release-gate");
     let publish = workflow_job(&workflow, "publish");
 
     let expected_guard = "github.actor != 'github-actions[bot]'";
-
-    for (job_name, job) in [("build", build), ("test", test), ("release-gate", release_gate), ("publish", publish)] {
-        let condition = mapping_get(job, "if")
-            .as_str()
-            .unwrap_or_else(|| panic!("expected {job_name}.if to be a string"));
-        assert!(
-            condition.contains(expected_guard),
-            "{job_name} must skip bot-authored publish pushes to avoid redundant workflow runs"
-        );
-    }
+    let condition = mapping_get(publish, "if")
+        .as_str()
+        .expect("expected publish.if to be a string");
+    assert!(
+        condition.contains(expected_guard),
+        "publish must skip bot-authored reruns to avoid redundant binary-refresh PR churn"
+    );
 }
 
 #[test]
