@@ -252,7 +252,7 @@ pub fn workspace(skill_root: &Path, args: WorkspaceArgs) -> Result<()> {
     if args.dry_run {
         return dry_run(&template_root, &target_root);
     }
-    let binary_bundle_lines = verify_binary_bundle_integrity(skill_root)?;
+    let binary_bundle_lines = crate::bundle::verify_consumed_bundle_integrity(skill_root)?;
 
     // ── Main bootstrap ────────────────────────────────────────
     let overlay_root = target_root.join(".bootstrap-overlays");
@@ -850,113 +850,6 @@ fn dry_run(template_root: &Path, target_root: &Path) -> Result<()> {
     println!("  Would overlay: {would_overlay} proposals");
     println!("  Would skip:    {would_skip} unchanged files");
     Ok(())
-}
-
-fn file_sha256(path: &Path) -> Result<String> {
-    let content = fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    let mut hasher = Sha256::new();
-    hasher.update(&content);
-    Ok(format!("{:x}", hasher.finalize()))
-}
-
-fn verify_binary_bundle_integrity(skill_root: &Path) -> Result<Vec<String>> {
-    let mut lines = Vec::new();
-    lines.push(verify_checksum_manifest(
-        &skill_root.join("bin"),
-        "checksums.sha256",
-        "skill bootstrap bundle",
-    )?);
-    lines.push(verify_checksum_manifest(
-        &skill_root
-            .join("templates")
-            .join("workspace")
-            .join(".agents")
-            .join("bin")
-            .join("prd-to-product-agents"),
-        "checksums.sha256",
-        "workspace runtime bundle",
-    )?);
-    Ok(lines)
-}
-
-fn verify_checksum_manifest(bundle_dir: &Path, manifest_name: &str, label: &str) -> Result<String> {
-    let manifest_path = bundle_dir.join(manifest_name);
-    if !manifest_path.is_file() {
-        bail!(
-            "{label} checksum manifest not found: {}",
-            manifest_path.display()
-        );
-    }
-
-    let manifest = fs::read_to_string(&manifest_path)?;
-    let mut expected: Vec<(String, String)> = Vec::new();
-    for (index, line) in manifest.lines().enumerate() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        let mut parts = trimmed.split_whitespace();
-        let Some(hash) = parts.next() else {
-            bail!("{label} checksum manifest line {} is malformed", index + 1);
-        };
-        let Some(file_name) = parts.next() else {
-            bail!("{label} checksum manifest line {} is malformed", index + 1);
-        };
-        if parts.next().is_some() {
-            bail!("{label} checksum manifest line {} is malformed", index + 1);
-        }
-        expected.push((hash.to_ascii_lowercase(), file_name.to_string()));
-    }
-
-    if expected.is_empty() {
-        bail!("{label} checksum manifest is empty");
-    }
-
-    let actual_files: Vec<String> = fs::read_dir(bundle_dir)?
-        .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry
-                .file_type()
-                .map(|kind| kind.is_file())
-                .unwrap_or(false)
-        })
-        .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| name != manifest_name)
-        .collect();
-
-    let mut errors = Vec::new();
-    for (expected_hash, file_name) in &expected {
-        let file_path = bundle_dir.join(file_name);
-        if !file_path.is_file() {
-            errors.push(format!("missing {file_name}"));
-            continue;
-        }
-        let actual_hash = file_sha256(&file_path)?;
-        if actual_hash.to_ascii_lowercase() != *expected_hash {
-            errors.push(format!("checksum mismatch for {file_name}"));
-        }
-    }
-
-    for file_name in &actual_files {
-        if !expected
-            .iter()
-            .any(|(_, expected_name)| expected_name == file_name)
-        {
-            errors.push(format!("untracked bundled file {file_name}"));
-        }
-    }
-
-    if errors.is_empty() {
-        Ok(format!(
-            "{label}: pass ({})",
-            manifest_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .unwrap_or(manifest_name)
-        ))
-    } else {
-        bail!("{label} integrity failed:\n  {}", errors.join("\n  "))
-    }
 }
 
 fn merge_managed_block(target: &Path, source: &Path, block_name: &str) -> Result<bool> {

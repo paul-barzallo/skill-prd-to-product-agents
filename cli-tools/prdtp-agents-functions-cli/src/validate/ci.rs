@@ -158,12 +158,12 @@ const COPILOT_CONTRACT_FORBIDDEN: &[(&str, &str)] = &[
         "execute must not be documented as arbitrary shell access",
     ),
     (
-        "allow editing immutable governance files",
-        "immutable-token must be described as a local maintenance bypass, not strong authorization",
+        "immutable-token",
+        "runtime docs must not advertise the removed immutable-token bypass",
     ),
     (
-        "unless a valid time-limited token has been created",
-        "immutable-token wording must stay local and compensating, not authoritative",
+        "local bypass token",
+        "runtime docs must not describe immutable governance through a local bypass token",
     ),
     (
         "Execution layer: GitHub Issues, GitHub Project, and Pull Requests",
@@ -340,17 +340,14 @@ fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
             staged_files: vec![".github/copilot-instructions.md".to_string()],
         };
         match crate::git::pre_commit::run(&immutable_dir, immutable_args) {
-            Ok(()) => {
-                tracing::error!(workspace = %immutable_dir.display(), "pre-commit fixture unexpectedly allowed immutable governance edit");
-                bail!("shared pre-commit validator allowed immutable governance edit")
-            }
+            Ok(()) => tracing::debug!(
+                workspace = %immutable_dir.display(),
+                "immutable governance edit admitted locally and left to remote PR approval"
+            ),
             Err(error) => {
                 let text = format!("{error:#}");
-                if !text.contains("Immutable governance files are staged") {
-                    tracing::error!(error = %text, "unexpected error while validating immutable edit fixture");
-                    bail!("unexpected immutable fixture error: {text}");
-                }
-                tracing::debug!(error = %text, "immutable governance edit fixture rejected as expected");
+                tracing::error!(error = %text, "unexpected error while validating immutable edit fixture");
+                bail!("unexpected immutable fixture error: {text}");
             }
         }
 
@@ -365,7 +362,7 @@ fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
 
     let _ = fs::remove_dir_all(&tmp_root);
     result?;
-    print_pass("pre-commit fixtures rejected invalid YAML and immutable edits");
+    print_pass("pre-commit fixtures rejected invalid YAML and admitted immutable edits only for remote PR approval");
     Ok(())
 }
 
@@ -1185,14 +1182,14 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
         (".github/ISSUE_TEMPLATE/feature-task.yml", "        - ops"),
         (".github/ISSUE_TEMPLATE/bug-task.yml", "        - ops"),
         (".github/ISSUE_TEMPLATE/chore-task.yml", "        - ops"),
-        (".github/copilot-instructions.md", "local bypass token"),
+        (".github/copilot-instructions.md", "remote PR approval"),
         (
             "docs/runtime/prdtp-agents-functions-cli-reference.md",
-            "local bypass token",
+            "immutable_governance",
         ),
-        ("docs/runtime/runtime-operations.md", "local bypass token"),
-        ("docs/runtime/runtime-error-recovery.md", "local bypass token"),
-        (".github/immutable-files.txt", "local bypass token"),
+        ("docs/runtime/runtime-operations.md", "remote PR approval"),
+        ("docs/runtime/runtime-error-recovery.md", "validate pr-governance"),
+        (".github/immutable-files.txt", "remote PR approval"),
     ];
 
     for (rel, snippet) in required_snippets {

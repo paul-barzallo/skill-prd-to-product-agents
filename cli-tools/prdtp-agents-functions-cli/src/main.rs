@@ -76,7 +76,7 @@ enum Commands {
         #[command(subcommand)]
         sub: DatabaseCommands,
     },
-    /// Governance operations (immutable-edit tokens)
+    /// Governance operations
     Governance {
         #[command(subcommand)]
         sub: GovernanceCommands,
@@ -241,8 +241,6 @@ enum DatabaseCommands {
 
 #[derive(Subcommand)]
 enum GovernanceCommands {
-    /// Generate a time-limited immutable-edit token
-    ImmutableToken(governance::ImmutableTokenArgs),
     /// Configure local GitHub governance and render CODEOWNERS
     Configure(governance::ConfigureArgs),
 }
@@ -340,9 +338,6 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
             DatabaseCommands::Migrate => database::migrate(workspace),
         },
         Commands::Governance { sub } => match sub {
-            GovernanceCommands::ImmutableToken(args) => {
-                governance::run_immutable_token(workspace, args)
-            }
             GovernanceCommands::Configure(args) => governance::configure(workspace, args),
         },
         Commands::Dependencies { sub } => match sub {

@@ -11,8 +11,8 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 
 ## Packaging limitations
 
-- Published binary integrity is checked through checksum manifests, a reviewed refresh PR, dependency review, and CI build provenance attestation, but that is still not the same as a fully closed enterprise supply-chain story.
-- The current release path still lacks a first-class SBOM and downstream verification of attestations/checksums as a blocking consumer-side gate.
+- Published binary integrity is now checked through checksum manifests, SPDX SBOMs, provenance policy files, a reviewed refresh PR, dependency review, and CI build provenance attestation.
+- Consumer-side attestation verification is strict for packaged consumption, but the repository source checkout still skips remote attestation verification intentionally so local maintainer development remains possible.
 - Local Rust build outputs are still easy to confuse with shipped artifacts if hygiene slips.
 - Release packaging discipline depends on maintainers respecting the documented boundaries around `bin/` and build outputs.
 
@@ -26,8 +26,8 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 ## Process limitations
 
 - Maintainer support and escalation flow is still minimal even though the runbook and issue templates now exist.
-- Binary refresh now routes through a reviewed PR, but reviewers still need to inspect tracked binaries and checksums before merge.
-- GitHub Issue mutation is now wrapped by the runtime CLI, but the broader GitHub write surface is still intentionally narrower than the full `gh` CLI and must stay that way unless new wrappers, tests, and docs land together.
+- Binary refresh now routes through a reviewed PR, but reviewers still need to inspect tracked binaries, SBOMs, provenance policies, and checksums before merge.
+- GitHub issue and PR mutation are wrapped by the runtime CLI, but the broader GitHub write surface is still intentionally narrower than the full `gh` CLI and must stay that way unless new wrappers, tests, and docs land together.
 - Decision history is only now being formalized; some older choices still live mainly in code and scattered docs.
 
 ## Scope limitations

@@ -228,14 +228,12 @@ Notes:
 Governance operations.
 
 ```text
-prdtp-agents-functions-cli --workspace . governance immutable-token --reason "Fix typo in copilot-instructions.md" --files .github/copilot-instructions.md
 prdtp-agents-functions-cli --workspace . governance configure --owner acme-org --repo product-workspace --release-gate-login acme-devops --reviewer-product @acme-product --reviewer-architecture @acme-arch --reviewer-tech-lead @acme-techlead --reviewer-qa @acme-qa --reviewer-devops @acme-devops --reviewer-infra @acme-infra
 ```
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `immutable-token` | Generate a time-limited local bypass token for intentional maintenance of immutable governance files. |
-| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
+| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, `github.immutable_governance` reviewer fields, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
 
 ### dependencies
 
@@ -264,6 +262,19 @@ prdtp-agents-functions-cli --workspace . github issue create --title "Story: che
 prdtp-agents-functions-cli --workspace . github issue update --issue-ref GH-42 --title "Updated title"
 prdtp-agents-functions-cli --workspace . github issue comment --issue-ref GH-42 --body "Blocked by API contract"
 prdtp-agents-functions-cli --workspace . github issue label --issue-ref GH-42 --add status:blocked --remove status:ready
+```
+
+These commands are gated by `capabilities.gh.authorized.enabled=true`.
+
+### github pr
+
+GitHub pull-request mutation wrappers.
+
+```text
+prdtp-agents-functions-cli --workspace . github pr create --title "feat(frontend): GH-42 checkout form" --body "..." --base develop --head frontend/GH-42-checkout-form --label role:frontend
+prdtp-agents-functions-cli --workspace . github pr update --pr-ref 42 --title "Updated PR title" --add-label priority:p1
+prdtp-agents-functions-cli --workspace . github pr comment --pr-ref 42 --body "Ready for review"
+prdtp-agents-functions-cli --workspace . github pr label --pr-ref 42 --add criticality:critical --remove status:blocked
 ```
 
 These commands are gated by `capabilities.gh.authorized.enabled=true`.

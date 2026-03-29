@@ -1,28 +1,11 @@
 use anyhow::{bail, Context, Result};
-use chrono::Utc;
 use clap::Args;
 use colored::Colorize;
 use prdtp_agents_shared::yaml_ops;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use serde_yaml::{Mapping, Value};
-use sha2::{Digest, Sha256};
-use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
-
-#[derive(Args)]
-pub struct ImmutableTokenArgs {
-    /// Reason for requesting edit access
-    #[arg(long)]
-    pub reason: String,
-    /// Files to unlock (relative to workspace root)
-    #[arg(long, num_args = 1..)]
-    pub files: Vec<String>,
-    /// Who is requesting
-    #[arg(long, default_value = "agent")]
-    pub author: String,
-}
 
 #[derive(Args)]
 pub struct ConfigureArgs {
@@ -46,16 +29,6 @@ pub struct ConfigureArgs {
     pub reviewer_infra: String,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ImmutableToken {
-    author: String,
-    reason: String,
-    files: Vec<String>,
-    created_epoch: i64,
-    expires_epoch: i64,
-    integrity: String,
-}
-
 struct GovernanceReviewers {
     product: String,
     architecture: String,
@@ -63,152 +36,6 @@ struct GovernanceReviewers {
     qa: String,
     devops: String,
     infra: String,
-}
-
-const TOKEN_TTL_SECS: i64 = 3600;
-
-fn compute_token_integrity(
-    author: &str,
-    reason: &str,
-    files: &[String],
-    created: i64,
-    expires: i64,
-    workspace: &Path,
-) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(author.as_bytes());
-    hasher.update(b"|");
-    hasher.update(reason.as_bytes());
-    hasher.update(b"|");
-    for f in files {
-        hasher.update(f.as_bytes());
-        hasher.update(b",");
-    }
-    hasher.update(b"|");
-    hasher.update(created.to_le_bytes());
-    hasher.update(expires.to_le_bytes());
-    hasher.update(b"|");
-    let ws_id = workspace
-        .canonicalize()
-        .unwrap_or_else(|_| workspace.to_path_buf())
-        .to_string_lossy()
-        .to_string();
-    hasher.update(ws_id.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-pub fn verify_token_integrity(token_json: &str, workspace: &Path) -> bool {
-    let token: ImmutableToken = match serde_json::from_str(token_json) {
-        Ok(t) => t,
-        Err(_) => return false,
-    };
-    let expected = compute_token_integrity(
-        &token.author,
-        &token.reason,
-        &token.files,
-        token.created_epoch,
-        token.expires_epoch,
-        workspace,
-    );
-    token.integrity == expected
-}
-
-pub fn run_immutable_token(workspace: &Path, args: ImmutableTokenArgs) -> Result<()> {
-    tracing::info!(
-        workspace = %workspace.display(),
-        author = %args.author,
-        file_count = args.files.len(),
-        "requesting immutable-edit token"
-    );
-    if args.files.is_empty() {
-        bail!("Must specify at least one file to unlock with --files");
-    }
-    if args.reason.trim().is_empty() {
-        bail!("Must provide a non-empty --reason");
-    }
-
-    for f in &args.files {
-        let full = workspace.join(f);
-        if !full.exists() {
-            bail!("Target file does not exist: {f}");
-        }
-    }
-
-    let immutable_set = load_immutable_manifest(workspace)?;
-    let unauthorized: Vec<&String> = args
-        .files
-        .iter()
-        .filter(|file| !immutable_set.contains(file.as_str()))
-        .collect();
-    if !unauthorized.is_empty() {
-        let files = unauthorized
-            .iter()
-            .map(|file| format!("  {file}"))
-            .collect::<Vec<_>>()
-            .join("\n");
-        bail!(
-            "Immutable-edit tokens may only cover files listed in .github/immutable-files.txt:\n{}",
-            files
-        );
-    }
-
-    let now = Utc::now().timestamp();
-    let expires = now + TOKEN_TTL_SECS;
-    let integrity = compute_token_integrity(
-        &args.author,
-        &args.reason,
-        &args.files,
-        now,
-        expires,
-        workspace,
-    );
-    let token = ImmutableToken {
-        author: args.author,
-        reason: args.reason,
-        files: args.files,
-        created_epoch: now,
-        expires_epoch: expires,
-        integrity,
-    };
-
-    let state_dir = workspace.join(".state");
-    fs::create_dir_all(&state_dir)?;
-
-    let token_path = state_dir.join(".immutable-edit-token");
-    let json = serde_json::to_string_pretty(&token)?;
-    fs::write(&token_path, &json)?;
-
-    let expires_utc = chrono::DateTime::from_timestamp(token.expires_epoch, 0)
-        .map(|dt| dt.format("%Y-%m-%dT%H:%M:%SZ").to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-
-    println!("{} Immutable-edit token created", "✓".green().bold());
-    println!("  Token: .state/.immutable-edit-token");
-    println!("  TTL: {TOKEN_TTL_SECS}s (expires: {expires_utc})");
-    println!("  Files unlocked:");
-    for f in &token.files {
-        println!("    - {f}");
-    }
-
-    tracing::warn!(
-        token_path = %token_path.display(),
-        expires_utc = %expires_utc,
-        files = ?token.files,
-        "immutable-edit token created"
-    );
-    let _ = crate::audit::events::record_sensitive_action(
-        workspace,
-        "governance.immutable-token",
-        &token.author,
-        "success",
-        json!({
-            "files": token.files,
-            "reason": token.reason,
-            "expires_utc": expires_utc
-        }),
-    );
-
-    Ok(())
 }
 
 pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
@@ -265,11 +92,11 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
     yaml_ops::atomic_write(&governance_path, &rendered_governance)?;
     yaml_ops::atomic_write(&codeowners_path, &rendered_codeowners)?;
 
-    println!("{} Governance configured", "✓".green().bold());
+    println!("{} Governance configured", "OK:".green().bold());
     println!("  Repository: {owner}/{repo}");
     println!("  Release gate login: {release_gate_login}");
+    println!("  Immutable governance: remote PR approval required");
     println!("  Readiness status: configured");
-    println!("  Note: production-ready must be promoted through reviewed GitHub governance, not a local bypass.");
     let _ = crate::audit::events::record_sensitive_action(
         workspace,
         "governance.configure",
@@ -278,24 +105,12 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
         json!({
             "repository": format!("{owner}/{repo}"),
             "release_gate_login": release_gate_login,
+            "immutable_governance_mode": "remote-pr-approval",
             "readiness_status": "configured"
         }),
     );
 
     Ok(())
-}
-
-fn load_immutable_manifest(workspace: &Path) -> Result<HashSet<String>> {
-    let immutable_list_path = workspace.join(".github/immutable-files.txt");
-    if !immutable_list_path.exists() {
-        return Ok(HashSet::new());
-    }
-    let immutable_content = fs::read_to_string(&immutable_list_path)?;
-    Ok(immutable_content
-        .lines()
-        .filter(|line| !line.trim().is_empty() && !line.starts_with('#'))
-        .map(|line| line.trim().to_string())
-        .collect())
 }
 
 fn normalize_handle(label: &str, value: &str) -> Result<String> {
@@ -346,7 +161,7 @@ fn update_governance_value(
     set_string(
         readiness,
         "notes",
-        "Governance configured locally via prdtp-agents-functions-cli governance configure. production-ready must be promoted through reviewed GitHub governance.",
+        "Governance configured locally via prdtp-agents-functions-cli governance configure. production-ready and immutable governance changes must be promoted through reviewed GitHub PR controls.",
     );
     set_string(readiness, "status", "configured");
 
@@ -365,6 +180,18 @@ fn update_governance_value(
     let release_gate = mapping_mut(governance, &["github", "release_gate"])?;
     set_string(release_gate, "reviewer_handles", &reviewers.devops);
     set_string(release_gate, "reviewer_logins", release_gate_login);
+
+    let immutable_governance = mapping_mut(governance, &["github", "immutable_governance"])?;
+    set_string(
+        immutable_governance,
+        "reviewer_handles",
+        &format!("{},{}", reviewers.devops, reviewers.infra),
+    );
+    set_string(
+        immutable_governance,
+        "reviewer_logins",
+        release_gate_login,
+    );
 
     if let Ok(project) = mapping_mut(governance, &["github", "project"]) {
         set_string(project, "owner", owner);

@@ -9,6 +9,12 @@ use std::process::Command;
 
 use crate::validate::readiness;
 
+const OPERATIONAL_YAML: &[&str] = &[
+    "docs/project/handoffs.yaml",
+    "docs/project/findings.yaml",
+    "docs/project/releases.yaml",
+];
+
 #[derive(Args)]
 pub struct PrGovernanceArgs {
     /// GitHub event payload path. Defaults to GITHUB_EVENT_PATH.
@@ -63,6 +69,7 @@ pub fn run(workspace: &Path, args: PrGovernanceArgs) -> Result<()> {
 
     validate_pr_metadata(&event, &governance)?;
     validate_commit_subjects(workspace, &event.pull_request.base.branch, &event.pull_request.head.branch)?;
+    validate_immutable_governance_internal(workspace, &event, &governance)?;
 
     if event.pull_request.base.branch == "main" {
         validate_release_gate_internal(workspace, &event, &governance)?;
@@ -93,6 +100,7 @@ pub fn run_release_gate(workspace: &Path, args: ReleaseGateArgs) -> Result<()> {
     let event = load_pr_event(args.event_path.as_deref())?;
     let governance =
         readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
+    validate_immutable_governance_internal(workspace, &event, &governance)?;
     validate_release_gate_internal(workspace, &event, &governance)?;
     let _ = crate::audit::events::record_sensitive_action(
         workspace,
@@ -341,6 +349,169 @@ fn validate_release_gate_internal(
 
     readiness::validate_remote_governance(workspace, governance)?;
 
+    let latest_by_reviewer = latest_review_states(workspace, event)?;
+
+    let has_gate_approval = reviewer_logins
+        .iter()
+        .any(|login| latest_by_reviewer.get(login).map(|state| state == "APPROVED").unwrap_or(false));
+    if !has_gate_approval {
+        bail!(
+            "production-ready requires final release gate approval from one of: {}",
+            reviewer_logins.join(", ")
+        );
+    }
+
+    Ok(())
+}
+
+fn validate_immutable_governance_internal(
+    workspace: &Path,
+    event: &PullRequestEvent,
+    governance: &Value,
+) -> Result<()> {
+    let immutable_required = readiness::yaml_bool(
+        governance,
+        &["github", "immutable_governance", "required"],
+    )
+    .unwrap_or(false);
+    if !immutable_required {
+        return Ok(());
+    }
+
+    let immutable_manifest = load_immutable_manifest(workspace)?;
+    if immutable_manifest.is_empty() {
+        bail!("immutable governance enforcement requires non-empty .github/immutable-files.txt");
+    }
+
+    let changed_files = pr_changed_files(workspace, event)?;
+    let immutable_hits = changed_files
+        .into_iter()
+        .filter(|path| immutable_manifest.contains(path))
+        .filter(|path| !OPERATIONAL_YAML.contains(&path.as_str()))
+        .collect::<Vec<_>>();
+
+    if immutable_hits.is_empty() {
+        return Ok(());
+    }
+
+    let reviewer_logins = readiness::parse_csv(
+        &readiness::yaml_string(governance, &["github", "immutable_governance", "reviewer_logins"])
+            .unwrap_or_default(),
+    );
+    if reviewer_logins.is_empty()
+        || reviewer_logins
+            .iter()
+            .any(|value| value.contains("REPLACE_ME") || value.contains("team-"))
+    {
+        bail!(
+            "immutable governance changes require real github.immutable_governance.reviewer_logins values in .github/github-governance.yaml"
+        );
+    }
+
+    let required_labels = readiness::parse_csv(
+        &readiness::yaml_string(governance, &["github", "immutable_governance", "required_labels"])
+            .unwrap_or_default(),
+    );
+    let current_labels = event
+        .pull_request
+        .labels
+        .iter()
+        .map(|label| label.name.as_str())
+        .collect::<BTreeSet<_>>();
+    let missing_labels = required_labels
+        .iter()
+        .filter(|label| !current_labels.contains(label.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if !missing_labels.is_empty() {
+        bail!(
+            "immutable governance changes require labels [{}]. Missing: {}",
+            required_labels.join(", "),
+            missing_labels.join(", ")
+        );
+    }
+
+    let latest_by_reviewer = latest_review_states(workspace, event)?;
+    let has_required_approval = reviewer_logins.iter().any(|login| {
+        latest_by_reviewer
+            .get(login)
+            .map(|state| state == "APPROVED")
+            .unwrap_or(false)
+    });
+    if !has_required_approval {
+        bail!(
+            "immutable governance changes require approval from one of github.immutable_governance.reviewer_logins: {}",
+            reviewer_logins.join(", ")
+        );
+    }
+
+    println!(
+        "  Immutable governance approval verified for: {}",
+        immutable_hits.join(", ")
+    );
+    Ok(())
+}
+
+fn load_immutable_manifest(workspace: &Path) -> Result<BTreeSet<String>> {
+    let manifest_path = workspace.join(".github/immutable-files.txt");
+    if !manifest_path.is_file() {
+        bail!(
+            "immutable governance enforcement requires {}",
+            manifest_path.display()
+        );
+    }
+    let raw = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("reading {}", manifest_path.display()))?;
+    Ok(raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .map(normalize_repo_path)
+        .collect())
+}
+
+fn pr_changed_files(workspace: &Path, event: &PullRequestEvent) -> Result<Vec<String>> {
+    let mut page = 1;
+    let mut files = Vec::new();
+    loop {
+        let response = readiness::run_gh_json(
+            workspace,
+            &[
+                "api",
+                &format!(
+                    "repos/{}/pulls/{}/files?per_page=100&page={page}",
+                    event.repository.full_name, event.pull_request.number
+                ),
+            ],
+        )
+        .with_context(|| {
+            format!(
+                "listing changed files for PR #{} via GitHub API",
+                event.pull_request.number
+            )
+        })?;
+        let batch = response.as_array().cloned().unwrap_or_default();
+        if batch.is_empty() {
+            break;
+        }
+        for entry in &batch {
+            let Some(filename) = entry["filename"].as_str() else {
+                continue;
+            };
+            files.push(normalize_repo_path(filename));
+        }
+        if batch.len() < 100 {
+            break;
+        }
+        page += 1;
+    }
+    Ok(files)
+}
+
+fn latest_review_states(
+    workspace: &Path,
+    event: &PullRequestEvent,
+) -> Result<HashMap<String, String>> {
     let reviews = readiness::run_gh_json(
         workspace,
         &[
@@ -362,16 +533,13 @@ fn validate_release_gate_internal(
             latest_by_reviewer.insert(login, state);
         }
     }
+    Ok(latest_by_reviewer)
+}
 
-    let has_gate_approval = reviewer_logins
-        .iter()
-        .any(|login| latest_by_reviewer.get(login).map(|state| state == "APPROVED").unwrap_or(false));
-    if !has_gate_approval {
-        bail!(
-            "production-ready requires final release gate approval from one of: {}",
-            reviewer_logins.join(", ")
-        );
+fn normalize_repo_path(path: &str) -> String {
+    let mut normalized = path.replace('\\', "/");
+    if let Some(stripped) = normalized.strip_prefix("./") {
+        normalized = stripped.to_string();
     }
-
-    Ok(())
+    normalized.trim_start_matches('/').to_string()
 }

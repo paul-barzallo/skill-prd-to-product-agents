@@ -39,6 +39,7 @@ validation, packaging, and release behavior.
 - Workspace capability governance now separates `detected.*` from `authorized.*`, keeps sensitive capability commands fail-closed on missing authorization, and adds an explicit runtime authorization command instead of treating auto-detection as permission.
 - The workspace runtime CLI now provides typed `validate pr-governance` and `validate release-gate` commands, GitHub Issue mutation wrappers, and structured `audit export` evidence for sensitive operations and handoff/state records.
 - Repository supply-chain controls now include dependency review, `cargo deny`, and CI build provenance attestation for published binary runs, while release guidance has been tightened around those gates.
+- Immutable governance now relies on remote PR approval checked through `github.immutable_governance` and `validate pr-governance`, the runtime CLI now wraps GitHub PR mutation paths in addition to issue mutation, and published bundles now ship SPDX SBOM plus provenance-policy metadata with consumer-side verification.
 
 ### Notes
 

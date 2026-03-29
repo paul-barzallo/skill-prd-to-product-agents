@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "prd-to-product-agents-workspace-runtime-bundle",
+  "documentNamespace": "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-workspace-runtime-bundle",
+  "creationInfo": {
+    "created": "2026-03-29T00:00:00Z",
+    "creators": [
+      "Tool: prd-to-product-agents bundle metadata"
+    ]
+  },
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-prdtp-agents-functions-cli-darwin-arm64",
+      "fileName": "./prdtp-agents-functions-cli-darwin-arm64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7b04927dd61bf4d9eb280e081f161dffe1b111d3dfa911836fc6081d0e535e0f"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-prdtp-agents-functions-cli-linux-x64",
+      "fileName": "./prdtp-agents-functions-cli-linux-x64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "f4c4c70522643265aa93738ee7b96703c0c1f07835b6e56c174c6d65b273ce73"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-prdtp-agents-functions-cli-windows-x64.exe",
+      "fileName": "./prdtp-agents-functions-cli-windows-x64.exe",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "140b8c10a43dfc0711268c3ea312cebccef0fb7803c64d2d8d3613b64a10a6aa"
+        }
+      ]
+    }
+  ]
+}

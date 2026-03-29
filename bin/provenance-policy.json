@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "required": true,
+  "repo": "paul-barzallo/skill-prd-to-product-agents",
+  "signer_workflow": "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml",
+  "source_ref": "refs/heads/main",
+  "predicate_type": "https://slsa.dev/provenance/v1"
+}

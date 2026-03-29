@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "skill-dev-cli-published-bundle",
+  "documentNamespace": "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/skill-dev-cli-published-bundle",
+  "creationInfo": {
+    "created": "2026-03-29T00:00:00Z",
+    "creators": [
+      "Tool: prd-to-product-agents bundle metadata"
+    ]
+  },
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-skill-dev-cli-darwin-arm64",
+      "fileName": "./skill-dev-cli-darwin-arm64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "694cfbc7c3deb8a804dbd134815287662c2ab75e18e1b6f36ce9ab6a66964bd7"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-skill-dev-cli-linux-x64",
+      "fileName": "./skill-dev-cli-linux-x64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "84c101b915e17aede1932cb93f98372385115b3adc78ae66c06cb89ca7c6bcbc"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-skill-dev-cli-windows-x64.exe",
+      "fileName": "./skill-dev-cli-windows-x64.exe",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "9bf307382da59784c92baaca1a0586236741167639b6ab8aaa71d3d79491fc09"
+        }
+      ]
+    }
+  ]
+}

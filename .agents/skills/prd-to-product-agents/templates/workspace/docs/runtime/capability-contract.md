@@ -18,7 +18,7 @@ This file is the authoritative capability snapshot for commands that consult it.
 | Capability | `authorized.enabled=true` | `authorized.enabled=false` |
 | --- | --- | --- |
 | `git` | task branches and git-backed finalize flow may run | local-only mode; no task branches or git-backed finalize |
-| `gh` | GitHub issue wrappers, board sync, PR governance validation, and remote governance checks may run | GitHub mutation and production-ready readiness checks stay off |
+| `gh` | GitHub issue/PR wrappers, board sync, PR governance validation, and remote governance checks may run | GitHub mutation and production-ready readiness checks stay off |
 | `sqlite` | database init/migrate plus audit sync/replay may write to `.state/project_memory.db` | SQLite-backed audit commands are out of contract; state commands keep using canonical YAML and degraded spools |
 | `markdownlint` | Markdown validation may run | lint is skipped by authorization with a warning |
 | `reporting` | snapshot, dashboard, export, serve, and pack may run | reporting commands are out of contract |
@@ -30,7 +30,7 @@ If `capabilities.git.authorized.enabled=false`:
 
 - `prdtp-agents-functions-cli git checkout-task-branch` is out of contract.
 - `prdtp-agents-functions-cli git finalize` falls back to local-only evidence.
-- Branch, PR, and GitHub mutation flows are out of contract.
+- GitHub issue/PR mutation flows are out of contract.
 
 ## GitHub governance contract
 
@@ -41,6 +41,7 @@ Repository governance is defined separately in `.github/github-governance.yaml`.
 - `validate governance` is for configured workspaces.
 - `validate readiness` is the stronger production-ready gate and must fail unless local governance is complete and remote GitHub controls are reachable and verified.
 - `validate pr-governance` and `validate release-gate` are the supported contract checks for pull requests and final promotion to `main`.
+- Immutable governance edits are never authorized by local tokens; they require remote PR approval verified through `github.immutable_governance.*`.
 
 ## SQLite-disabled mode
 

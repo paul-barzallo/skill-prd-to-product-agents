@@ -1,4 +1,5 @@
 mod bootstrap;
+mod bundle;
 mod capabilities;
 mod clean;
 mod logging;

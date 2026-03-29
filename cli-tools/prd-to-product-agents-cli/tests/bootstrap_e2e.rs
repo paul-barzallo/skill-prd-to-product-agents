@@ -234,6 +234,7 @@ fn bootstrap_normalizes_crlf_text_sources() {
 
     let workspace = tempfile::tempdir().expect("failed to create target dir");
     let output = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args([
             "--skill-root",
             &copied_skill.to_string_lossy(),
@@ -281,6 +282,7 @@ fn bootstrap_rerun_preserves_observable_stability() {
     ];
 
     let first = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args(&common_args)
         .output()
         .expect("first bootstrap failed to execute");
@@ -297,6 +299,7 @@ fn bootstrap_rerun_preserves_observable_stability() {
         .count();
 
     let second = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args(&common_args)
         .output()
         .expect("second bootstrap failed to execute");
@@ -351,6 +354,7 @@ fn bootstrap_rerun_preserves_stability_with_crlf_text_sources() {
     ];
 
     let first = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args(&common_args)
         .output()
         .expect("first bootstrap failed to execute");
@@ -367,6 +371,7 @@ fn bootstrap_rerun_preserves_stability_with_crlf_text_sources() {
         .count();
 
     let second = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args(&common_args)
         .output()
         .expect("second bootstrap failed to execute");
@@ -419,6 +424,7 @@ fn bootstrap_fails_when_binary_bundle_checksum_is_invalid() {
 
     let workspace = tempfile::tempdir().expect("failed to create target dir");
     let output = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
         .args([
             "--skill-root",
             &copied_skill.to_string_lossy(),
@@ -442,4 +448,68 @@ fn bootstrap_fails_when_binary_bundle_checksum_is_invalid() {
             || stderr.contains("checksum mismatch"),
         "unexpected stderr: {stderr}"
     );
+}
+
+#[test]
+fn bootstrap_fails_when_skill_bundle_sbom_is_missing() {
+    let skill_copy_root = tempfile::tempdir().expect("failed to create skill copy dir");
+    let copied_skill = skill_copy_root.path().join("prd-to-product-agents");
+    copy_dir_recursive(&skill_root(), &copied_skill);
+    let sbom_path = copied_skill.join("bin/sbom.spdx.json");
+    fs::remove_file(&sbom_path).expect("failed to remove bundle sbom");
+
+    let workspace = tempfile::tempdir().expect("failed to create target dir");
+    let output = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
+        .args([
+            "--skill-root",
+            &copied_skill.to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &workspace.path().to_string_lossy(),
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    assert!(
+        !output.status.success(),
+        "bootstrap unexpectedly succeeded with missing SBOM"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("SBOM"), "unexpected stderr: {stderr}");
+}
+
+#[test]
+fn bootstrap_fails_when_skill_bundle_provenance_policy_is_missing() {
+    let skill_copy_root = tempfile::tempdir().expect("failed to create skill copy dir");
+    let copied_skill = skill_copy_root.path().join("prd-to-product-agents");
+    copy_dir_recursive(&skill_root(), &copied_skill);
+    let policy_path = copied_skill.join("bin/provenance-policy.json");
+    fs::remove_file(&policy_path).expect("failed to remove provenance policy");
+
+    let workspace = tempfile::tempdir().expect("failed to create target dir");
+    let output = Command::new(cli_binary())
+        .env("PRDTP_TRUST_SOURCE_CHECKOUT", "1")
+        .args([
+            "--skill-root",
+            &copied_skill.to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &workspace.path().to_string_lossy(),
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    assert!(
+        !output.status.success(),
+        "bootstrap unexpectedly succeeded with missing provenance policy"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("provenance"), "unexpected stderr: {stderr}");
 }

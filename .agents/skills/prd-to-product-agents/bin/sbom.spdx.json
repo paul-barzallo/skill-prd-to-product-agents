@@ -1,0 +1,45 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "prd-to-product-agents-skill-bootstrap-bundle",
+  "documentNamespace": "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-skill-bootstrap-bundle",
+  "creationInfo": {
+    "created": "2026-03-29T00:00:00Z",
+    "creators": [
+      "Tool: prd-to-product-agents bundle metadata"
+    ]
+  },
+  "files": [
+    {
+      "SPDXID": "SPDXRef-File-prd-to-product-agents-cli-darwin-arm64",
+      "fileName": "./prd-to-product-agents-cli-darwin-arm64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "7b1b5a870c3416981bc4204d830ec3e35c5b92391646a65d9f5264c5505e9f77"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-prd-to-product-agents-cli-linux-x64",
+      "fileName": "./prd-to-product-agents-cli-linux-x64",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "2efff6b74cc6b3305514fed9f3b495dca03715e4dcbf2fe9b9482b174a45f3b2"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-File-prd-to-product-agents-cli-windows-x64.exe",
+      "fileName": "./prd-to-product-agents-cli-windows-x64.exe",
+      "checksums": [
+        {
+          "algorithm": "SHA256",
+          "checksumValue": "14a5f5a39c146f974e9ade5c022966a4429a43f9651fc0b675b956582b804d9f"
+        }
+      ]
+    }
+  ]
+}

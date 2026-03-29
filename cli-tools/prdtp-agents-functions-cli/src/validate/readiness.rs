@@ -12,6 +12,14 @@ use crate::validate::finalize_validation;
 
 pub(crate) const READY_STATUS: &str = "production-ready";
 
+struct RemoteBranchProtectionRule {
+    pattern: String,
+    requires_approving_reviews: bool,
+    required_approving_review_count: u64,
+    requires_code_owner_reviews: bool,
+    requires_conversation_resolution: bool,
+}
+
 pub fn run(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating workspace readiness");
     println!("{}", "=== Validate Readiness ===".cyan().bold());
@@ -195,13 +203,13 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         bail!("github.branch_protection.protected_branches must list at least one branch");
     }
 
-    let branch_rules = load_branch_protection_patterns(workspace, &owner, &repo)?;
+    let branch_rules = load_branch_protection_rules(workspace, &owner, &repo)?;
     let missing_branches = protected_branches
         .iter()
         .filter(|branch| {
             !branch_rules
                 .iter()
-                .any(|pattern| rule_matches_branch(pattern, branch))
+                .any(|rule| rule_matches_branch(&rule.pattern, branch))
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -209,6 +217,63 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         bail!(
             "remote branch protection rules do not cover: {}",
             missing_branches.join(", ")
+        );
+    }
+
+    let require_code_owner_reviews = yaml_bool(
+        governance,
+        &["github", "branch_protection", "require_code_owner_review"],
+    )
+    .unwrap_or(false);
+    let require_resolved_conversations = yaml_bool(
+        governance,
+        &["github", "branch_protection", "require_resolved_conversations"],
+    )
+    .unwrap_or(false);
+    let require_release_gate_approval = yaml_bool(
+        governance,
+        &["github", "branch_protection", "require_release_gate_approval"],
+    )
+    .unwrap_or(false);
+
+    let mut branch_rule_errors = Vec::new();
+    for branch in &protected_branches {
+        let Some(rule) = branch_rules
+            .iter()
+            .find(|rule| rule_matches_branch(&rule.pattern, branch))
+        else {
+            continue;
+        };
+        if require_code_owner_reviews && !rule.requires_code_owner_reviews {
+            branch_rule_errors.push(format!(
+                "{branch}: remote rule '{}' does not require CODEOWNERS review",
+                rule.pattern
+            ));
+        }
+        if require_resolved_conversations && !rule.requires_conversation_resolution {
+            branch_rule_errors.push(format!(
+                "{branch}: remote rule '{}' does not require resolved conversations",
+                rule.pattern
+            ));
+        }
+        if require_release_gate_approval {
+            if !rule.requires_approving_reviews {
+                branch_rule_errors.push(format!(
+                    "{branch}: remote rule '{}' does not require approving reviews",
+                    rule.pattern
+                ));
+            } else if rule.required_approving_review_count < 1 {
+                branch_rule_errors.push(format!(
+                    "{branch}: remote rule '{}' requires fewer than 1 approving review",
+                    rule.pattern
+                ));
+            }
+        }
+    }
+    if !branch_rule_errors.is_empty() {
+        bail!(
+            "remote branch protection is weaker than .github/github-governance.yaml requires:\n  {}",
+            branch_rule_errors.join("\n  ")
         );
     }
 
@@ -223,6 +288,23 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         run_gh_json(workspace, &["api", &format!("users/{login}")]).with_context(|| {
             format!("release gate login '{login}' is not readable via GitHub API")
         })?;
+    }
+
+    let immutable_required = yaml_bool(governance, &["github", "immutable_governance", "required"])
+        .unwrap_or(false);
+    if immutable_required {
+        let immutable_logins = parse_csv(
+            &yaml_string(governance, &["github", "immutable_governance", "reviewer_logins"])
+                .unwrap_or_default(),
+        );
+        if immutable_logins.is_empty() {
+            bail!("github.immutable_governance.reviewer_logins must contain at least one login");
+        }
+        for login in &immutable_logins {
+            run_gh_json(workspace, &["api", &format!("users/{login}")]).with_context(|| {
+                format!("immutable governance login '{login}' is not readable via GitHub API")
+            })?;
+        }
     }
 
     Ok(())
@@ -255,18 +337,18 @@ pub(crate) fn ensure_gh_policy_enabled(workspace: &Path) -> Result<()> {
     Ok(())
 }
 
-fn load_branch_protection_patterns(
+fn load_branch_protection_rules(
     workspace: &Path,
     owner: &str,
     repo: &str,
-) -> Result<Vec<String>> {
+) -> Result<Vec<RemoteBranchProtectionRule>> {
     let response = run_gh_json(
         workspace,
         &[
             "api",
             "graphql",
             "-f",
-            "query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){branchProtectionRules(first:100){nodes{pattern}}}}",
+            "query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){branchProtectionRules(first:100){nodes{pattern requiresApprovingReviews requiredApprovingReviewCount requiresCodeOwnerReviews requiresConversationResolution}}}}",
             "-F",
             &format!("owner={owner}"),
             "-F",
@@ -279,7 +361,23 @@ fn load_branch_protection_patterns(
             .as_array()
             .into_iter()
             .flatten()
-            .filter_map(|node| node["pattern"].as_str().map(str::to_string))
+            .filter_map(|node| {
+                Some(RemoteBranchProtectionRule {
+                    pattern: node["pattern"].as_str()?.to_string(),
+                    requires_approving_reviews: node["requiresApprovingReviews"]
+                        .as_bool()
+                        .unwrap_or(false),
+                    required_approving_review_count: node["requiredApprovingReviewCount"]
+                        .as_u64()
+                        .unwrap_or(0),
+                    requires_code_owner_reviews: node["requiresCodeOwnerReviews"]
+                        .as_bool()
+                        .unwrap_or(false),
+                    requires_conversation_resolution: node["requiresConversationResolution"]
+                        .as_bool()
+                        .unwrap_or(false),
+                })
+            })
             .collect(),
     )
 }

@@ -210,7 +210,7 @@ Git history remains a formal input to agent decisions, but GitHub task execution
 - GitHub Issues are the required task system. Pull requests and branches reflect execution state.
 - `.github/github-governance.yaml` is the explicit governance contract for readiness, reviewers, labels, reserved future project metadata, and the final approval gate.
 - `bootstrap-from-prd` is the standard PRD entrypoint, and `clarify-prd` remains available for a dedicated clarification pass when the PM needs to isolate requirement cleanup before proceeding.
-- Agents with `execute` may run the runtime CLI plus role-scoped build/test/lint commands. GitHub mutations must go through `prdtp-agents-functions-cli github issue *`, and PR governance must be validated through `prdtp-agents-functions-cli validate pr-governance` / `validate release-gate`.
+- Agents with `execute` may run the runtime CLI plus role-scoped build/test/lint commands. GitHub mutations must go through `prdtp-agents-functions-cli github issue *` or `prdtp-agents-functions-cli github pr *`, and PR governance must be validated through `prdtp-agents-functions-cli validate pr-governance` / `validate release-gate`.
 - Agents with `execute` must check `.github/workspace-capabilities.yaml` before using Git, GitHub mutation, SQLite-backed scripts, or markdownlint. `authorized.*` overrides nominal tool access.
 - Required branch routine for task work - use the controlled wrapper:
   - `prdtp-agents-functions-cli git checkout-task-branch --role <role> --issue-id <id> --slug <slug>` (creates or switches to task branch)
@@ -221,6 +221,7 @@ Git history remains a formal input to agent decisions, but GitHub task execution
 - If Git capability is disabled, local work may continue but must be recorded in `.state/local-history/` instead of branches, commits, or PRs.
 - Commits follow Conventional Commits with role scope and issue reference, for example `feat(frontend): GH-123 checkout form`.
 - PRs must use `.github/PULL_REQUEST_TEMPLATE.md`, include one `role:*`, one `kind:*`, and one `priority:*` label, and link the driving issue.
+- PRs touching immutable governance files listed in `.github/immutable-files.txt` also require the labels and reviewer approval declared in `.github/github-governance.yaml`, and that remote PR approval is the only supported merge authority.
 - `prdtp-agents-functions-cli git finalize` is the supported closure path for any completed task. It must succeed before work is considered done.
 - For task work, never run `git commit` directly. Always use `prdtp-agents-functions-cli git finalize` so the branch guard, staged-file scope, shared validation, and work-unit evidence are enforced together.
 - Before asking for merge, authors review PR comments and commit comments, respond or apply changes, and refresh the PR description if scope changed.
@@ -316,9 +317,8 @@ These git operations are **dangerous** and require explicit user confirmation wi
 `.github/CODEOWNERS` maps workspace files to responsible agent roles. On GitHub, this enforces PR review requirements. For all environments:
 
 - **Immutable files** (identity sources, instructions, schema) must not be modified without explicit approval.
-- **Governance files** are exactly the paths listed in `.github/immutable-files.txt`; they are immutable by default. For intentional governance maintenance, use `prdtp-agents-functions-cli governance immutable-token --reason "..."` to create a time-limited local bypass token.
-- The immutable-token flow is a local maintenance guardrail recorded by the runtime, not a strong authorization control or external approval artifact.
+- **Governance files** are exactly the paths listed in `.github/immutable-files.txt`; local finalize may stage them, but merge authority comes only from reviewed remote PR approval declared in `.github/github-governance.yaml`.
 - **Seeded project docs** under `docs/project/` are placeholders after bootstrap and are intentionally editable by the owning roles defined in `.github/instructions/docs.instructions.md`.
 - **Canonical docs** are owned by specific roles per the ownership table in `.github/instructions/docs.instructions.md`.
 - **Migrations** require infrastructure + devops approval.
-- The pre-commit hook blocks staged edits to files listed in `.github/immutable-files.txt` unless a matching local bypass token has been created via `prdtp-agents-functions-cli governance immutable-token`.
+- The pre-commit/finalize path records immutable governance edits locally, but `validate pr-governance` is the blocking merge gate for those files.

@@ -121,6 +121,26 @@ pub fn run(workspace: &Path) -> Result<()> {
         &["github", "release_gate", "reviewer_logins"],
         "github.release_gate.reviewer_logins",
     );
+    errors += check_bool(
+        &parsed,
+        &["github", "immutable_governance", "required"],
+        "github.immutable_governance.required",
+    );
+    errors += check_scalar(
+        &parsed,
+        &["github", "immutable_governance", "reviewer_handles"],
+        "github.immutable_governance.reviewer_handles",
+    );
+    errors += check_scalar(
+        &parsed,
+        &["github", "immutable_governance", "reviewer_logins"],
+        "github.immutable_governance.reviewer_logins",
+    );
+    errors += check_scalar(
+        &parsed,
+        &["github", "immutable_governance", "required_labels"],
+        "github.immutable_governance.required_labels",
+    );
 
     println!("\n{}", "Scanning placeholder markers...".bold());
     if contains_placeholder_marker(&content) {
@@ -180,12 +200,33 @@ fn check_scalar(parsed: &Value, path: &[&str], label: &str) -> u32 {
     }
 }
 
+fn check_bool(parsed: &Value, path: &[&str], label: &str) -> u32 {
+    match yaml_bool(parsed, path) {
+        Some(value) => {
+            println!("  {} {} = {}", "✓".green(), label, value);
+            0
+        }
+        None => {
+            eprintln!("  {} {} missing or not boolean", "✗".red(), label);
+            1
+        }
+    }
+}
+
 fn yaml_string(root: &Value, path: &[&str]) -> Option<String> {
     let mut current = root;
     for key in path {
         current = current.get(*key)?;
     }
     current.as_str().map(str::to_string)
+}
+
+fn yaml_bool(root: &Value, path: &[&str]) -> Option<bool> {
+    let mut current = root;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_bool()
 }
 
 fn contains_placeholder_marker(content: &str) -> bool {

@@ -53,9 +53,9 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli state finding create/update` | Finding YAML operations. |
 | `prdtp-agents-functions-cli state release create/update` | Release YAML operations. |
 | `prdtp-agents-functions-cli state event record` | Environment event recording. |
-| `prdtp-agents-functions-cli governance immutable-token` | Generate a time-limited local bypass token for intentional governance maintenance. |
 | `prdtp-agents-functions-cli governance configure` | Configure local repository owner/name, reviewers, release-gate login, and regenerate `CODEOWNERS`. |
 | `prdtp-agents-functions-cli github issue create/update/comment/label` | Supported GitHub Issue mutation wrappers gated by the workspace capability contract. |
+| `prdtp-agents-functions-cli github pr create/update/comment/label` | Supported GitHub PR mutation wrappers gated by the workspace capability contract. |
 | `prdtp-agents-functions-cli board sync` | Refresh the operational board snapshot from GitHub issues and pull requests. |
 
 ## CI validation helpers
@@ -64,7 +64,7 @@ Use `validate ci` for workflow-only checks that go beyond the core workspace
 contract:
 
 - `pre-commit-fixtures`: verifies malformed YAML and immutable-governance
-  edits are rejected.
+  fixtures are handled correctly by the local finalize gate.
 - `yaml-tabs`: rejects tab characters in `docs/project/*.yaml`.
 - `yaml-schemas`: parses schema-covered YAML objects.
 - `raw-sql-prompts`: blocks raw SQL snippets in prompts.
@@ -82,6 +82,7 @@ contract:
 A unit of work is not complete until `prdtp-agents-functions-cli git finalize` succeeds.
 
 - If Git authorization is enabled, `git finalize` runs workspace validation as a blocking pre-commit gate and creates the commit only after validation and governance checks pass.
+- Immutable governance files may pass local finalize, but they still require remote PR approval through `validate pr-governance` before merge.
 - If Git authorization is disabled, `git finalize` writes Markdown + JSON evidence under `.state/local-history/`.
 
 ## Reporting operations

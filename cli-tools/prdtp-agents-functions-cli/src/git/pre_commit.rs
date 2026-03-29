@@ -250,54 +250,6 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
         );
     }
 
-    // --- Immutable file edit detection ---
-    let mut immutable_bypass = false;
-    let mut immutable_bypass_reason = String::new();
-    let mut immutable_bypass_files: std::collections::HashSet<String> =
-        std::collections::HashSet::new();
-    let token_path = ws.join(".state/.immutable-edit-token");
-
-    if bootstrap_allow {
-        immutable_bypass = true;
-        immutable_bypass_reason = "bootstrap".to_string();
-    } else if token_path.exists() {
-        if let Ok(content) = fs::read_to_string(&token_path) {
-            // Verify integrity before trusting the token
-            if !crate::governance::verify_token_integrity(&content, &ws) {
-                eprintln!(
-                    "{} Immutable-edit token integrity check failed. Ignoring token.",
-                    "WARN:".yellow().bold()
-                );
-                let _ = fs::remove_file(&token_path);
-            } else if let Ok(token) = serde_json::from_str::<serde_json::Value>(&content) {
-                if let Some(expires) = token.get("expires_epoch").and_then(|v| v.as_i64()) {
-                    let now = chrono::Utc::now().timestamp();
-                    if now < expires {
-                        immutable_bypass = true;
-                        immutable_bypass_reason = token
-                            .get("reason")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        if let Some(files) = token.get("files").and_then(|v| v.as_array()) {
-                            immutable_bypass_files = files
-                                .iter()
-                                .filter_map(|value| value.as_str())
-                                .map(normalize_repo_path)
-                                .collect();
-                        }
-                    } else {
-                        eprintln!(
-                            "{} Immutable-edit token has expired. Removing.",
-                            "WARN:".yellow().bold()
-                        );
-                        let _ = fs::remove_file(&token_path);
-                    }
-                }
-            }
-        }
-    }
-
     let immutable_hits: Vec<&String> = staged
         .iter()
         .filter(|f| manifest_entries.contains(f))
@@ -322,56 +274,31 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
             );
         }
 
-        // Governance files require token
+        // Governance files stay locally editable through the controlled finalize/bootstrap
+        // paths, but merge admission is enforced remotely by PR governance validation.
         if !governance_hits.is_empty() {
-            if !immutable_bypass {
-                let files: Vec<String> = governance_hits.iter().map(|f| format!("  {f}")).collect();
-                bail!(
-                    "Immutable governance files are staged:\n{}\nRun: prdtp-agents-functions-cli governance immutable-token --reason \"<reason>\" to obtain a time-limited token.",
-                    files.join("\n")
-                );
-            }
-            if immutable_bypass_reason != "bootstrap" {
-                let unauthorized: Vec<String> = governance_hits
-                    .iter()
-                    .filter(|path| !immutable_bypass_files.contains(path.as_str()))
-                    .map(|path| format!("  {path}"))
-                    .collect();
-                if !unauthorized.is_empty() {
-                    let _ = fs::remove_file(&token_path);
-                    bail!(
-                        "Immutable-edit token does not authorize all staged governance files:\n{}\nRequest a new token with the exact file list.",
-                        unauthorized.join("\n")
-                    );
-                }
-            }
-
-            // Log bypass to audit spool
-            let spool_dir = ws.join(".state/audit-spool");
-            let _ = fs::create_dir_all(&spool_dir);
-            let ts = chrono::Utc::now();
-            let bypass_id = format!("imm-{}-{}", ts.timestamp(), std::process::id());
-            let files_list: Vec<&str> = governance_hits.iter().map(|f| f.as_str()).collect();
-            let record = serde_json::json!({
-                "id": bypass_id,
-                "activity_type": "immutable_edit_bypass",
-                "timestamp": ts.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
-                "reason": immutable_bypass_reason,
-                "files": files_list,
-            });
-            let _ = fs::write(
-                spool_dir.join(format!("{bypass_id}.json")),
-                serde_json::to_string_pretty(&record)?,
+            let files: Vec<String> = governance_hits.iter().map(|f| format!("  {f}")).collect();
+            let action = if bootstrap_allow {
+                "bootstrap"
+            } else if finalize_allow {
+                "finalize"
+            } else {
+                "manual"
+            };
+            let _ = crate::audit::events::record_sensitive_action(
+                &ws,
+                "governance.immutable-change.local-admission",
+                action,
+                "pending_remote_pr_approval",
+                serde_json::json!({
+                    "files": governance_hits.iter().map(|path| path.as_str()).collect::<Vec<_>>(),
+                }),
             );
-
-            // Consume single-use token
-            if immutable_bypass_reason != "bootstrap" {
-                let _ = fs::remove_file(&token_path);
-                eprintln!("{} Immutable-edit token consumed.", "WARN:".yellow().bold());
-            }
             eprintln!(
-                "{} Immutable governance files edited under authorized bypass (reason: {immutable_bypass_reason})",
+                "{} Immutable governance files are staged. Local admission is compensating only; PR governance CI must verify reviewed approval before merge:\n{}",
                 "WARN:".yellow().bold()
+                ,
+                files.join("\n")
             );
         }
     }
@@ -478,49 +405,18 @@ pub fn run_governance_checks(workspace: &Path, changed_files: &[String]) -> Resu
         .collect();
 
     if !governance_hits.is_empty() {
-        // Check for immutable-edit token
-        let token_path = ws.join(".state/.immutable-edit-token");
-        let mut bypass = false;
-        let mut token_files: std::collections::HashSet<String> = std::collections::HashSet::new();
-        if token_path.exists() {
-            if let Ok(content) = fs::read_to_string(&token_path) {
-                if crate::governance::verify_token_integrity(&content, &ws) {
-                    if let Ok(token) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(expires) = token.get("expires_epoch").and_then(|v| v.as_i64()) {
-                            if chrono::Utc::now().timestamp() < expires {
-                                bypass = true;
-                                if let Some(files) = token.get("files").and_then(|v| v.as_array()) {
-                                    token_files = files
-                                        .iter()
-                                        .filter_map(|value| value.as_str())
-                                        .map(normalize_repo_path)
-                                        .collect();
-                                }
-                                let _ = fs::remove_file(&token_path);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if !bypass {
-            let files: Vec<String> = governance_hits.iter().map(|f| format!("  {f}")).collect();
-            bail!(
-                "Immutable governance files changed:\n{}\nUse: prdtp-agents-functions-cli governance immutable-token --reason \"<reason>\" first.",
-                files.join("\n")
-            );
-        }
-        let unauthorized: Vec<String> = governance_hits
-            .iter()
-            .filter(|path| !token_files.contains(path.as_str()))
-            .map(|path| format!("  {path}"))
-            .collect();
-        if !unauthorized.is_empty() {
-            bail!(
-                "Immutable-edit token does not authorize all changed governance files:\n{}\nUse a token that matches the exact file set.",
-                unauthorized.join("\n")
-            );
-        }
+        println!(
+            "  Immutable governance files changed locally; remote PR approval will be enforced before merge."
+        );
+        let _ = crate::audit::events::record_sensitive_action(
+            &ws,
+            "governance.immutable-change.finalize",
+            "git.finalize",
+            "pending_remote_pr_approval",
+            serde_json::json!({
+                "files": governance_hits.iter().map(|path| path.as_str()).collect::<Vec<_>>(),
+            }),
+        );
     }
 
     // --- Agent assembly verification ---

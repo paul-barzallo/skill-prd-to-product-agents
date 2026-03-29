@@ -194,6 +194,61 @@ jobs:
           ROOT_BIN_DIR="bin"
           SKILL_BIN_DIR=".agents/skills/prd-to-product-agents/bin"
           WORKSPACE_RUNTIME_BIN_DIR=".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents"
+          write_policy() {
+            local bundle_dir="$1"
+            cat > "${bundle_dir}/provenance-policy.json" <<'EOF'
+          {
+            "schema_version": 1,
+            "required": true,
+            "repo": "paul-barzallo/skill-prd-to-product-agents",
+            "signer_workflow": "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml",
+            "source_ref": "refs/heads/main",
+            "predicate_type": "https://slsa.dev/provenance/v1"
+          }
+          EOF
+          }
+          write_sbom() {
+            local bundle_dir="$1"
+            local bundle_name="$2"
+            local namespace="$3"
+            python - "$bundle_dir" "$bundle_name" "$namespace" <<'PY'
+          import json
+          import pathlib
+          import sys
+
+          bundle_dir = pathlib.Path(sys.argv[1])
+          bundle_name = sys.argv[2]
+          namespace = sys.argv[3]
+          files = []
+          for line in (bundle_dir / "checksums.sha256").read_text(encoding="utf-8").splitlines():
+              line = line.strip()
+              if not line:
+                  continue
+              checksum, file_name = line.split(maxsplit=1)
+              files.append({
+                  "SPDXID": f"SPDXRef-File-{file_name.replace('.', '-').replace('/', '-')}",
+                  "fileName": f"./{file_name}",
+                  "checksums": [{
+                      "algorithm": "SHA256",
+                      "checksumValue": checksum.lower()
+                  }]
+              })
+
+          document = {
+              "spdxVersion": "SPDX-2.3",
+              "dataLicense": "CC0-1.0",
+              "SPDXID": "SPDXRef-DOCUMENT",
+              "name": bundle_name,
+              "documentNamespace": namespace,
+              "creationInfo": {
+                  "created": "2026-03-29T00:00:00Z",
+                  "creators": ["Tool: prd-to-product-agents bundle metadata"]
+              },
+              "files": files
+          }
+          (bundle_dir / "sbom.spdx.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+          PY
+          }
           mkdir -p "${ROOT_BIN_DIR}" "${SKILL_BIN_DIR}" "${WORKSPACE_RUNTIME_BIN_DIR}"
           rm -f "${SKILL_BIN_DIR}"/prdtp-agents-functions-cli-*
           rm -f "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-*
@@ -204,6 +259,10 @@ jobs:
           # Workspace runtime tool: shipped inside the generated workspace template.
           cp collected/prdtp-agents-functions-cli-* "${WORKSPACE_RUNTIME_BIN_DIR}/"
           (
+            cd "${ROOT_BIN_DIR}"
+            sha256sum skill-dev-cli-* > checksums.sha256
+          )
+          (
             cd "${SKILL_BIN_DIR}"
             sha256sum prd-to-product-agents-cli-* > checksums.sha256
           )
@@ -211,6 +270,12 @@ jobs:
             cd "${WORKSPACE_RUNTIME_BIN_DIR}"
             sha256sum prdtp-agents-functions-cli-* > checksums.sha256
           )
+          write_policy "${ROOT_BIN_DIR}"
+          write_policy "${SKILL_BIN_DIR}"
+          write_policy "${WORKSPACE_RUNTIME_BIN_DIR}"
+          write_sbom "${ROOT_BIN_DIR}" "skill-dev-cli-published-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/skill-dev-cli-published-bundle"
+          write_sbom "${SKILL_BIN_DIR}" "prd-to-product-agents-skill-bootstrap-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-skill-bootstrap-bundle"
+          write_sbom "${WORKSPACE_RUNTIME_BIN_DIR}" "prd-to-product-agents-workspace-runtime-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-workspace-runtime-bundle"
           chmod +x "${ROOT_BIN_DIR}"/skill-dev-cli-linux-x64 \
                     "${ROOT_BIN_DIR}"/skill-dev-cli-darwin-arm64 \
                     "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-linux-x64 \

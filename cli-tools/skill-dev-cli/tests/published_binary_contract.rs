@@ -379,8 +379,11 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
         .expect("failed to read build-skill-binaries workflow");
 
     let expected_entries = [
+        "sha256sum skill-dev-cli-* > checksums.sha256",
         "sha256sum prd-to-product-agents-cli-* > checksums.sha256",
         "sha256sum prdtp-agents-functions-cli-* > checksums.sha256",
+        "provenance-policy.json",
+        "sbom.spdx.json",
     ];
 
     let mut missing = Vec::new();
@@ -393,6 +396,34 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
     assert!(
         missing.is_empty(),
         "Build workflow publish step must refresh checksum manifests when it updates binaries:\n  {}",
+        missing.join("\n  ")
+    );
+}
+
+#[test]
+fn published_bundles_ship_sbom_and_provenance_policy() {
+    let required_metadata = [
+        "bin/checksums.sha256",
+        "bin/sbom.spdx.json",
+        "bin/provenance-policy.json",
+        ".agents/skills/prd-to-product-agents/bin/checksums.sha256",
+        ".agents/skills/prd-to-product-agents/bin/sbom.spdx.json",
+        ".agents/skills/prd-to-product-agents/bin/provenance-policy.json",
+        ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/checksums.sha256",
+        ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/sbom.spdx.json",
+        ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/provenance-policy.json",
+    ];
+
+    let mut missing = Vec::new();
+    for path in required_metadata {
+        if !repo_root().join(path).is_file() {
+            missing.push(path);
+        }
+    }
+
+    assert!(
+        missing.is_empty(),
+        "Published bundles must ship checksum, SBOM, and provenance-policy metadata:\n  {}",
         missing.join("\n  ")
     );
 }

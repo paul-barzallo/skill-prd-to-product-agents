@@ -19,6 +19,11 @@ github:
     required: true
     reviewer_handles: "@team-devops"
     reviewer_logins: "REPLACE_ME_DEVOPS_LOGIN"
+  immutable_governance:
+    required: true
+    reviewer_handles: "@team-devops,@team-infra"
+    reviewer_logins: "REPLACE_ME_DEVOPS_LOGIN"
+    required_labels: "criticality:critical"
   labels:
     role: "role:backend,role:frontend,role:qa,role:arch,role:ux,role:product,role:ops,role:techlead"
     kind: "kind:feature,kind:bug,kind:chore,kind:docs"

@@ -54,7 +54,8 @@ Shorthand:
 - Do not approve release if the sandbox evidence is missing and the change affects `validate readiness`, governance configuration, release-gate semantics, or execution-boundary enforcement.
 - Confirm `.github/workflows/dependency-review.yml` still covers dependency review and `cargo deny`, and do not release if that gate is broken or silently bypassed.
 - Confirm `.github/workflows/build-skill-binaries.yml` still emits CI build provenance attestation for non-PR publication runs.
-- Treat missing attestation, broken checksums, or undocumented binary refresh steps as release blockers for `production-ready` claims.
+- Confirm the publish step refreshes `checksums.sha256`, `sbom.spdx.json`, and `provenance-policy.json` for every published bundle scope.
+- Treat missing attestation, broken checksums, SBOM drift, provenance-policy drift, or undocumented binary refresh steps as release blockers for `production-ready` claims.
 
 ## 6. Publish decision
 

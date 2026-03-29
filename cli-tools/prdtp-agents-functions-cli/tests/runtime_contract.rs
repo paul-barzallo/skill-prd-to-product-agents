@@ -288,34 +288,7 @@ fn branch_and_reason_contract_match_runtime_enums() {
 }
 
 #[test]
-fn immutable_token_rejects_files_outside_manifest() {
-    let workspace = make_workspace();
-    let output = run_cli(
-        workspace.path(),
-        &[
-            "governance",
-            "immutable-token",
-            "--reason",
-            "test",
-            "--files",
-            "docs/project/vision.md",
-        ],
-        &[],
-    );
-
-    assert!(
-        !output.status.success(),
-        "immutable token unexpectedly allowed a file outside the manifest"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("Immutable-edit tokens may only cover files"),
-        "unexpected stderr: {stderr}"
-    );
-}
-
-#[test]
-fn pre_commit_requires_token_for_governance_yaml() {
+fn pre_commit_allows_governance_yaml_through_finalize_gate() {
     let workspace = make_workspace();
     let workspace_arg = workspace.path().to_string_lossy().to_string();
 
@@ -333,62 +306,37 @@ fn pre_commit_requires_token_for_governance_yaml() {
     );
 
     assert!(
-        !output.status.success(),
-        "pre-commit unexpectedly allowed governance yaml without token"
+        output.status.success(),
+        "pre-commit unexpectedly rejected governance yaml during finalize path:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
     assert!(
-        stderr.contains("Immutable governance files are staged"),
+        stderr.contains("reviewed approval before merge"),
         "unexpected stderr: {stderr}"
     );
 }
 
 #[test]
-fn immutable_token_scope_is_exact() {
+fn governance_configure_sets_immutable_governance_reviewers() {
     let workspace = make_workspace();
-    let workspace_arg = workspace.path().to_string_lossy().to_string();
+    configure_governance(workspace.path());
 
-    let token_output = run_cli(
-        workspace.path(),
-        &[
-            "governance",
-            "immutable-token",
-            "--reason",
-            "test",
-            "--files",
-            ".github/CODEOWNERS",
-        ],
-        &[],
+    let governance = fs::read_to_string(workspace.path().join(".github/github-governance.yaml"))
+        .expect("failed to read configured governance yaml");
+    assert!(
+        governance.contains("immutable_governance:"),
+        "configured governance missing immutable_governance block"
     );
     assert!(
-        token_output.status.success(),
-        "failed to create immutable token: {}",
-        String::from_utf8_lossy(&token_output.stderr)
+        governance.contains("reviewer_logins: devops-login"),
+        "configured governance missing immutable_governance reviewer login"
     );
-
-    let output = run_cli(
-        workspace.path(),
-        &[
-            "git",
-            "pre-commit-validate",
-            "--workspace-root",
-            &workspace_arg,
-            "--staged-file",
-            ".github/CODEOWNERS",
-            "--staged-file",
-            ".github/copilot-instructions.md",
-        ],
-        &[("FINALIZE_WORK_UNIT_ALLOW_COMMIT", "1")],
-    );
-
     assert!(
-        !output.status.success(),
-        "pre-commit unexpectedly accepted governance files outside token scope"
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("does not authorize all staged governance files"),
-        "unexpected stderr: {stderr}"
+        governance.contains("reviewer_handles: '@acme-devops,@acme-infra'")
+            || governance.contains("reviewer_handles: \"@acme-devops,@acme-infra\""),
+        "configured governance missing immutable_governance reviewer handles"
     );
 }
 

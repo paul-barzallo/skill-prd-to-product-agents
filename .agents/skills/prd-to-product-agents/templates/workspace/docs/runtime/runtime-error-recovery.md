@@ -88,10 +88,9 @@ If `prdtp-agents-functions-cli git checkout-task-branch` fails:
 If `prdtp-agents-functions-cli git pre-commit-validate` rejects a commit:
 
 - Check immutable-file edits listed in `.github/immutable-files.txt`.
-- Check whether the local bypass token covers exactly the staged governance files.
 - Check for invalid operational YAML in staged files.
-- For intentional governance maintenance, use `prdtp-agents-functions-cli governance immutable-token --reason "..." --files <path...>` to create a local bypass token for that exact edit set.
-- Treat the token as a local operational guardrail, not as an external approval artifact or strong authorization control.
+- Immutable governance edits can be admitted locally during the controlled finalize/bootstrap path, but merge requires remote approval verified by `prdtp-agents-functions-cli validate pr-governance`.
+- If a PR touching immutable governance fails, confirm `github.immutable_governance.*` is configured, the required labels are present, and a listed reviewer has approved via GitHub review API.
 
 ## State operations failure
 

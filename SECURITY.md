@@ -15,10 +15,11 @@ Este repositorio distribuye tooling y plantillas para `prd-to-product-agents`. L
 - separa scopes entre proyecto, skill package y runtime desplegado
 - valida integridad estructural del skill package mediante `prd-to-product-agents-cli validate all`
 - ejecuta una cadena de release gate mediante `skill-dev-cli test release-gate`
-- valida bundles por checksum local
+- valida bundles publicados por checksum, SBOM SPDX y policy de provenance
 - adjunta attestation de build provenance en CI para artefactos publicados desde `.github/workflows/build-skill-binaries.yml`
 - ejecuta `actions/dependency-review-action` y `cargo deny` en `.github/workflows/dependency-review.yml`
 - exige evidencia remota de GitHub para el gate `production-ready` mediante `prdtp-agents-functions-cli validate readiness` y `validate release-gate`
+- exige aprobacion remota verificable para cambios de gobernanza inmutable mediante `validate pr-governance` y la seccion `github.immutable_governance` en `.github/github-governance.yaml`
 - registra operaciones sensibles del runtime en spool JSONL exportable mediante `prdtp-agents-functions-cli audit export`
 - documenta explicitamente que el bootstrap no aprovisiona GitHub remotamente ni deja el entorno operacionalmente listo por si solo
 
@@ -27,9 +28,8 @@ Este repositorio distribuye tooling y plantillas para `prd-to-product-agents`. L
 No reportes como vulnerabilidad la mera ausencia de capacidades que el proyecto no declara como cerradas. A fecha de hoy, este repositorio no promete:
 
 - sandbox OS-level del agente
-- autorizacion fuerte externa para `immutable-token`
 - no repudio centralizado de toda la trazabilidad local
-- SBOM completo de release ni verificacion automatica downstream de attestations/checksums por parte del consumidor
+- equivalencia operativa completa entre consumo desde checkout fuente y consumo desde paquete publicado verificado
 - paridad completa entre VS Code + Copilot y GitHub.com
 
 Si detectas que la documentacion afirma alguna de esas capacidades como si ya existieran, eso si es un hallazgo de seguridad o gobernanza valido.
@@ -39,7 +39,7 @@ Si detectas que la documentacion afirma alguna de esas capacidades como si ya ex
 Reporta de forma responsable cualquier hallazgo que afecte a:
 
 - bypass de validaciones o del release gate
-- aceptacion incorrecta de bundles, checksums o manifiestos alterados
+- aceptacion incorrecta de bundles, checksums, SBOMs, policies o attestations alteradas
 - posibilidad de modificar archivos gobernados sin los controles previstos
 - claims falsos o engañosos sobre enforcement, gobernanza o readiness
 - exposicion accidental de secretos, tokens o datos sensibles en logs, estado local o artefactos publicados

@@ -1,8 +1,8 @@
-# Governance files protected by the pre-commit hook.
-# For intentional edits, use prdtp-agents-functions-cli governance immutable-token --reason "..."
-# This creates a time-limited local bypass token for intentional maintenance.
+# Governance files protected by the local finalize path and remote PR approval.
+# Local changes may be admitted during bootstrap/finalize, but merge is blocked
+# until `validate pr-governance` verifies reviewed remote approval.
 #
-# === Governance (protected by the local immutable-edit bypass flow) ===
+# === Governance (protected by remote PR approval) ===
 .github/copilot-instructions.md
 .github/agent-model-policy.yaml
 .github/CODEOWNERS

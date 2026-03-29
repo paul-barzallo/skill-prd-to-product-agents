@@ -33,6 +33,8 @@ Update it when priorities, blockers, or key repository risks change.
 - sensitive capability-gated commands now fail closed when `.github/workspace-capabilities.yaml` or the required `authorized.enabled` entry is missing
 - task-branch checkout is now non-destructive on dirty worktrees, and `git finalize` blocks commit creation when workspace validation fails
 - tracked publishable binaries are now refreshed through a reviewable PR path instead of a bot commit directly to `main`
+- immutable governance no longer relies on a local bypass token; PR validation now requires remote reviewer approval and labels declared in `.github/github-governance.yaml`
+- published skill bundles now ship checksum manifests, SPDX SBOMs, and provenance-policy files, and packaged consumption verifies attestation policy before bootstrap
 - generated-workspace freshness now uses `.state/context-checksums.json` as the canonical baseline with staleness warnings on later runs
 - the repository now documents repo, skill-package, and deployed-workspace scopes as separate contracts
 - the packaged skill now avoids source-repository maintenance guidance, and the deployed workspace now documents its own files-first context system for agents
@@ -45,7 +47,7 @@ Update it when priorities, blockers, or key repository risks change.
 2. the legacy empty `docs/project/` path in bootstrapped workspaces still needs cleanup if still present in downstream environments
 3. repository support and escalation flow is still minimal
 4. the runtime contract is materially stricter now, and GitHub Project has been retired from the current supported contract; the remaining follow-through is centered on single-source-of-truth enforcement in CI, explicit capability authorization, and troubleshooting ergonomics
-5. release workflow and documentation drift still need periodic review, especially around the reviewed binary-refresh PR path, executable-bit hygiene, and multi-OS gate scope
+5. release workflow and documentation drift still need periodic review, especially around provenance policy, SBOM regeneration, executable-bit hygiene, and multi-OS gate scope
 6. decide whether `project-memory-cli` should stay as repository-only tooling or eventually become part of a broader product workflow story
 7. keep the provider diagnostics and validation matrix coherent as fallback behavior evolves, then decide whether any additional operator-facing reporting belongs in `trace` or separate commands
 
