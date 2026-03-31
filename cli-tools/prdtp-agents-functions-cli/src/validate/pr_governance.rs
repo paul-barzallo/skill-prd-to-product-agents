@@ -75,7 +75,7 @@ pub fn run(workspace: &Path, args: PrGovernanceArgs) -> Result<()> {
         validate_release_gate_internal(workspace, &event, &governance)?;
     }
 
-    let _ = crate::audit::events::record_sensitive_action(
+    crate::audit::events::record_sensitive_action(
         workspace,
         "validate.pr-governance",
         "runtime-cli",
@@ -86,7 +86,7 @@ pub fn run(workspace: &Path, args: PrGovernanceArgs) -> Result<()> {
             "base_ref": event.pull_request.base.branch,
             "head_ref": event.pull_request.head.branch
         }),
-    );
+    )?;
 
     println!(
         "{} PR metadata, commit subjects, and release gate passed",
@@ -102,7 +102,7 @@ pub fn run_release_gate(workspace: &Path, args: ReleaseGateArgs) -> Result<()> {
         readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
     validate_immutable_governance_internal(workspace, &event, &governance)?;
     validate_release_gate_internal(workspace, &event, &governance)?;
-    let _ = crate::audit::events::record_sensitive_action(
+    crate::audit::events::record_sensitive_action(
         workspace,
         "validate.release-gate",
         "runtime-cli",
@@ -111,7 +111,7 @@ pub fn run_release_gate(workspace: &Path, args: ReleaseGateArgs) -> Result<()> {
             "repo": event.repository.full_name,
             "pr_number": event.pull_request.number
         }),
-    );
+    )?;
     println!(
         "{} Release gate requirements satisfied",
         "PASSED:".green().bold()
@@ -471,18 +471,17 @@ fn load_immutable_manifest(workspace: &Path) -> Result<BTreeSet<String>> {
 }
 
 fn pr_changed_files(workspace: &Path, event: &PullRequestEvent) -> Result<Vec<String>> {
+    let governance =
+        readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
     let mut page = 1;
     let mut files = Vec::new();
     loop {
-        let response = readiness::run_gh_json(
-            workspace,
-            &[
-                "api",
-                &format!(
-                    "repos/{}/pulls/{}/files?per_page=100&page={page}",
-                    event.repository.full_name, event.pull_request.number
-                ),
-            ],
+        let response = crate::github_api::api_get_json(
+            &governance,
+            &format!(
+                "repos/{}/pulls/{}/files?per_page=100&page={page}",
+                event.repository.full_name, event.pull_request.number
+            ),
         )
         .with_context(|| {
             format!(
@@ -512,15 +511,14 @@ fn latest_review_states(
     workspace: &Path,
     event: &PullRequestEvent,
 ) -> Result<HashMap<String, String>> {
-    let reviews = readiness::run_gh_json(
-        workspace,
-        &[
-            "api",
-            &format!(
-                "repos/{}/pulls/{}/reviews",
-                event.repository.full_name, event.pull_request.number
-            ),
-        ],
+    let governance =
+        readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
+    let reviews = crate::github_api::api_get_json(
+        &governance,
+        &format!(
+            "repos/{}/pulls/{}/reviews",
+            event.repository.full_name, event.pull_request.number
+        ),
     )
     .context("listing PR reviews via GitHub API")?;
 

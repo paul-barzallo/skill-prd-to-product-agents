@@ -2,5 +2,6 @@
 # Owner: devops-release-engineer
 # Schema: see docs.instructions.md for field definitions
 
+schema_version: 1
+revision: 0
 releases: []
-

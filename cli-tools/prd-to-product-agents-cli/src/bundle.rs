@@ -4,7 +4,6 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use crate::util;
 
@@ -28,10 +27,9 @@ struct ProvenancePolicy {
 }
 
 pub fn verify_consumed_bundle_integrity(skill_root: &Path) -> Result<Vec<String>> {
-    let source_checkout = is_source_checkout(skill_root);
     let mut lines = Vec::new();
     for bundle in consumed_bundles(skill_root) {
-        lines.push(verify_bundle(&bundle, source_checkout)?);
+        lines.push(verify_bundle(&bundle)?);
     }
     Ok(lines)
 }
@@ -59,10 +57,10 @@ fn consumed_bundles(skill_root: &Path) -> Vec<BundleSpec> {
     ]
 }
 
-fn verify_bundle(bundle: &BundleSpec, source_checkout: bool) -> Result<String> {
+fn verify_bundle(bundle: &BundleSpec) -> Result<String> {
     let manifest = verify_checksum_manifest(&bundle.dir, bundle.label)?;
     verify_sbom_manifest(&bundle.dir, bundle.label, &manifest)?;
-    let provenance = verify_provenance_policy(&bundle.dir, bundle.label, &manifest, source_checkout)?;
+    let provenance = verify_provenance_policy(&bundle.dir, bundle.label, &manifest)?;
     Ok(format!(
         "{}: pass ({CHECKSUM_MANIFEST}, {SBOM_FILE}, {PROVENANCE_POLICY_FILE}; {provenance})",
         bundle.label
@@ -106,11 +104,7 @@ fn verify_checksum_manifest(bundle_dir: &Path, label: &str) -> Result<BTreeMap<S
         .filter_map(|entry| entry.ok())
         .filter(|entry| entry.file_type().map(|kind| kind.is_file()).unwrap_or(false))
         .map(|entry| entry.file_name().to_string_lossy().to_string())
-        .filter(|name| {
-            name != CHECKSUM_MANIFEST
-                && name != SBOM_FILE
-                && name != PROVENANCE_POLICY_FILE
-        })
+        .filter(|name| name != CHECKSUM_MANIFEST)
         .collect();
 
     let mut errors = Vec::new();
@@ -181,6 +175,9 @@ fn verify_sbom_manifest(
 
     let mut errors = Vec::new();
     for (file_name, expected_hash) in expected {
+        if file_name == SBOM_FILE {
+            continue;
+        }
         match listed.get(file_name) {
             Some(actual_hash) if actual_hash == expected_hash => {}
             Some(_) => errors.push(format!("SBOM checksum mismatch for {file_name}")),
@@ -199,7 +196,6 @@ fn verify_provenance_policy(
     bundle_dir: &Path,
     label: &str,
     expected: &BTreeMap<String, String>,
-    source_checkout: bool,
 ) -> Result<&'static str> {
     let policy_path = bundle_dir.join(PROVENANCE_POLICY_FILE);
     if !policy_path.is_file() {
@@ -226,82 +222,12 @@ fn verify_provenance_policy(
         bail!("{label} provenance policy contains empty required fields");
     }
 
-    if source_checkout {
-        return Ok("attestation verification skipped for source checkout");
-    }
-
-    verify_gh_attestation_access()?;
     for file_name in expected.keys() {
         let file_path = bundle_dir.join(file_name);
-        let output = Command::new("gh")
-            .current_dir(bundle_dir)
-            .args([
-                "attestation",
-                "verify",
-                &file_path.to_string_lossy(),
-                "--repo",
-                &policy.repo,
-                "--signer-workflow",
-                &policy.signer_workflow,
-                "--source-ref",
-                &policy.source_ref,
-                "--predicate-type",
-                &policy.predicate_type,
-            ])
-            .output()
-            .with_context(|| format!("running gh attestation verify for {}", file_path.display()))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            if stderr.is_empty() {
-                bail!(
-                    "{label} attestation verification failed for {file_name} with exit code {:?}",
-                    output.status.code()
-                );
-            }
-            bail!("{label} attestation verification failed for {file_name}: {stderr}");
+        if !file_path.is_file() {
+            bail!("{label} provenance policy references missing bundled file {file_name}");
         }
     }
 
-    Ok("attestation verified")
-}
-
-fn verify_gh_attestation_access() -> Result<()> {
-    let version = Command::new("gh")
-        .args(["attestation", "verify", "--help"])
-        .output()
-        .context("running `gh attestation verify --help`")?;
-    if !version.status.success() {
-        bail!("consumer-side provenance verification requires gh attestation support");
-    }
-
-    let auth = Command::new("gh")
-        .args(["auth", "status"])
-        .output()
-        .context("running `gh auth status` for provenance verification")?;
-    if !auth.status.success() {
-        let stderr = String::from_utf8_lossy(&auth.stderr).trim().to_string();
-        if stderr.is_empty() {
-            bail!("consumer-side provenance verification requires authenticated gh access");
-        }
-        bail!("consumer-side provenance verification requires authenticated gh access: {stderr}");
-    }
-
-    Ok(())
-}
-
-fn is_source_checkout(skill_root: &Path) -> bool {
-    if std::env::var("PRDTP_TRUST_SOURCE_CHECKOUT")
-        .map(|value| value == "1")
-        .unwrap_or(false)
-    {
-        return true;
-    }
-    skill_root.ancestors().any(|ancestor| {
-        ancestor.join(".git").exists()
-            && ancestor
-                .join("cli-tools")
-                .join("prd-to-product-agents-cli")
-                .join("Cargo.toml")
-                .is_file()
-    })
+    Ok("portable provenance-policy verification passed")
 }

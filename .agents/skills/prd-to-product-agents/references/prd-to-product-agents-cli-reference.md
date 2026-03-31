@@ -41,13 +41,28 @@ Safe git commit of manifest-listed files after bootstrap.
 prd-to-product-agents-cli --skill-root <skill-root> bootstrap commit --target <path>
 ```
 
+### `validate package`
+
+Run the portable validation surface for the packaged skill.
+
+```bash
+prd-to-product-agents-cli --skill-root <skill-root> validate package
+```
+
+This command is the supported package-consumer validation path. It does not
+assume repository sources and does not require remote services.
+
 ### `validate all`
 
-Run all skill-side validation checks.
+Run all maintainer-side validation checks.
 
 ```bash
 prd-to-product-agents-cli --skill-root <skill-root> validate all
 ```
+
+This command is maintainer-oriented. It assumes a source checkout is available
+and includes repository-scoped runtime smoke validation in addition to the
+portable package checks.
 
 ### `validate generated`
 
@@ -87,6 +102,9 @@ Verify the root project release metadata is present and readable.
 ```bash
 prd-to-product-agents-cli --skill-root <skill-root> validate version-metadata
 ```
+
+This check is repository-scoped and is mainly useful to maintainers working
+from a source checkout.
 
 ### `clean workspace`
 

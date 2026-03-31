@@ -46,8 +46,8 @@ These files are immutable after bootstrap (listed in `.github/immutable-files.tx
 | Agent identities | `.github/agents/identity/*.md` | Immutable personality and behavior | Immutable (in manifest) |
 | Agent model policy | `.github/agent-model-policy.yaml` | Model routing for all agents | Immutable (in manifest) |
 | GitHub governance | `.github/github-governance.yaml` | Readiness states, reviewers, labels | Bootstrapped as a local skeleton; completed by `prdtp-agents-functions-cli governance configure` |
-| Workspace capabilities | `.github/workspace-capabilities.yaml` | Git, gh, SQLite, markdownlint capability gates | Mutable via `prdtp-agents-functions-cli capabilities detect` |
-| Operational state | `docs/project/{handoffs,findings,releases}.yaml` | Workflow state files | Protected (in manifest); mutated only via `prdtp-agents-functions-cli state` subcommands |
+| Workspace capabilities | `.github/workspace-capabilities.yaml` | Runtime capability decisions for Git, gh, SQLite, markdownlint and reporting; operational gate only | Mutable via `prdtp-agents-functions-cli capabilities detect` / `capabilities authorize` |
+| Operational state | `docs/project/{handoffs,findings,releases}.yaml` | Machine-managed canonical workflow state files | Protected (in manifest); mutated only via `prdtp-agents-functions-cli state` subcommands |
 
 ## Derived reporting and execution snapshots (read-only)
 

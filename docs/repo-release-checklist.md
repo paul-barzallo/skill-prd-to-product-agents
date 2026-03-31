@@ -30,6 +30,7 @@ Shorthand:
   - orphan/legacy tracked artifacts
   - packaging drift
 - If runtime governance or readiness changed, run `cargo test --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml` and confirm the new typed validators (`validate pr-governance`, `validate release-gate`) still pass their negative and positive coverage.
+- If runtime audit, operating profiles, or GitHub wrappers changed, confirm `audit sink health/test`, typed state lifecycle tests, and the `core-local` versus `enterprise` contract are reflected in the same release.
 
 ## 3. Packaged artifact validation
 
@@ -42,9 +43,19 @@ Shorthand:
 ## 4. Packaging and scope review
 
 - Confirm project-level binaries and docs remain coherent with the repository release contract.
+- Treat these as the only tracked published binary scopes:
+  - `bin/` for `skill-dev-cli`
+  - `.agents/skills/prd-to-product-agents/bin/` for `prd-to-product-agents-cli`
+  - `.agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/` for `prdtp-agents-functions-cli`
 - Confirm `bin/` contains only publishable binaries and that legacy artifacts
   such as ad hoc ZIPs, `target/`, or orphan manifests are excluded from release.
 - Confirm the publish path still goes through a reviewed PR and not a direct push of tracked binaries to `main`.
+- The only supported refresh path for tracked binaries is `.github/workflows/build-skill-binaries.yml`:
+  `build -> test -> release-gate -> publish PR`.
+- Do not hand-refresh tracked binaries, `checksums.sha256`, `sbom.spdx.json`, or
+  `provenance-policy.json` from a local workstation as a publish path.
+- Local binary rebuilds are diagnostic only and must not become the published
+  state of tracked artifacts.
 
 ## 5. Release readiness review
 
@@ -62,5 +73,6 @@ Shorthand:
 - If any blocking validation fails, do not release.
 - If docs and code disagree, fix the docs before release.
 - If the build workflow proposes a tracked binary refresh PR, review and merge that PR instead of pushing binary updates directly to `main`.
+- Treat any attempt to bypass the workflow PR path for tracked binaries as a release-process failure, not as an acceptable exception.
 - Record the release decision through the normal repository process after all
   validation steps pass.

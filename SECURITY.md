@@ -21,6 +21,7 @@ Este repositorio distribuye tooling y plantillas para `prd-to-product-agents`. L
 - exige evidencia remota de GitHub para el gate `production-ready` mediante `prdtp-agents-functions-cli validate readiness` y `validate release-gate`
 - exige aprobacion remota verificable para cambios de gobernanza inmutable mediante `validate pr-governance` y la seccion `github.immutable_governance` en `.github/github-governance.yaml`
 - registra operaciones sensibles del runtime en spool JSONL exportable mediante `prdtp-agents-functions-cli audit export`
+- registra operaciones sensibles en un ledger JSONL local con hash-chain y, en perfil `enterprise`, exige confirmacion de un sink remoto para aceptar la operacion sensible
 - documenta explicitamente que el bootstrap no aprovisiona GitHub remotamente ni deja el entorno operacionalmente listo por si solo
 
 ## Lo que este proyecto no promete hoy
@@ -31,6 +32,7 @@ No reportes como vulnerabilidad la mera ausencia de capacidades que el proyecto 
 - no repudio centralizado de toda la trazabilidad local
 - equivalencia operativa completa entre consumo desde checkout fuente y consumo desde paquete publicado verificado
 - paridad completa entre VS Code + Copilot y GitHub.com
+- evidencia regulatoria fuerte cuando solo se usa el perfil `core-local`
 
 Si detectas que la documentacion afirma alguna de esas capacidades como si ya existieran, eso si es un hallazgo de seguridad o gobernanza valido.
 

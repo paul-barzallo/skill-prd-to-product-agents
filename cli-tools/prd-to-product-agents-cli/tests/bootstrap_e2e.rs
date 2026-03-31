@@ -479,7 +479,10 @@ fn bootstrap_fails_when_skill_bundle_sbom_is_missing() {
         "bootstrap unexpectedly succeeded with missing SBOM"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("SBOM"), "unexpected stderr: {stderr}");
+    assert!(
+        stderr.to_ascii_lowercase().contains("sbom"),
+        "unexpected stderr: {stderr}"
+    );
 }
 
 #[test]

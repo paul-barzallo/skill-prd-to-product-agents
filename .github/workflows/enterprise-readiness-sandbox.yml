@@ -18,13 +18,21 @@ jobs:
       REVIEWER_QA: ${{ vars.PRDTP_SANDBOX_REVIEWER_QA }}
       REVIEWER_DEVOPS: ${{ vars.PRDTP_SANDBOX_REVIEWER_DEVOPS }}
       REVIEWER_INFRA: ${{ vars.PRDTP_SANDBOX_REVIEWER_INFRA }}
+      REVIEWER_INFRA_LOGIN: ${{ vars.PRDTP_SANDBOX_REVIEWER_INFRA_LOGIN }}
+      AUDIT_REMOTE_ENDPOINT: ${{ vars.PRDTP_SANDBOX_AUDIT_ENDPOINT }}
       GH_TOKEN: ${{ secrets.PRDTP_SANDBOX_GH_TOKEN }}
+      PRDTP_GITHUB_TOKEN: ${{ secrets.PRDTP_SANDBOX_GH_TOKEN }}
+      PRDTP_SANDBOX_AUDIT_AUTH: ${{ secrets.PRDTP_SANDBOX_AUDIT_AUTH }}
+      EVIDENCE_DIR: .artifacts/enterprise-readiness-evidence
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Prepare evidence directory
+        run: mkdir -p "$EVIDENCE_DIR"
 
       - name: Validate sandbox configuration
         run: |
@@ -38,9 +46,12 @@ jobs:
             "$REVIEWER_QA" \
             "$REVIEWER_DEVOPS" \
             "$REVIEWER_INFRA" \
+            "$REVIEWER_INFRA_LOGIN" \
+            "$AUDIT_REMOTE_ENDPOINT" \
+            "$PRDTP_SANDBOX_AUDIT_AUTH" \
             "$GH_TOKEN"; do
             if [[ -z "$value" ]]; then
-              echo "Missing sandbox variables or secrets. Configure the PRDTP_SANDBOX_* variables and PRDTP_SANDBOX_GH_TOKEN secret before running this workflow." >&2
+              echo "Missing sandbox variables or secrets. Configure the PRDTP_SANDBOX_* variables plus PRDTP_SANDBOX_GH_TOKEN and PRDTP_SANDBOX_AUDIT_AUTH before running this workflow." >&2
               exit 1
             fi
           done
@@ -72,42 +83,77 @@ jobs:
             --reviewer-tech-lead "$REVIEWER_TECH_LEAD" \
             --reviewer-qa "$REVIEWER_QA" \
             --reviewer-devops "$REVIEWER_DEVOPS" \
-            --reviewer-infra "$REVIEWER_INFRA"
+            --reviewer-infra "$REVIEWER_INFRA" \
+            --reviewer-infra-login "$REVIEWER_INFRA_LOGIN" \
+            --operating-profile enterprise \
+            --github-auth-mode token-api \
+            --audit-mode remote \
+            --audit-remote-endpoint "$AUDIT_REMOTE_ENDPOINT" \
+            --audit-remote-auth-header-env PRDTP_SANDBOX_AUDIT_AUTH \
+            2>&1 | tee "$EVIDENCE_DIR/governance-configure.txt"
 
       - name: Promote temp workspace to production-ready contract
-        run: |
-          python - <<'PY'
-          import pathlib
-          import re
-
-          workspace = pathlib.Path(r"${{ steps.bootstrap.outputs.workspace }}")
-          governance = workspace / ".github" / "github-governance.yaml"
-          raw = governance.read_text(encoding="utf-8")
-          raw = raw.replace("status: configured", "status: production-ready")
-          raw = re.sub(
-              r"(branch_protection:\n)(\s+enabled:\s+)false",
-              r"\1\2true",
-              raw,
-              count=1,
-          )
-          raw = re.sub(
-              r"(project:\n)(\s+enabled:\s+)true",
-              r"\1\2false",
-              raw,
-              count=1,
-          )
-          governance.write_text(raw, encoding="utf-8")
-          PY
-
-      - name: Refresh capabilities and validate sandbox gate
         run: |
           set -euo pipefail
           cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
-            capabilities detect
+            governance promote-enterprise-readiness 2>&1 | tee "$EVIDENCE_DIR/governance-promote-enterprise-readiness.txt"
+
+      - name: Capture configured governance snapshot
+        run: |
+          set -euo pipefail
+          workspace="${{ steps.bootstrap.outputs.workspace }}"
+          cp "$workspace/.github/github-governance.yaml" "$EVIDENCE_DIR/github-governance.yaml"
+
+      - name: Refresh capabilities and validate configured gate
+        run: |
+          set -euo pipefail
           cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
-            validate governance
+            capabilities detect 2>&1 | tee "$EVIDENCE_DIR/capabilities-detect.txt"
+          cp "${{ steps.bootstrap.outputs.workspace }}/.github/workspace-capabilities.yaml" "$EVIDENCE_DIR/workspace-capabilities.yaml"
           cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
-            validate readiness
+            validate governance 2>&1 | tee "$EVIDENCE_DIR/validate-governance.txt"
+
+      - name: Provision enterprise controls
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            governance provision-enterprise 2>&1 | tee "$EVIDENCE_DIR/provision-enterprise.txt"
+
+      - name: Validate readiness and audit path
+        run: |
+          set -euo pipefail
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            validate readiness 2>&1 | tee "$EVIDENCE_DIR/validate-readiness.txt"
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            audit sink health 2>&1 | tee "$EVIDENCE_DIR/audit-sink-health.txt"
+          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+            --workspace "${{ steps.bootstrap.outputs.workspace }}" \
+            audit sink test 2>&1 | tee "$EVIDENCE_DIR/audit-sink-test.txt"
+
+      - name: Capture remote evidence
+        run: |
+          set -euo pipefail
+          workspace="${{ steps.bootstrap.outputs.workspace }}"
+          gh api "repos/$SANDBOX_REPO" > "$EVIDENCE_DIR/repository.json"
+          gh api "users/$RELEASE_GATE_LOGIN" > "$EVIDENCE_DIR/release-gate-login.json"
+          gh api "users/$REVIEWER_INFRA_LOGIN" > "$EVIDENCE_DIR/immutable-governance-infra-login.json"
+          gh api "repos/$SANDBOX_REPO/labels?per_page=100" > "$EVIDENCE_DIR/labels.json"
+          for branch in main develop; do
+            gh api "repos/$SANDBOX_REPO/branches/$branch/protection" > "$EVIDENCE_DIR/branch-protection-$branch.json"
+          done
+          if [[ -f "$workspace/.state/audit/sensitive-actions.jsonl" ]]; then
+            cp "$workspace/.state/audit/sensitive-actions.jsonl" "$EVIDENCE_DIR/sensitive-actions.jsonl"
+          fi
+
+      - name: Upload enterprise readiness evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: enterprise-readiness-evidence
+          path: ${{ env.EVIDENCE_DIR }}

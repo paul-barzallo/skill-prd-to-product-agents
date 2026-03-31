@@ -18,6 +18,15 @@ validation, packaging, and release behavior.
 
 ### Changed
 
+- The packaged skill now exposes `prd-to-product-agents-cli validate package` as the portable consumer validation surface, while `validate all` is explicitly maintainer-only and includes source-checkout runtime smoke.
+- The skill bootstrap CLI now writes diagnostic logs to the system temp area instead of mutating the distributed skill package during validation or bootstrap.
+- Packaged bundle validation now stays local-first by verifying checksums, SBOM manifests, and provenance-policy structure without requiring authenticated `gh attestation verify` during the default package validation path.
+- Skill package and template hygiene checks now reject unexpected runtime residue under `.state/`, including template log files, and the shipped workspace template no longer includes a checked-in CLI diagnostic log.
+- The runtime CLI now also routes diagnostics to temp when maintainers run it against the packaged workspace template, so agent assembly and validation no longer re-contaminate the distributed skill with `.state/logs/cli-diagnostic.log`.
+- Prompt and agent contract docs now narrow `execute` more aggressively: document-only prompts such as `clarify-prd` and `small-doc-update` no longer declare `execute`, and architecture/product/UX/PM roles are documented as runtime-CLI-only instead of implicitly sharing engineering shell scope.
+- Runtime and package docs now describe `enterprise` strictly as an optional remote overlay on top of the validated `core-local` path, with `token-api` documented as the only supported remote auth mode.
+- Runtime docs now publish a claim-to-evidence matrix, execute tables are framed as intended call sets instead of hard enforcement, and contract drift checks fail if unsupported `github-app` claims or stronger execute wording reappear.
+- `.github/workflows/enterprise-readiness-sandbox.yml` now exercises the full maintained enterprise proof path by configuring enterprise mode, provisioning remote controls, re-validating readiness, probing the remote audit sink, and uploading an evidence artifact.
 - Repository maintainer docs moved from `docs/project/` to `docs/`.
 - Repository guidance was narrowed to the project root scope instead of mixing packaged or generated surfaces by default.
 - `skill-dev-cli test release-gate` is now explicitly documented as the blocking repository release command.
@@ -40,6 +49,7 @@ validation, packaging, and release behavior.
 - The workspace runtime CLI now provides typed `validate pr-governance` and `validate release-gate` commands, GitHub Issue mutation wrappers, and structured `audit export` evidence for sensitive operations and handoff/state records.
 - Repository supply-chain controls now include dependency review, `cargo deny`, and CI build provenance attestation for published binary runs, while release guidance has been tightened around those gates.
 - Immutable governance now relies on remote PR approval checked through `github.immutable_governance` and `validate pr-governance`, the runtime CLI now wraps GitHub PR mutation paths in addition to issue mutation, and published bundles now ship SPDX SBOM plus provenance-policy metadata with consumer-side verification.
+- The runtime now splits `core-local` and `enterprise` operating profiles explicitly, records sensitive actions in a local hash-chained ledger with optional remote acknowledgement, degrades `audit sync` safely when SQLite is unavailable, and mutates operational YAML state through typed machine-managed serializers instead of regex/string replacement.
 
 ### Notes
 

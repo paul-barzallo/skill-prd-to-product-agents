@@ -58,7 +58,50 @@ jobs:
         run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/skill-dev-cli/Cargo.toml
 
       - name: Build workspace runtime CLI (prdtp-agents-functions-cli)
-        run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml
+        run: cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml --features published-skill-contract
+
+      - name: Validate published binary contract (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          BOOTSTRAP="cli-tools/prd-to-product-agents-cli/target/${{ matrix.target }}/release/prd-to-product-agents-cli"
+          RUNTIME="cli-tools/prdtp-agents-functions-cli/target/${{ matrix.target }}/release/prdtp-agents-functions-cli"
+          "${BOOTSTRAP}" validate package --help > /dev/null
+          "${BOOTSTRAP}" validate all --help > /dev/null
+          if "${RUNTIME}" --help | grep -qE '^[[:space:]]+github([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes github command" >&2
+            exit 1
+          fi
+          if "${RUNTIME}" governance --help | grep -qE '^[[:space:]]+promote-enterprise-readiness([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes enterprise promotion helper" >&2
+            exit 1
+          fi
+          if "${RUNTIME}" audit --help | grep -qE '^[[:space:]]+export([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes audit export" >&2
+            exit 1
+          fi
+
+      - name: Validate published binary contract (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $bootstrap = "cli-tools\prd-to-product-agents-cli\target\${{ matrix.target }}\release\prd-to-product-agents-cli.exe"
+          $runtime = "cli-tools\prdtp-agents-functions-cli\target\${{ matrix.target }}\release\prdtp-agents-functions-cli.exe"
+          & $bootstrap validate package --help | Out-Null
+          & $bootstrap validate all --help | Out-Null
+          $runtimeHelp = (& $runtime --help | Out-String)
+          if ($runtimeHelp -match '(?m)^[ ]+github([ ]|$)') {
+            throw 'published runtime unexpectedly exposes github command'
+          }
+          $governanceHelp = (& $runtime governance --help | Out-String)
+          if ($governanceHelp -match '(?m)^[ ]+promote-enterprise-readiness([ ]|$)') {
+            throw 'published runtime unexpectedly exposes enterprise promotion helper'
+          }
+          $auditHelp = (& $runtime audit --help | Out-String)
+          if ($auditHelp -match '(?m)^[ ]+export([ ]|$)') {
+            throw 'published runtime unexpectedly exposes audit export'
+          }
 
       - name: Stage scoped binaries (Unix)
         if: runner.os != 'Windows'
@@ -194,61 +237,7 @@ jobs:
           ROOT_BIN_DIR="bin"
           SKILL_BIN_DIR=".agents/skills/prd-to-product-agents/bin"
           WORKSPACE_RUNTIME_BIN_DIR=".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents"
-          write_policy() {
-            local bundle_dir="$1"
-            cat > "${bundle_dir}/provenance-policy.json" <<'EOF'
-          {
-            "schema_version": 1,
-            "required": true,
-            "repo": "paul-barzallo/skill-prd-to-product-agents",
-            "signer_workflow": "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml",
-            "source_ref": "refs/heads/main",
-            "predicate_type": "https://slsa.dev/provenance/v1"
-          }
-          EOF
-          }
-          write_sbom() {
-            local bundle_dir="$1"
-            local bundle_name="$2"
-            local namespace="$3"
-            python - "$bundle_dir" "$bundle_name" "$namespace" <<'PY'
-          import json
-          import pathlib
-          import sys
-
-          bundle_dir = pathlib.Path(sys.argv[1])
-          bundle_name = sys.argv[2]
-          namespace = sys.argv[3]
-          files = []
-          for line in (bundle_dir / "checksums.sha256").read_text(encoding="utf-8").splitlines():
-              line = line.strip()
-              if not line:
-                  continue
-              checksum, file_name = line.split(maxsplit=1)
-              files.append({
-                  "SPDXID": f"SPDXRef-File-{file_name.replace('.', '-').replace('/', '-')}",
-                  "fileName": f"./{file_name}",
-                  "checksums": [{
-                      "algorithm": "SHA256",
-                      "checksumValue": checksum.lower()
-                  }]
-              })
-
-          document = {
-              "spdxVersion": "SPDX-2.3",
-              "dataLicense": "CC0-1.0",
-              "SPDXID": "SPDXRef-DOCUMENT",
-              "name": bundle_name,
-              "documentNamespace": namespace,
-              "creationInfo": {
-                  "created": "2026-03-29T00:00:00Z",
-                  "creators": ["Tool: prd-to-product-agents bundle metadata"]
-              },
-              "files": files
-          }
-          (bundle_dir / "sbom.spdx.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
-          PY
-          }
+          # No supported local publish path: tracked binaries refresh only through this workflow and its reviewable PR.
           mkdir -p "${ROOT_BIN_DIR}" "${SKILL_BIN_DIR}" "${WORKSPACE_RUNTIME_BIN_DIR}"
           rm -f "${SKILL_BIN_DIR}"/prdtp-agents-functions-cli-*
           rm -f "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-*
@@ -258,30 +247,42 @@ jobs:
           cp collected/prd-to-product-agents-cli-* "${SKILL_BIN_DIR}/"
           # Workspace runtime tool: shipped inside the generated workspace template.
           cp collected/prdtp-agents-functions-cli-* "${WORKSPACE_RUNTIME_BIN_DIR}/"
-          (
-            cd "${ROOT_BIN_DIR}"
-            sha256sum skill-dev-cli-* > checksums.sha256
-          )
-          (
-            cd "${SKILL_BIN_DIR}"
-            sha256sum prd-to-product-agents-cli-* > checksums.sha256
-          )
-          (
-            cd "${WORKSPACE_RUNTIME_BIN_DIR}"
-            sha256sum prdtp-agents-functions-cli-* > checksums.sha256
-          )
-          write_policy "${ROOT_BIN_DIR}"
-          write_policy "${SKILL_BIN_DIR}"
-          write_policy "${WORKSPACE_RUNTIME_BIN_DIR}"
-          write_sbom "${ROOT_BIN_DIR}" "skill-dev-cli-published-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/skill-dev-cli-published-bundle"
-          write_sbom "${SKILL_BIN_DIR}" "prd-to-product-agents-skill-bootstrap-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-skill-bootstrap-bundle"
-          write_sbom "${WORKSPACE_RUNTIME_BIN_DIR}" "prd-to-product-agents-workspace-runtime-bundle" "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-workspace-runtime-bundle"
+          python .github/scripts/generate_bundle_metadata.py --bundle-dir "${ROOT_BIN_DIR}" --bundle-name "skill-dev-cli-published-bundle" --namespace "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/skill-dev-cli-published-bundle" --repo "paul-barzallo/skill-prd-to-product-agents" --signer-workflow "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml" --source-ref "refs/heads/main"
+          python .github/scripts/generate_bundle_metadata.py --bundle-dir "${SKILL_BIN_DIR}" --bundle-name "prd-to-product-agents-skill-bootstrap-bundle" --namespace "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-skill-bootstrap-bundle" --repo "paul-barzallo/skill-prd-to-product-agents" --signer-workflow "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml" --source-ref "refs/heads/main"
+          python .github/scripts/generate_bundle_metadata.py --bundle-dir "${WORKSPACE_RUNTIME_BIN_DIR}" --bundle-name "prd-to-product-agents-workspace-runtime-bundle" --namespace "https://github.com/paul-barzallo/skill-prd-to-product-agents/spdx/prd-to-product-agents-workspace-runtime-bundle" --repo "paul-barzallo/skill-prd-to-product-agents" --signer-workflow "paul-barzallo/skill-prd-to-product-agents/.github/workflows/build-skill-binaries.yml" --source-ref "refs/heads/main"
           chmod +x "${ROOT_BIN_DIR}"/skill-dev-cli-linux-x64 \
                     "${ROOT_BIN_DIR}"/skill-dev-cli-darwin-arm64 \
                     "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-linux-x64 \
                     "${SKILL_BIN_DIR}"/prd-to-product-agents-cli-darwin-arm64 \
                     "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-linux-x64 \
                     "${WORKSPACE_RUNTIME_BIN_DIR}"/prdtp-agents-functions-cli-darwin-arm64
+
+      - name: Package contract acceptance
+        run: |
+          set -euo pipefail
+          TMP_ROOT="$(mktemp -d)"
+          trap 'rm -rf "${TMP_ROOT}"' EXIT
+          cp -R .agents/skills/prd-to-product-agents "${TMP_ROOT}/prd-to-product-agents"
+          chmod +x "${TMP_ROOT}/prd-to-product-agents/bin/prd-to-product-agents-cli-linux-x64" \
+                    "${TMP_ROOT}/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-linux-x64"
+          "${TMP_ROOT}/prd-to-product-agents/bin/prd-to-product-agents-cli-linux-x64" \
+            --skill-root "${TMP_ROOT}/prd-to-product-agents" validate package
+          "${TMP_ROOT}/prd-to-product-agents/bin/prd-to-product-agents-cli-linux-x64" \
+            --skill-root "${TMP_ROOT}/prd-to-product-agents" bootstrap workspace \
+            --target "${TMP_ROOT}/workspace" --skip-git --skip-db-init
+          RUNTIME="${TMP_ROOT}/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-linux-x64"
+          if "${RUNTIME}" --help | grep -qE '^[[:space:]]+github([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes github command" >&2
+            exit 1
+          fi
+          if "${RUNTIME}" governance --help | grep -qE '^[[:space:]]+promote-enterprise-readiness([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes enterprise promotion helper" >&2
+            exit 1
+          fi
+          if "${RUNTIME}" audit --help | grep -qE '^[[:space:]]+export([[:space:]]|$)'; then
+            echo "published runtime unexpectedly exposes audit export" >&2
+            exit 1
+          fi
 
       - name: Create binary refresh pull request
         uses: peter-evans/create-pull-request@v7

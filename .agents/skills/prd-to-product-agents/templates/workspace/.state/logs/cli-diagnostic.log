@@ -1,4 +1,0 @@
-2026-03-21T21:17:48.744373Z ERROR prdtp_agents_functions_cli: command failed error=copilot runtime contract failed:
-  .github/instructions/agents.instructions.md: execute must not be documented as arbitrary shell access (`run arbitrary commands`)
-2026-03-22T01:12:12.981939Z ERROR prdtp_agents_functions_cli: command failed error=copilot runtime contract failed:
-  .github/project-governance.md: runtime role selectors must use `ops`, not `config` (`- config`)

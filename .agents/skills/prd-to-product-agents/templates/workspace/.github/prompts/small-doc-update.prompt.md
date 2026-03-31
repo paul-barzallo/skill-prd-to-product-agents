@@ -1,10 +1,9 @@
 ---
-description: Execute a small, bounded documentation or canonical-file update with the lightweight model path.
+description: Apply a small, bounded documentation or canonical-file update with the lightweight model path.
 agent: product-owner
 tools:
   - search
   - read
-  - execute
   - edit/editFiles
 model:
   - Claude Haiku 4.5
@@ -31,6 +30,8 @@ Use this prompt when the work is a bounded update to canonical docs and does not
 ## Guardrails
 
 - Do not use this prompt for major scope changes or release re-planning.
+- Do not mutate operational YAML through runtime commands from this prompt.
+- Do not use this prompt for branch management, commit creation, or release closure.
 - If the update changes architecture or execution, report back to `pm-orchestrator`.
 
 ## Exit
@@ -46,5 +47,5 @@ Report back to `pm-orchestrator` with:
 
 ## Write
 
-- Record progress or new findings using permitted calls in your boundary to `prdtp-agents-functions-cli state *`
-- Always use `prdtp-agents-functions-cli git finalize` to close the operational branch and commit the new state.
+- Limit changes to the targeted canonical docs.
+- If the update reveals a blocker or follow-up workflow step, describe it in the report-back instead of invoking runtime CLI state or Git commands from this prompt.

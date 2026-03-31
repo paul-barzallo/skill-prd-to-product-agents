@@ -5,7 +5,6 @@ tools:
   - search
   - read
   - edit/editFiles
-  - execute
 ---
 
 
@@ -21,12 +20,10 @@ PRD and the workspace cannot safely start planning or implementation yet.
 - the PRD or partial requirements provided by the user
 - `AGENTS.md`
 - `docs/project/open-questions.md`
-- `.github/workspace-capabilities.yaml`
 
 ## Write
 
 - `docs/project/open-questions.md`
-- optional handoffs in `docs/project/handoffs.yaml` through `prdtp-agents-functions-cli state handoff create`
 
 Do not rewrite core canonical docs from this prompt unless the PRD becomes
 clear during the same interaction.
@@ -69,8 +66,9 @@ Use one row per unresolved item and keep the status explicit.
   `pm-orchestrator` delegate to `software-architect` in the next planning step,
 - route to `pm-orchestrator` for cross-role coordination blockers.
 
-If `gh` is enabled and the work is already represented by an issue, the task
-should also move to `status:blocked`.
+If the work is already represented by an issue, state explicitly in the
+report-back that an execute-capable coordinator must mark it `status:blocked`
+through the supported runtime path.
 
 ### 4. Stop safely
 

@@ -123,58 +123,14 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
         .canonicalize()
         .unwrap_or_else(|_| workspace.to_path_buf());
 
-    // --- Commit path guard ---
-    // These env vars bypass governance controls and are strictly for:
-    //   - BOOTSTRAP_ALLOW_MAIN_COMMIT: the bootstrap CLI's initial commit on main
-    //   - FINALIZE_WORK_UNIT_ALLOW_COMMIT: the `git finalize` subcommand's automated commit
-    // They must NEVER be set manually by users or in production CI.
-    let bootstrap_allow = std::env::var("BOOTSTRAP_ALLOW_MAIN_COMMIT").unwrap_or_default() == "1";
-    let finalize_allow =
-        std::env::var("FINALIZE_WORK_UNIT_ALLOW_COMMIT").unwrap_or_default() == "1";
-
-    if !bootstrap_allow && !finalize_allow {
-        bail!("Direct git commit is out of contract in this workspace. Use prdtp-agents-functions-cli git finalize.");
-    }
-
-    // AUDIT TRAIL: Require explicit logging if bypass tokens are used.
-    if bootstrap_allow || finalize_allow {
-        let bypass_type = if bootstrap_allow {
-            "BOOTSTRAP_ALLOW_MAIN_COMMIT"
-        } else {
-            "FINALIZE_WORK_UNIT_ALLOW_COMMIT"
-        };
-        eprintln!("[AUDIT_LOG_BYPASS] Commit intercepted by hook. Governance constraint bypassed via authorized environment variable: {}", bypass_type);
-
-        let audit_dir = ws.join(".state/audit-spool");
-        let _ = std::fs::create_dir_all(&audit_dir);
-        let audit_file = audit_dir.join("governance.log");
-        use std::io::Write;
-        if let Ok(mut file) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(audit_file)
-        {
-            let timestamp = chrono::Utc::now().to_rfc3339();
-            let _ = writeln!(
-                file,
-                "[{timestamp}] COMMIT BYPASS: {bypass_type} triggered for workspace {}",
-                ws.display()
-            );
-        }
-    }
-
     // --- Branch protection guard ---
     if ws.join(".git").is_dir() {
         match get_current_branch(&ws) {
             None => {
-                if !bootstrap_allow {
-                    bail!("Cannot commit in detached HEAD state. Check out a task branch (<role>/<issue-id>-slug) first.");
-                }
+                bail!("Cannot commit in detached HEAD state. Direct git commit is out of contract; use prdtp-agents-functions-cli git finalize.");
             }
             Some(ref branch) if branch == "main" || branch == "develop" => {
-                if !bootstrap_allow {
-                    bail!("Direct commits on '{branch}' are out of contract. Use a task branch (<role>/<issue-id>-slug) based on develop.");
-                }
+                bail!("Direct commits on '{branch}' are out of contract. Use a task branch (<role>/<issue-id>-slug) based on develop.");
             }
             _ => {}
         }
@@ -265,39 +221,29 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
             .filter(|f| !operational_yaml.contains(&f.as_str()))
             .collect();
 
-        // Operational YAML allowed via finalize pathway
-        if !operational_hits.is_empty() && !finalize_allow && !bootstrap_allow {
+        if !operational_hits.is_empty() {
             let files: Vec<String> = operational_hits.iter().map(|f| format!("  {f}")).collect();
-            bail!(
-                "Operational state files must be mutated through prdtp-agents-functions-cli state and committed via prdtp-agents-functions-cli git finalize:\n{}",
+            eprintln!(
+                "{} Operational state files are staged. They are machine-managed canonical state and must be committed only through prdtp-agents-functions-cli state + git finalize:\n{}",
+                "WARN:".yellow().bold(),
                 files.join("\n")
             );
         }
 
-        // Governance files stay locally editable through the controlled finalize/bootstrap
-        // paths, but merge admission is enforced remotely by PR governance validation.
         if !governance_hits.is_empty() {
             let files: Vec<String> = governance_hits.iter().map(|f| format!("  {f}")).collect();
-            let action = if bootstrap_allow {
-                "bootstrap"
-            } else if finalize_allow {
-                "finalize"
-            } else {
-                "manual"
-            };
-            let _ = crate::audit::events::record_sensitive_action(
+            crate::audit::events::record_sensitive_action(
                 &ws,
-                "governance.immutable-change.local-admission",
-                action,
-                "pending_remote_pr_approval",
+                "governance.immutable-change.manual-commit-attempt",
+                "manual",
+                "blocked-local-manual-commit",
                 serde_json::json!({
                     "files": governance_hits.iter().map(|path| path.as_str()).collect::<Vec<_>>(),
                 }),
-            );
+            )?;
             eprintln!(
-                "{} Immutable governance files are staged. Local admission is compensating only; PR governance CI must verify reviewed approval before merge:\n{}",
-                "WARN:".yellow().bold()
-                ,
+                "{} Immutable governance files are staged. Direct git commit remains blocked; reviewed PR approval is enforced remotely on the supported path:\n{}",
+                "WARN:".yellow().bold(),
                 files.join("\n")
             );
         }
@@ -350,8 +296,7 @@ pub fn run(workspace: &Path, args: PreCommitArgs) -> Result<()> {
         );
     }
 
-    println!("{}", "Pre-commit validation passed.".green());
-    Ok(())
+    bail!("Direct git commit is out of contract in this workspace. Use prdtp-agents-functions-cli git finalize.");
 }
 
 fn which_command(name: &str) -> bool {
@@ -408,7 +353,7 @@ pub fn run_governance_checks(workspace: &Path, changed_files: &[String]) -> Resu
         println!(
             "  Immutable governance files changed locally; remote PR approval will be enforced before merge."
         );
-        let _ = crate::audit::events::record_sensitive_action(
+        crate::audit::events::record_sensitive_action(
             &ws,
             "governance.immutable-change.finalize",
             "git.finalize",
@@ -416,7 +361,7 @@ pub fn run_governance_checks(workspace: &Path, changed_files: &[String]) -> Resu
             serde_json::json!({
                 "files": governance_hits.iter().map(|path| path.as_str()).collect::<Vec<_>>(),
             }),
-        );
+        )?;
     }
 
     // --- Agent assembly verification ---

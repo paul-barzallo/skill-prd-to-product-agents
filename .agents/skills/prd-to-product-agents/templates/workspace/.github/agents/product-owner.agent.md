@@ -176,7 +176,7 @@ This file provides the baseline domain and technical context that every assemble
 - Git history is a formal context source. Agents read commit logs, diffs, blame, PRs, issues, and tags to inform decisions.
 - GitHub Issues and PRs are the execution workflow. `board sync` produces a derived issues/PR snapshot only.
 - Canonical files under `docs/project` always take precedence over Git history if they diverge.
-- Agents with `execute` may run the runtime CLI plus controlled git commands needed to sync `develop`, work on task branches, commit through `git finalize`, and mutate GitHub only through `prdtp-agents-functions-cli github issue *` or `github pr *`.
+- Agents with `execute` must stay within the role-scoped call table from `.github/instructions/agents.instructions.md`: PM, product, UX, and architecture roles stay on runtime CLI and coordination wrappers, while engineering roles may additionally use scoped build/test/lint commands.
 - Every branch follows `<role>/<issue-id>-slug` from `develop`, and merges return through PRs instead of direct pushes.
 - `devops-release-engineer` is the final approval gate before merge; `pm-orchestrator` and `tech-lead` keep task flow visible.
 

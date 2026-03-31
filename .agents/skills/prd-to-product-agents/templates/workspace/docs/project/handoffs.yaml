@@ -3,6 +3,8 @@
 # Authority: any agent may create entries; assignees may claim / complete; pm-orchestrator may reconcile routing state
 # Schema: see docs.instructions.md for field definitions
 
+schema_version: 1
+revision: 0
 handoffs: []
 
 # Example entry:

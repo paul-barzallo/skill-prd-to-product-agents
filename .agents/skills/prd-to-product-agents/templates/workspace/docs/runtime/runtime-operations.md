@@ -7,6 +7,12 @@ day-to-day workspace operation after bootstrap.
 All commands require an explicit workspace root:
 `prdtp-agents-functions-cli --workspace <path> ...`
 
+The primary validated path is `core-local`. `enterprise` commands are an
+optional remote overlay and only become meaningful after explicit external
+infrastructure is configured.
+
+Before adding or repeating runtime claims, check `runtime-claims-coverage.md`.
+
 ## Context system first
 
 Before using reporting, audit, or database commands, read
@@ -29,11 +35,11 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli validate agents` | Validate agent hierarchy and contracts. |
 | `prdtp-agents-functions-cli validate prompts` | Validate prompts have required sections. |
 | `prdtp-agents-functions-cli validate governance` | Validate a configured workspace has real repository identifiers, reviewers, CODEOWNERS, and no placeholders. |
-| `prdtp-agents-functions-cli validate readiness` | Validate the strong `production-ready` gate: structure, governance, assembly, encoding, capability-contract prerequisites, and remote GitHub controls. |
+| `prdtp-agents-functions-cli validate readiness` | Validate the optional `enterprise` overlay for `production-ready`: structure, governance, assembly, encoding, capability-contract prerequisites, and remote GitHub controls. |
 | `prdtp-agents-functions-cli validate pr-governance` | Validate PR metadata, required sections, label contract, commit subjects, and release gate preconditions from the GitHub event payload. |
 | `prdtp-agents-functions-cli validate release-gate` | Validate only the final release-gate approval path for PRs targeting `main`. |
 | `prdtp-agents-functions-cli validate models` | Validate model frontmatter against agent-model-policy.yaml. |
-| `prdtp-agents-functions-cli validate ci ...` | CI-focused validation helpers for fixtures, schemas, degraded runtime, reporting, and Copilot contract drift. |
+| `prdtp-agents-functions-cli validate ci ...` | Workspace-portable CI-focused validation helpers for fixtures, schemas, degraded runtime, reporting, and Copilot contract drift. |
 | `prdtp-agents-functions-cli capabilities detect` | Detect tool availability and render `workspace-capabilities.yaml`. |
 | `prdtp-agents-functions-cli capabilities authorize` | Explicitly authorize or de-authorize a capability without editing YAML by hand. |
 | `prdtp-agents-functions-cli dependencies check` | Check workspace dependency availability. |
@@ -48,20 +54,22 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli report export` | Export CSV, XLSX report packs. |
 | `prdtp-agents-functions-cli audit sync` | Passive ledger sync from canonical docs into SQLite. |
 | `prdtp-agents-functions-cli audit replay-spool` | Replay degraded-mode spool entries into the ledger. |
-| `prdtp-agents-functions-cli audit export` | Export structured audit evidence as JSONL from canonical state, spool, and work-unit records. |
+| `prdtp-agents-functions-cli audit sink health` | Verify local audit hash-chain integrity and remote sink configuration. |
+| `prdtp-agents-functions-cli audit sink test` | Emit a probe event through the configured audit sink and local mirror. |
 | `prdtp-agents-functions-cli state handoff create/update` | Handoff YAML operations. |
 | `prdtp-agents-functions-cli state finding create/update` | Finding YAML operations. |
 | `prdtp-agents-functions-cli state release create/update` | Release YAML operations. |
 | `prdtp-agents-functions-cli state event record` | Environment event recording. |
 | `prdtp-agents-functions-cli governance configure` | Configure local repository owner/name, reviewers, release-gate login, and regenerate `CODEOWNERS`. |
-| `prdtp-agents-functions-cli github issue create/update/comment/label` | Supported GitHub Issue mutation wrappers gated by the workspace capability contract. |
-| `prdtp-agents-functions-cli github pr create/update/comment/label` | Supported GitHub PR mutation wrappers gated by the workspace capability contract. |
+| `prdtp-agents-functions-cli governance provision-enterprise` | Provision optional remote branch protection and governance labels for the enterprise profile. |
 | `prdtp-agents-functions-cli board sync` | Refresh the operational board snapshot from GitHub issues and pull requests. |
 
 ## CI validation helpers
 
 Use `validate ci` for workflow-only checks that go beyond the core workspace
 contract:
+
+These helpers are workspace-portable checks against the current tree. They are workflow-oriented rather than day-to-day operator commands, but they do not require publisher-only checkout state.
 
 - `pre-commit-fixtures`: verifies malformed YAML and immutable-governance
   fixtures are handled correctly by the local finalize gate.
@@ -82,7 +90,7 @@ contract:
 A unit of work is not complete until `prdtp-agents-functions-cli git finalize` succeeds.
 
 - If Git authorization is enabled, `git finalize` runs workspace validation as a blocking pre-commit gate and creates the commit only after validation and governance checks pass.
-- Immutable governance files may pass local finalize, but they still require remote PR approval through `validate pr-governance` before merge.
+- Immutable governance files may be staged through the controlled finalize path, but manual `git commit` stays blocked and merge authority still comes only from remote PR approval through `validate pr-governance`.
 - If Git authorization is disabled, `git finalize` writes Markdown + JSON evidence under `.state/local-history/`.
 
 ## Reporting operations
@@ -95,8 +103,10 @@ A unit of work is not complete until `prdtp-agents-functions-cli git finalize` s
 
 ## Audit operations
 
-- `audit sync` mirrors canonical file checksums into SQLite when `capabilities.sqlite.authorized.enabled=true`. It never establishes truth.
+- `audit sync` mirrors canonical file checksums into SQLite when SQLite is authorized and available. If SQLite is unauthorized, missing, or not initialized yet, it exits successfully in degraded mode and records that outcome locally.
 - `audit replay-spool` recovers events from degraded-mode spool files when SQLite authorization is enabled again.
+- `audit sink health` verifies the local hash-chain and, in remote mode, checks that the remote sink configuration is present.
+- `audit sink test` emits a probe event through the configured audit path. In the optional `enterprise` overlay, the remote sink must acknowledge the event or the command fails.
 - The audit ledger is passive. Failed or delayed syncs never change canonical files.
 
 ## State and degradation notes
@@ -106,5 +116,6 @@ A unit of work is not complete until `prdtp-agents-functions-cli git finalize` s
   source files.
 - `.state/sqlite-bootstrap.pending.md` indicates deferred SQLite
   initialization, not a fake success state.
+- `.state/audit/sensitive-actions.jsonl` is the local hash-chained mirror for sensitive runtime actions.
 - In local-only mode, `git finalize` writes evidence into
   `.state/local-history/` instead of creating commits.

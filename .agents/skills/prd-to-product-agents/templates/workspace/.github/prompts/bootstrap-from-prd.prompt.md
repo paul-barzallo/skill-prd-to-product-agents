@@ -95,7 +95,7 @@ prdtp-agents-functions-cli git checkout-task-branch --role pm-orchestrator --iss
 ```
 
 If no issue ID exists yet, stop and create or identify the tracking issue first.
-Create that issue through `prdtp-agents-functions-cli github issue create`.
+Create that issue through the workspace's approved GitHub operating process.
 This Git-authorized path requires `--issue-id` and uses the `product/` branch
 prefix from the runtime contract. Never commit to `main` or `develop` directly.
 

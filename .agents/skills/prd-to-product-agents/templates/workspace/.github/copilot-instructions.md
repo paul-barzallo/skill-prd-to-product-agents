@@ -35,7 +35,8 @@ This repository uses a product-development automation architecture built around:
 - **Context system:** use `docs/runtime/context-system-runtime.md` for the files-first retrieval order, derivative surfaces, and recovery sequence.
 - **Execution layer:** GitHub Issues, task branches, commits, and PRs.
 - **Historical context (Git):** commits, PRs, issues, tags, and releases provide traceability.
-- **Operational capability contract:** `.github/workspace-capabilities.yaml` is the persisted detection + authorization snapshot for runtime commands that consult Git, GitHub automation, SQLite audit, reporting, markdownlint, and local-only mode.
+- **Operational capability contract:** `.github/workspace-capabilities.yaml` is the persisted detection + authorization snapshot for runtime commands that consult Git, GitHub automation, SQLite audit, reporting, markdownlint, and local-only mode. It is an operational gate for the runtime CLI, not a standalone security or compliance boundary.
+- **Operating profiles:** `.github/github-governance.yaml` declares `operating_profile: core-local | enterprise`. `core-local` stays lightweight and honest about local limits. `enterprise` requires remote GitHub controls plus a remote audit sink before `production-ready` is valid.
 - **Reporting snapshot:** `.state/reporting/report-snapshot.json` is the read-only source for executive Markdown, local UI, and exports.
 - Files are always authoritative.
 - A passive SQLite audit ledger exists at `.state/project_memory.db` but is managed automatically by infrastructure. Agents do not read, write, or interact with it in any way.
@@ -97,7 +98,7 @@ Coordinators (PM, TL) must review the report-back before delegating the next ste
 
 - If `.github/workspace-capabilities.yaml` exists, agents must obey it instead of inferring tool availability ad hoc.
 - If `capabilities.git.authorized.enabled=false`, Git and GitHub mutation are out of contract: no commits, no branch workflow, no PR automation. Evidence goes to `.state/local-history/`.
-- If `capabilities.sqlite.authorized.enabled=false`, infrastructure runs in spool-only mode. Agents still use canonical files and `prdtp-agents-functions-cli state` subcommands, but SQLite ledger sync is deferred.
+- If `capabilities.sqlite.authorized.enabled=false`, infrastructure runs in degraded mirror mode. Agents still use canonical files and `prdtp-agents-functions-cli state` subcommands, `audit sync` records degraded success locally, and SQLite ledger sync is deferred.
 - If `capabilities.markdownlint.authorized.enabled=false`, Markdown lint is skipped by authorization, not by accidental failure.
 - `detected.*` is infrastructure-owned. `policy.*` may be updated later by the user or `devops-release-engineer` after installing missing tooling.
 - `authorized.*` is the hard gate for capability use. Detection never auto-elevates sensitive capabilities.
@@ -210,7 +211,7 @@ Git history remains a formal input to agent decisions, but GitHub task execution
 - GitHub Issues are the required task system. Pull requests and branches reflect execution state.
 - `.github/github-governance.yaml` is the explicit governance contract for readiness, reviewers, labels, reserved future project metadata, and the final approval gate.
 - `bootstrap-from-prd` is the standard PRD entrypoint, and `clarify-prd` remains available for a dedicated clarification pass when the PM needs to isolate requirement cleanup before proceeding.
-- Agents with `execute` may run the runtime CLI plus role-scoped build/test/lint commands. GitHub mutations must go through `prdtp-agents-functions-cli github issue *` or `prdtp-agents-functions-cli github pr *`, and PR governance must be validated through `prdtp-agents-functions-cli validate pr-governance` / `validate release-gate`.
+- Agents with `execute` may run the runtime CLI. Only `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally use role-scoped build/test/lint commands. PR governance must be validated through `prdtp-agents-functions-cli validate pr-governance` / `validate release-gate`, and enterprise repo controls are provisioned through `prdtp-agents-functions-cli governance provision-enterprise`. GitHub issue and PR mutation flows remain outside the default published skill contract in this release.
 - Agents with `execute` must check `.github/workspace-capabilities.yaml` before using Git, GitHub mutation, SQLite-backed scripts, or markdownlint. `authorized.*` overrides nominal tool access.
 - Required branch routine for task work - use the controlled wrapper:
   - `prdtp-agents-functions-cli git checkout-task-branch --role <role> --issue-id <id> --slug <slug>` (creates or switches to task branch)
@@ -263,10 +264,11 @@ These git operations are **dangerous** and require explicit user confirmation wi
 - The `tools` property restricts which VS Code tools are available during that session.
 - Tool aliases include `agent`, `execute`, `read`, `edit/editFiles`, `search`, `web`, and `todo`.
 - Coordinators (`pm-orchestrator`, `tech-lead`) include the `agent` tool plus `agents` property to restrict which sub-agents they can delegate to.
+- This table is an intended call set, not a hard runtime permission boundary.
 - Role frontmatter may include `execute` because governance, task closure, and some technical validation flows are CLI-driven. Prompt frontmatter narrows that access for bounded workflows that do not need command execution.
 - Only coordinators include the `agent` tool; execution access does not imply delegation authority.
-- `product-owner`, `ux-designer`, and `pm-orchestrator` are limited to `prdtp-agents-functions-cli` commands, state inspection, and coordination operations.
-- `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, `tech-lead`, and `software-architect` may additionally run build, test, lint, and dependency management commands (e.g., `npm install`, `dotnet build`, `pytest`) when clearly tied to their delivery scope. This does not extend to arbitrary shell commands, system administration, or network operations outside the workspace.
+- `product-owner`, `ux-designer`, `software-architect`, and `pm-orchestrator` are limited to `prdtp-agents-functions-cli` commands, state inspection, and coordination operations.
+- `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally run build, test, lint, and dependency management commands (e.g., `npm install`, `dotnet build`, `pytest`) when clearly tied to their delivery scope. This does not extend to arbitrary shell commands, system administration, or network operations outside the workspace.
 - If an agent needs a tool not in its frontmatter, it must create a finding rather than bypass the restriction.
 
 ## Model routing rules

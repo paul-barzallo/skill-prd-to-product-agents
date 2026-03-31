@@ -69,6 +69,9 @@ pub fn run(workspace: &Path) -> Result<()> {
     }
 
     println!("\n{}", "Checking repository identifiers...".bold());
+    errors += check_scalar(&parsed, &["operating_profile"], "operating_profile");
+    errors += check_scalar(&parsed, &["github", "auth", "mode"], "github.auth.mode");
+    errors += check_scalar(&parsed, &["audit", "mode"], "audit.mode");
     errors += check_scalar(
         &parsed,
         &["github", "repository", "owner"],
@@ -141,6 +144,41 @@ pub fn run(workspace: &Path) -> Result<()> {
         &["github", "immutable_governance", "required_labels"],
         "github.immutable_governance.required_labels",
     );
+    if matches!(
+        crate::github_api::operating_profile(&parsed),
+        Ok(crate::github_api::OperatingProfile::Enterprise)
+    ) {
+        errors += check_scalar(
+            &parsed,
+            &["audit", "remote", "endpoint"],
+            "audit.remote.endpoint",
+        );
+        errors += check_scalar(
+            &parsed,
+            &["audit", "remote", "auth_header_env"],
+            "audit.remote.auth_header_env",
+        );
+        if !matches!(
+            crate::github_api::github_auth_mode(&parsed),
+            Ok(crate::github_api::GithubAuthMode::TokenApi)
+        ) {
+            eprintln!(
+                "  {} enterprise profile requires github.auth.mode=token-api",
+                "✗".red()
+            );
+            errors += 1;
+        }
+        if !matches!(
+            crate::github_api::audit_mode(&parsed),
+            Ok(crate::github_api::AuditMode::Remote)
+        ) {
+            eprintln!(
+                "  {} enterprise profile requires audit.mode=remote",
+                "✗".red()
+            );
+            errors += 1;
+        }
+    }
 
     println!("\n{}", "Scanning placeholder markers...".bold());
     if contains_placeholder_marker(&content) {

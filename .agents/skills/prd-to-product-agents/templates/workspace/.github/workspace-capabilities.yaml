@@ -1,7 +1,7 @@
 schema_version: 2
 environment:
-  host: unknown
-  os: unknown
+  host: "unknown"
+  os: "unknown"
 capabilities:
   git:
     detected:
@@ -9,25 +9,25 @@ capabilities:
       identity_configured: false
     authorized:
       enabled: false
-      source: manual-default-deny
+      source: "manual-default-deny"
     policy:
-      mode: local-only
+      mode: "local-only"
   gh:
     detected:
       installed: false
       authenticated: false
     authorized:
       enabled: false
-      source: manual-default-deny
+      source: "manual-default-deny"
   sqlite:
     detected:
       installed: false
       db_initialized: false
     authorized:
       enabled: false
-      source: missing-runtime
+      source: "missing-runtime"
     policy:
-      mode: spool-only
+      mode: "spool-only"
   node:
     detected:
       installed: false
@@ -39,14 +39,14 @@ capabilities:
       native_linux: false
     authorized:
       enabled: false
-      source: missing-runtime
+      source: "missing-runtime"
   local_history:
     authorized:
       enabled: true
-      source: detected-default
+      source: "detected-default"
     policy:
-      format: markdown+json
-      path: .state/local-history
+      format: "markdown+json"
+      path: ".state/local-history"
   reporting:
     detected:
       ui_available: false
@@ -54,7 +54,7 @@ capabilities:
       pdf_export_ready: false
     authorized:
       enabled: true
-      source: detected-default
+      source: "detected-default"
     policy:
-      visibility_mode: local-only
-last_updated: 1970-01-01T00:00:00Z
+      visibility_mode: "local-only"
+last_updated: "1970-01-01T00:00:00Z"

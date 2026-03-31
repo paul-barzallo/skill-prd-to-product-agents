@@ -44,6 +44,10 @@ fn template_root() -> PathBuf {
     skill_root().join("templates").join("workspace")
 }
 
+fn is_bootstrap_generated(path: &str) -> bool {
+    prdtp_agents_shared::workspace_paths::BOOTSTRAP_GENERATED_FILES.contains(&path)
+}
+
 /// Verify every path in workspace_paths::REQUIRED_FILES exists in the template.
 #[test]
 fn required_files_match_template() {
@@ -57,7 +61,7 @@ fn required_files_match_template() {
     let mut missing = Vec::new();
     for path in prdtp_agents_shared::workspace_paths::REQUIRED_FILES {
         let full = template_root.join(path);
-        if !full.exists() {
+        if !full.exists() && !is_bootstrap_generated(path) {
             missing.push(path.to_string());
         }
     }
@@ -102,7 +106,7 @@ fn yaml_files_match_template() {
     let mut missing = Vec::new();
     for path in prdtp_agents_shared::workspace_paths::YAML_FILES {
         let full = template_root.join(path);
-        if !full.exists() {
+        if !full.exists() && !is_bootstrap_generated(path) {
             missing.push(path.to_string());
         }
     }
@@ -111,6 +115,32 @@ fn yaml_files_match_template() {
         missing.is_empty(),
         "YAML_FILES references paths not present in templates/workspace/:\n  {}",
         missing.join("\n  ")
+    );
+}
+
+#[test]
+fn workspace_capabilities_seed_exists_and_uses_schema_v2() {
+    let capabilities_path = template_root()
+        .join(".github")
+        .join("workspace-capabilities.yaml");
+
+    assert!(
+        capabilities_path.is_file(),
+        "workspace-capabilities.yaml seed missing from template: {}",
+        capabilities_path.display()
+    );
+
+    let raw = std::fs::read_to_string(&capabilities_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", capabilities_path.display()));
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", capabilities_path.display()));
+
+    assert_eq!(parsed["schema_version"].as_u64(), Some(2));
+    assert!(
+        parsed["capabilities"]["git"]["authorized"]["enabled"]
+            .as_bool()
+            .is_some(),
+        "workspace-capabilities seed must expose capabilities.*.authorized.enabled"
     );
 }
 

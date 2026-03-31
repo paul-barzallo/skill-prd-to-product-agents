@@ -17,18 +17,21 @@
 
 ## Degraded mode
 
-`audit sync` exits successfully in degraded mode when either of these is true:
+`audit sync` exits successfully in degraded mode when any of these is true:
 
-- `sqlite3` is unavailable
+- SQLite authorization is missing
+- SQLite authorization is disabled
 - `.state/project_memory.db` does not exist
+- the SQLite mirror is otherwise unavailable
 
-In degraded mode it writes `.state/state-sync-degraded.log`, reports `Result: degraded`, and skips SQLite writes.
+In degraded mode it writes `.state/state-sync-degraded.log`, reports a degraded outcome, and skips SQLite writes. The canonical files remain untouched either way.
 
 ## Recovery
 
-1. Install or expose `sqlite3` in `PATH`.
-2. Run `prdtp-agents-functions-cli database init`.
-3. Re-run `prdtp-agents-functions-cli audit sync`.
+1. Authorize SQLite intentionally in `.github/workspace-capabilities.yaml` or via `capabilities authorize`.
+2. If `capabilities detect` reports the SQLite CLI unavailable on a platform that expects it, install or expose `sqlite3` in `PATH`.
+3. Run `prdtp-agents-functions-cli database init`.
+4. Re-run `prdtp-agents-functions-cli audit sync`.
 
 ## Operational expectation
 

@@ -112,7 +112,7 @@ execution layer should also reflect `status:blocked`.
 - Before asking for merge in a Git-authorized workspace, the author or operator opens or updates a PR to `develop`, completes `.github/PULL_REQUEST_TEMPLATE.md`, applies one `role:*`, one `kind:*`, and one `priority:*` label, and reviews PR comments plus commit comments. `prdtp-agents-functions-cli validate pr-governance` and `validate release-gate` are the supported contract checks.
 - A task is not complete until `prdtp-agents-functions-cli git finalize` succeeds. That command is the supported closure path for Git-enabled and local-only workspaces.
 - `prdtp-agents-functions-cli git finalize` runs the shared pre-commit validator itself before creating Git evidence. After that validation passes, it may use `git commit --no-verify` to avoid host-specific hook failures without weakening governance checks.
-- `tech-lead` converts refined stories into GitHub Issues through `prdtp-agents-functions-cli github issue create`, `github issue update`, and `github issue label`, then assigns execution by role.
+- `tech-lead` converts refined stories into GitHub Issues through the organization's approved GitHub operating process, then assigns execution by role.
 - `pm-orchestrator` keeps the task board, blockers, and cross-role coordination visible.
 - `devops-release-engineer` is the final approval gate before merge and controls release promotion to `main`.
 - `docs/project/board.md` is the detailed execution snapshot.
@@ -124,18 +124,22 @@ execution layer should also reflect `status:blocked`.
 
 - Role-level `execute` is a controlled exception required by CLI-driven governance and task closure, not a blanket permission to run arbitrary commands.
 - Prompt frontmatter should omit `execute` whenever the workflow can complete safely without shell or runtime-command use.
-- `product-owner`, `ux-designer`, and `pm-orchestrator` are limited to `prdtp-agents-functions-cli` commands, state inspection, and coordination operations.
-- `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, `tech-lead`, and `software-architect` may additionally run build, test, lint, and dependency management commands (e.g., `npm install`, `dotnet build`, `pytest`) when clearly tied to their delivery scope. This does not extend to arbitrary shell commands, system administration, or network operations outside the workspace.
+- `product-owner`, `ux-designer`, `software-architect`, and `pm-orchestrator` are limited to `prdtp-agents-functions-cli` commands, state inspection, and coordination operations.
+- `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally run build, test, lint, and dependency management commands (e.g., `npm install`, `dotnet build`, `pytest`) when clearly tied to their delivery scope. This does not extend to arbitrary shell commands, system administration, or network operations outside the workspace.
 - If the platform cannot enforce per-command restrictions, treat this as a residual risk compensated by `.github/workspace-capabilities.yaml`, `.github/github-governance.yaml`, CODEOWNERS, PR workflows, `prdtp-agents-functions-cli git finalize`, and local/SQLite audit evidence.
 
-### Per-role allowed calls
+### Per-role intended call set
 
 The execution path is the workspace-local `prdtp-agents-functions-cli` runtime under `.agents/bin/prd-to-product-agents/`. CI may install the same binary into `PATH`, but agents must treat the workspace-local copy as canonical.
 
-| Agent | Allowed execute calls |
-|-------|----------------------|
-| `pm-orchestrator` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli report dashboard`, `prdtp-agents-functions-cli report snapshot`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding update`, `prdtp-agents-functions-cli agents assemble`, `prdtp-agents-functions-cli audit export` |
-| `tech-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli agents assemble`, `prdtp-agents-functions-cli github issue create`, `prdtp-agents-functions-cli github issue update`, `prdtp-agents-functions-cli github issue label`, `prdtp-agents-functions-cli github issue comment` |
+This table is an intended call set, not a hard runtime permission boundary.
+Durable containment still depends on platform support, workspace governance,
+CODEOWNERS, and PR validation.
+
+| Agent | Intended execute call set |
+|-------|--------------------------|
+| `pm-orchestrator` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli report dashboard`, `prdtp-agents-functions-cli report snapshot`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding update`, `prdtp-agents-functions-cli agents assemble` |
+| `tech-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli agents assemble` |
 | `product-owner` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update` |
 | `software-architect` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli state handoff create` |
 | `ux-designer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create` |
@@ -144,7 +148,7 @@ The execution path is the workspace-local `prdtp-agents-functions-cli` runtime u
 | `qa-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli state handoff create` |
 | `devops-release-engineer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state release create/update`, `prdtp-agents-functions-cli state event record`, `prdtp-agents-functions-cli state finding create`, `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update` |
 
-Any script call outside this table requires explicit justification in the PR description and `devops-release-engineer` sign-off.
+Any script call outside this intended call set requires explicit justification in the PR description and `devops-release-engineer` sign-off.
 
 ## Context injection
 

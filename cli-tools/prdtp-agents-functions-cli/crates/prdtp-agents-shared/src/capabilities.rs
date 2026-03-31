@@ -273,6 +273,45 @@ pub fn render_capabilities_yaml(input: CapabilitySnapshotInput) -> Result<String
     serde_yaml::to_string(&input.into_document())
 }
 
+pub fn render_bootstrap_seed_capabilities_yaml() -> Result<String, serde_yaml::Error> {
+    render_capabilities_yaml(CapabilitySnapshotInput {
+        host: "unknown".to_string(),
+        os: "unknown".to_string(),
+        git_installed: false,
+        git_identity_configured: false,
+        git_authorized: false,
+        git_authorization_source: "manual-default-deny".to_string(),
+        git_mode: "local-only".to_string(),
+        gh_installed: false,
+        gh_authenticated: false,
+        gh_authorized: false,
+        gh_authorization_source: "manual-default-deny".to_string(),
+        sqlite_installed: false,
+        db_initialized: false,
+        sqlite_authorized: false,
+        sqlite_authorization_source: "missing-runtime".to_string(),
+        sqlite_mode: "spool-only".to_string(),
+        node_installed: false,
+        npm_installed: false,
+        node_native_linux: false,
+        markdownlint_installed: false,
+        markdownlint_native_linux: false,
+        markdownlint_authorized: false,
+        markdownlint_authorization_source: "missing-runtime".to_string(),
+        local_history_authorized: true,
+        local_history_authorization_source: "detected-default".to_string(),
+        local_history_format: "markdown+json".to_string(),
+        local_history_path: ".state/local-history".to_string(),
+        reporting_ui_available: false,
+        reporting_xlsx_export_ready: false,
+        reporting_pdf_export_ready: false,
+        reporting_authorized: true,
+        reporting_authorization_source: "detected-default".to_string(),
+        reporting_visibility_mode: "local-only".to_string(),
+        last_updated: "1970-01-01T00:00:00Z".to_string(),
+    })
+}
+
 pub fn read_capabilities_document(path: &Path) -> Result<CapabilitiesDocument> {
     let content = fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
     serde_yaml::from_str(&content).with_context(|| format!("parsing {}", path.display()))

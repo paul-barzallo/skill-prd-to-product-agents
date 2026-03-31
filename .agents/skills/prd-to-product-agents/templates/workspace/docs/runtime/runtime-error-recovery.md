@@ -15,19 +15,19 @@ reporting output, or the SQLite ledger:
 
 ## Audit sync failure
 
-If `prdtp-agents-functions-cli audit sync` fails:
+If `prdtp-agents-functions-cli audit sync` reports degraded operation or fails:
 
 1. Check whether `capabilities.sqlite.authorized.enabled=true` in `.github/workspace-capabilities.yaml`.
 2. Check whether `.state/project_memory.db` exists.
-3. If SQLite policy is disabled, `audit sync` is out of contract by design.
-4. To recover: install `sqlite3`, enable SQLite policy intentionally, run `prdtp-agents-functions-cli database init`, then re-run `prdtp-agents-functions-cli audit sync`.
+3. If SQLite policy is disabled or missing, degraded `audit sync` is expected; canonical files are still authoritative.
+4. To recover full mirroring: if your platform or local dependency policy expects the SQLite CLI, install or expose `sqlite3`; enable SQLite policy intentionally, run `prdtp-agents-functions-cli database init`, then re-run `prdtp-agents-functions-cli audit sync`.
 
 ## Database initialization failure
 
 If `prdtp-agents-functions-cli database init` fails:
 
 - Check whether `capabilities.sqlite.authorized.enabled=true` in `.github/workspace-capabilities.yaml`.
-- Verify `sqlite3` is reachable.
+- If your platform depends on the SQLite CLI helper, verify `sqlite3` is reachable.
 - Check the schema file at `.state/memory-schema.sql`.
 - If the schema cannot be applied, report which table or statement failed.
 - Do not leave the DB in a fake ready state.
@@ -66,12 +66,15 @@ If `prdtp-agents-functions-cli git finalize` fails:
 If `prdtp-agents-functions-cli validate readiness` fails:
 
 - Confirm `.github/github-governance.yaml` has `readiness.status=production-ready`.
-- Confirm `capabilities.gh.authorized.enabled=true` in `.github/workspace-capabilities.yaml`.
-- Run `gh auth status`; readiness requires an authenticated session.
+- Confirm `.github/github-governance.yaml` has `operating_profile=enterprise`.
+- Confirm `.github/github-governance.yaml` has `github.auth.mode=token-api`.
+- Confirm `.github/github-governance.yaml` has `audit.mode=remote` plus valid `audit.remote.*` fields.
+- Ensure a required GitHub API token env var is present: `PRDTP_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN`.
 - Check that `github.repository.owner`, `github.repository.name`, and release-gate reviewer logins are real and resolvable.
 - Check that branch protection exists for the default protected branch pattern.
+- If the remote controls are supposed to be applied by this workspace, re-run `prdtp-agents-functions-cli governance provision-enterprise` before retrying readiness.
 - Keep `github.project.enabled=false`. GitHub Project metadata is reserved for a future extension and is out of the current supported operational contract.
-- Do not treat local env vars, immutable-edit tokens, or local-only workflow success as substitutes for remote GitHub governance controls.
+- Do not treat local-only workflow success or capability detection as substitutes for remote GitHub governance controls.
 
 ## Safe branch checkout failure
 
@@ -89,7 +92,8 @@ If `prdtp-agents-functions-cli git pre-commit-validate` rejects a commit:
 
 - Check immutable-file edits listed in `.github/immutable-files.txt`.
 - Check for invalid operational YAML in staged files.
-- Immutable governance edits can be admitted locally during the controlled finalize/bootstrap path, but merge requires remote approval verified by `prdtp-agents-functions-cli validate pr-governance`.
+- Manual `git commit` is blocked by contract. Use `prdtp-agents-functions-cli git finalize` for supported commit creation.
+- Immutable governance edits can be staged during the controlled finalize/bootstrap path, but merge requires remote approval verified by `prdtp-agents-functions-cli validate pr-governance`.
 - If a PR touching immutable governance fails, confirm `github.immutable_governance.*` is configured, the required labels are present, and a listed reviewer has approved via GitHub review API.
 
 ## State operations failure

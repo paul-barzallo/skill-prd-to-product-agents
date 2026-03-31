@@ -22,7 +22,7 @@ This document covers only the packaged skill and the workspace it deploys.
 | Scope | Purpose |
 | --- | --- |
 | Skill package | ship the bootstrap CLI, template, and package docs |
-| Deployed workspace | run the agents and operational tooling in client projects |
+| Deployed workspace | run the agents and operational tooling in a generated delivery workspace |
 
 After bootstrap, the deployed workspace must operate from its own files,
 runtime binaries, and runtime documentation.
@@ -42,7 +42,7 @@ Freshly generated workspaces should be described as:
 - `template` inside the skill package
 - `bootstrapped` once copied into a target repo
 - `configured` only after local governance placeholders are replaced
-- `production-ready` only after the stricter governance expectations are intentionally enabled
+- `production-ready` only after the optional `enterprise` overlay is intentionally enabled and validated against external controls
 
 After bootstrap, the generated workspace uses its own runtime docs and local
 runtime binaries. The skill package remains the delivery source, not an
@@ -62,10 +62,14 @@ GitHub.com is intentionally documented as a degraded surface. The supported cont
 
 | Command | Scope |
 | --- | --- |
-| `prd-to-product-agents-cli validate all` | skill package integrity |
+| `prd-to-product-agents-cli validate package` | portable skill package validation |
+| `prd-to-product-agents-cli validate all` | maintainer validation from a source checkout, including runtime smoke |
 | `prdtp-agents-functions-cli validate workspace` | workspace structural validation |
 | `prdtp-agents-functions-cli validate governance` | configured workspace governance validation |
-| `prdtp-agents-functions-cli validate readiness` | production-ready workspace operational readiness with remote governance checks |
+| `prdtp-agents-functions-cli validate readiness` | optional enterprise-overlay readiness validation for production-ready workspaces |
+
+`validate package` is the consumer-safe validation surface for the distributed skill.
+`validate all` is maintainer-oriented and assumes repository sources are available.
 
 ## References
 

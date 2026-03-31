@@ -7,6 +7,7 @@ use tracing_subscriber::filter::EnvFilter;
 
 const LOG_FILE_NAME: &str = "cli-diagnostic.log";
 const DEFAULT_LOG_LEVEL: &str = "info";
+const TEMP_LOG_DIR_NAME: &str = "prdtp-agents-functions-cli";
 
 pub fn init(workspace: &Path) -> Result<WorkerGuard> {
     let log_dir = diagnostic_log_dir(workspace);
@@ -42,5 +43,58 @@ pub fn init(workspace: &Path) -> Result<WorkerGuard> {
 }
 
 fn diagnostic_log_dir(workspace: &Path) -> PathBuf {
-    workspace.join(".state").join("logs")
+    if is_packaged_template_workspace(workspace) {
+        std::env::temp_dir().join(TEMP_LOG_DIR_NAME).join("logs")
+    } else {
+        workspace.join(".state").join("logs")
+    }
+}
+
+fn is_packaged_template_workspace(workspace: &Path) -> bool {
+    let Some(parent) = workspace.parent() else {
+        return false;
+    };
+    let Some(grandparent) = parent.parent() else {
+        return false;
+    };
+
+    workspace.file_name().and_then(|name| name.to_str()) == Some("workspace")
+        && parent.file_name().and_then(|name| name.to_str()) == Some("templates")
+        && grandparent.join("SKILL.md").is_file()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{diagnostic_log_dir, is_packaged_template_workspace, TEMP_LOG_DIR_NAME};
+    use std::path::PathBuf;
+
+    #[test]
+    fn packaged_template_workspace_logs_to_temp() {
+        let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|path| path.parent())
+            .expect("failed to resolve repository root")
+            .to_path_buf();
+        let template_workspace = repo_root
+            .join(".agents")
+            .join("skills")
+            .join("prd-to-product-agents")
+            .join("templates")
+            .join("workspace");
+
+        assert!(is_packaged_template_workspace(&template_workspace));
+        assert_eq!(
+            diagnostic_log_dir(&template_workspace),
+            std::env::temp_dir().join(TEMP_LOG_DIR_NAME).join("logs")
+        );
+    }
+
+    #[test]
+    fn normal_workspace_logs_inside_workspace_state() {
+        let workspace = tempfile::tempdir().expect("failed to create temp workspace");
+        let expected = workspace.path().join(".state").join("logs");
+
+        assert!(!is_packaged_template_workspace(workspace.path()));
+        assert_eq!(diagnostic_log_dir(workspace.path()), expected);
+    }
 }

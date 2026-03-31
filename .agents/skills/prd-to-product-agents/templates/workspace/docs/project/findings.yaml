@@ -3,6 +3,8 @@
 # Authority: qa-lead, software-architect, tech-lead, and devops-release-engineer may create entries; qa-lead, pm-orchestrator, or the current target role may transition status
 # Schema: see docs.instructions.md for field definitions
 
+schema_version: 1
+revision: 0
 findings: []
 
 # Example entry:

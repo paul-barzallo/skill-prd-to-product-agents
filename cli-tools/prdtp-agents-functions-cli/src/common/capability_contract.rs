@@ -70,6 +70,7 @@ pub fn capabilities_file_exists(workspace: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{policy_enabled, require_policy_enabled, CAPABILITIES_PATH};
+    use prdtp_agents_shared::capabilities::CAPABILITIES_SCHEMA_VERSION;
     use std::fs;
     use tempfile::tempdir;
 
@@ -108,7 +109,9 @@ mod tests {
         fs::create_dir_all(&github_dir).expect("failed to create .github directory");
         fs::write(
             workspace.path().join(CAPABILITIES_PATH),
-            "schema_version: 2\ncapabilities:\n  reporting:\n    authorized:\n      enabled: true\n      source: explicit\n",
+            &format!(
+                "schema_version: {CAPABILITIES_SCHEMA_VERSION}\ncapabilities:\n  reporting:\n    authorized:\n      enabled: true\n      source: explicit\n"
+            ),
         )
         .expect("failed to write capability file");
 

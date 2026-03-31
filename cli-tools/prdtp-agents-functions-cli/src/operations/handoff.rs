@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::common::audit;
 use crate::common::enums::{HandoffReason, HandoffStatus, HandoffType, Role};
 use crate::common::yaml_ops;
+use crate::operations::state_store::{self, HandoffEntry};
 
 #[derive(Args)]
 pub struct CreateHandoffArgs {
@@ -58,71 +59,47 @@ pub fn create(workspace: &Path, args: CreateHandoffArgs) -> Result<()> {
     );
     println!("{}", "=== Create Handoff ===".cyan().bold());
 
-    let yaml_path = workspace.join(HANDOFFS_FILE);
-    let header = "# Handoff queue - operational state (source of truth)\n\nhandoffs: []\n";
-    let content = yaml_ops::ensure_yaml_file(&yaml_path, header)?;
-
     let id = args.id.unwrap_or_else(|| yaml_ops::new_auto_id("ho-"));
-    if yaml_ops::entry_exists(&content, &id) {
-        bail!("Handoff with ID '{id}' already exists");
-    }
-
+    let today = yaml_ops::today_utc();
+    let id_for_entry = id.clone();
+    let id_for_check = id.clone();
     let to_role = args.to_role.to_string();
     let reason = args.reason.to_string();
-    let duplicate_pending = serde_yaml::from_str::<serde_yaml::Value>(&content)
-        .ok()
-        .and_then(|yaml| {
-            yaml.get("handoffs")
-                .and_then(serde_yaml::Value::as_sequence)
-                .cloned()
-        })
-        .map(|entries| {
-            entries.iter().any(|entry| {
-                entry.get("entity").and_then(serde_yaml::Value::as_str)
-                    == Some(args.entity.as_str())
-                    && entry.get("to").and_then(serde_yaml::Value::as_str) == Some(to_role.as_str())
-                    && entry.get("reason").and_then(serde_yaml::Value::as_str)
-                        == Some(reason.as_str())
-                    && entry.get("status").and_then(serde_yaml::Value::as_str) == Some("pending")
-            })
-        })
-        .unwrap_or(false);
-    if duplicate_pending {
-        bail!(
-            "Duplicate handoff detected: entity={}, to={}, reason={} already pending",
-            args.entity,
-            args.to_role,
-            args.reason
-        );
-    }
+    let entity = args.entity.clone();
+    let details = args.details.clone();
+    let from_role = args.from_role.to_string();
+    let handoff_type = args.handoff_type.to_string();
+    state_store::mutate_handoffs(workspace, move |document| {
+        if document.handoffs.iter().any(|entry| entry.id == id_for_check) {
+            bail!("Handoff with ID '{id_for_check}' already exists");
+        }
+        if document.handoffs.iter().any(|entry| {
+            entry.entity == entity
+                && entry.to == to_role
+                && entry.reason == reason
+                && entry.status == "pending"
+        }) {
+            bail!(
+                "Duplicate handoff detected: entity={}, to={}, reason={} already pending",
+                entity,
+                to_role,
+                reason
+            );
+        }
 
-    let today = yaml_ops::today_utc();
-    let details_line = match &args.details {
-        Some(details) => format!("\n    details: \"{}\"", yaml_ops::yaml_escape(details)),
-        None => String::new(),
-    };
-
-    let entry = format!(
-        "  - id: {id}\n    from: {}\n    to: {}\n    type: {}\n    entity: {}\n    reason: {}\n    status: pending\n    created: {today}{details_line}\n",
-        args.from_role, args.to_role, args.handoff_type, args.entity, args.reason
-    );
-
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let updated = if content.contains("handoffs: []") {
-        content.replace("handoffs: []", &format!("handoffs:\n{entry}"))
-    } else if content.trim().ends_with("handoffs:") {
-        format!("{content}\n{entry}")
-    } else {
-        format!("{content}{entry}")
-    };
-
-    yaml_ops::atomic_write(&yaml_path, &updated)?;
-
-    let written = std::fs::read_to_string(&yaml_path)?;
-    if !yaml_ops::entry_exists(&written, &id) {
-        bail!("Post-write verification failed: ID '{id}' not found after write");
-    }
+        document.handoffs.push(HandoffEntry {
+            id: id_for_entry,
+            from: from_role,
+            to: to_role,
+            handoff_type,
+            entity,
+            reason,
+            status: "pending".to_string(),
+            created: today,
+            details,
+        });
+        Ok(())
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,
@@ -155,76 +132,56 @@ pub fn update(workspace: &Path, args: UpdateHandoffArgs) -> Result<()> {
     if !yaml_path.exists() {
         bail!("handoffs.yaml not found");
     }
+    let handoff_id = args.handoff_id.clone();
+    let agent_role = args.agent_role.to_string();
+    let new_status_value = args.new_status.to_string();
+    let new_status = args.new_status;
+    let current_status = state_store::mutate_handoffs(workspace, move |document| {
+        let entry = document
+            .handoffs
+            .iter_mut()
+            .find(|entry| entry.id == handoff_id)
+            .ok_or_else(|| anyhow::anyhow!("Handoff '{}' not found", handoff_id))?;
 
-    let content = std::fs::read_to_string(&yaml_path)?;
-    let content = yaml_ops::normalize_lf(&content);
+        let current_status = match entry.status.as_str() {
+            "pending" => HandoffStatus::Pending,
+            "claimed" => HandoffStatus::Claimed,
+            "done" => HandoffStatus::Done,
+            "cancelled" => HandoffStatus::Cancelled,
+            other => bail!("Unknown current status '{other}'"),
+        };
 
-    let current_status_str = yaml_ops::read_yaml_entry_field(&content, &args.handoff_id, "status")
-        .ok_or_else(|| anyhow::anyhow!("Handoff '{}' not found", args.handoff_id))?;
-
-    let current_status = match current_status_str.as_str() {
-        "pending" => HandoffStatus::Pending,
-        "claimed" => HandoffStatus::Claimed,
-        "done" => HandoffStatus::Done,
-        "cancelled" => HandoffStatus::Cancelled,
-        other => bail!("Unknown current status '{other}'"),
-    };
-
-    let valid = current_status.valid_transitions();
-    if !valid.contains(&args.new_status) {
-        bail!(
-            "Invalid transition: {} -> {} (valid: {:?})",
-            current_status,
-            args.new_status,
-            valid
-        );
-    }
-
-    let target_role =
-        yaml_ops::read_yaml_entry_field(&content, &args.handoff_id, "to").unwrap_or_default();
-
-    match args.new_status {
-        HandoffStatus::Claimed | HandoffStatus::Done => {
-            if args.agent_role.to_string() != target_role {
-                bail!(
-                    "Only the target role ({target_role}) can transition to {}",
-                    args.new_status
-                );
-            }
+        let valid = current_status.valid_transitions();
+        if !valid.contains(&new_status) {
+            bail!(
+                "Invalid transition: {} -> {} (valid: {:?})",
+                current_status,
+                new_status,
+                valid
+            );
         }
-        HandoffStatus::Cancelled => {
-            if args.agent_role != Role::PmOrchestrator {
-                bail!("Only pm-orchestrator can cancel handoffs");
+
+        match new_status {
+            HandoffStatus::Claimed | HandoffStatus::Done => {
+                if agent_role != entry.to {
+                    bail!(
+                        "Only the target role ({}) can transition to {}",
+                        entry.to,
+                        new_status
+                    );
+                }
             }
+            HandoffStatus::Cancelled => {
+                if agent_role != Role::PmOrchestrator.to_string() {
+                    bail!("Only pm-orchestrator can cancel handoffs");
+                }
+            }
+            _ => {}
         }
-        _ => {}
-    }
 
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let old_pattern = format!("id: {}\n", args.handoff_id);
-    if let Some(start) = content.find(&old_pattern) {
-        let block_start = content[..start].rfind("  - id:").unwrap_or(start);
-        let rest = &content[block_start..];
-        let next_entry = rest[1..]
-            .find("  - id:")
-            .map(|index| block_start + 1 + index)
-            .unwrap_or(content.len());
-        let block = &content[block_start..next_entry];
-
-        let old_status_line = format!("status: {current_status}");
-        let new_status_line = format!("status: {}", args.new_status);
-        let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!(
-            "{}{new_block}{}",
-            &content[..block_start],
-            &content[next_entry..]
-        );
-
-        yaml_ops::atomic_write(&yaml_path, &updated)?;
-    } else {
-        bail!("Could not locate entry block for '{}'", args.handoff_id);
-    }
+        entry.status = new_status_value;
+        Ok(current_status)
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,

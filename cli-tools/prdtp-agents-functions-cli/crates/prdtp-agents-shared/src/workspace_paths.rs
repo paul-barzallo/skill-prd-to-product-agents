@@ -31,6 +31,17 @@ pub const REQUIRED_FILES: &[&str] = &[
     "docs/project/ux/journeys.md",
 ];
 
+/// Files materialized or refreshed by bootstrap/runtime generation rather than copied
+/// from the static template as-is.
+pub const BOOTSTRAP_GENERATED_FILES: &[&str] = &[
+    ".github/CODEOWNERS",
+    ".github/workspace-capabilities.yaml",
+    ".github/github-governance.yaml",
+    "docs/project/vision.md",
+    "docs/project/scope.md",
+    "docs/project/stakeholders.md",
+];
+
 /// Additional files expected by the functions CLI `validate workspace`.
 pub const EXTENDED_REQUIRED_FILES: &[&str] = &[
     "docs/project/board.md",

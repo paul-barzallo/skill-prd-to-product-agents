@@ -52,7 +52,7 @@ Agents must not:
 - It stores derivative evidence for infrastructure and reporting workflows.
 - `audit sync` mirrors canonical file checksums into SQLite.
 - A failed sync never changes canonical truth.
-- When SQLite is disabled, the workspace may spool degraded audit evidence under `.state/audit-spool/`.
+- When SQLite is disabled or unavailable, the workspace keeps a local sensitive-action mirror under `.state/audit/` and may spool degraded audit evidence under `.state/audit-spool/`.
 
 Agents should reason from files, not from the ledger.
 
@@ -68,6 +68,8 @@ These commands matter most for context retrieval and freshness:
 - `prdtp-agents-functions-cli report dashboard`
 - `prdtp-agents-functions-cli audit sync`
 - `prdtp-agents-functions-cli audit replay-spool`
+- `prdtp-agents-functions-cli audit sink health`
+- `prdtp-agents-functions-cli audit sink test`
 
 Only use a command when both the capability policy and the acting role allow it.
 
@@ -89,7 +91,7 @@ The context system continues to function in degraded mode because files remain
 canonical even when supporting layers are unavailable.
 
 - If Git is disabled, local evidence moves to `.state/local-history/`.
-- If SQLite is disabled, audit falls back to spool-only behavior.
+- If SQLite is disabled, audit falls back to degraded local mirror behavior and may spool operational evidence.
 - If reporting is disabled, dashboards and exports are out of contract.
 - If markdownlint is disabled, lint checks are skipped by policy.
 

@@ -1,10 +1,7 @@
 use anyhow::{bail, Context, Result};
 use colored::Colorize;
-use regex::Regex;
-use serde_json::Value as JsonValue;
 use serde_yaml::Value;
 use std::path::Path;
-use std::process::Command;
 
 use crate::common::capability_contract;
 use crate::encoding::{self, EncodingArgs};
@@ -155,7 +152,7 @@ pub(crate) fn load_governance(path: &Path) -> Result<Value> {
     Ok(parsed)
 }
 
-pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -> Result<()> {
+pub(crate) fn validate_remote_governance(_workspace: &Path, governance: &Value) -> Result<()> {
     let project_enabled = yaml_bool(governance, &["github", "project", "enabled"]).unwrap_or(false);
     if project_enabled {
         bail!(
@@ -163,7 +160,18 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         );
     }
 
-    ensure_gh_policy_enabled(workspace)?;
+    let profile = crate::github_api::operating_profile(governance)?;
+    if profile != crate::github_api::OperatingProfile::Enterprise {
+        bail!("production-ready readiness requires operating_profile=enterprise");
+    }
+    if crate::github_api::audit_mode(governance)? != crate::github_api::AuditMode::Remote {
+        bail!("production-ready readiness requires audit.mode=remote");
+    }
+    let _ = crate::github_api::audit_remote_config(governance)?
+        .context("production-ready readiness requires audit.remote.* to be configured")?;
+    crate::github_api::require_enterprise_api_mode(governance)?;
+    let _ = crate::github_api::github_identity_login(governance)
+        .context("enterprise readiness requires a working non-interactive GitHub API identity")?;
 
     let owner = yaml_string(governance, &["github", "repository", "owner"])
         .context("github.repository.owner missing")?;
@@ -171,18 +179,12 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         .context("github.repository.name missing")?;
     let repo_full_name = format!("{owner}/{repo}");
 
-    let repo_view = run_gh_json(
-        workspace,
-        &["repo", "view", &repo_full_name, "--json", "nameWithOwner"],
-    )
-    .context("unable to resolve configured repository via gh")?;
-    let remote_name = repo_view["nameWithOwner"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string();
+    let repo_view = crate::github_api::api_get_json(governance, &format!("repos/{repo_full_name}"))
+        .context("unable to resolve configured repository via GitHub API")?;
+    let remote_name = repo_view["full_name"].as_str().unwrap_or_default().to_string();
     if remote_name != repo_full_name {
         bail!(
-            "configured repository mismatch: expected '{repo_full_name}', gh resolved '{remote_name}'"
+            "configured repository mismatch: expected '{repo_full_name}', GitHub API resolved '{remote_name}'"
         );
     }
 
@@ -203,23 +205,6 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         bail!("github.branch_protection.protected_branches must list at least one branch");
     }
 
-    let branch_rules = load_branch_protection_rules(workspace, &owner, &repo)?;
-    let missing_branches = protected_branches
-        .iter()
-        .filter(|branch| {
-            !branch_rules
-                .iter()
-                .any(|rule| rule_matches_branch(&rule.pattern, branch))
-        })
-        .cloned()
-        .collect::<Vec<_>>();
-    if !missing_branches.is_empty() {
-        bail!(
-            "remote branch protection rules do not cover: {}",
-            missing_branches.join(", ")
-        );
-    }
-
     let require_code_owner_reviews = yaml_bool(
         governance,
         &["github", "branch_protection", "require_code_owner_review"],
@@ -238,12 +223,7 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
 
     let mut branch_rule_errors = Vec::new();
     for branch in &protected_branches {
-        let Some(rule) = branch_rules
-            .iter()
-            .find(|rule| rule_matches_branch(&rule.pattern, branch))
-        else {
-            continue;
-        };
+        let rule = load_branch_protection_rule(governance, &repo_full_name, branch)?;
         if require_code_owner_reviews && !rule.requires_code_owner_reviews {
             branch_rule_errors.push(format!(
                 "{branch}: remote rule '{}' does not require CODEOWNERS review",
@@ -285,7 +265,7 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
         bail!("github.release_gate.reviewer_logins must contain at least one login");
     }
     for login in &reviewer_logins {
-        run_gh_json(workspace, &["api", &format!("users/{login}")]).with_context(|| {
+        crate::github_api::api_get_json(governance, &format!("users/{login}")).with_context(|| {
             format!("release gate login '{login}' is not readable via GitHub API")
         })?;
     }
@@ -301,7 +281,7 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
             bail!("github.immutable_governance.reviewer_logins must contain at least one login");
         }
         for login in &immutable_logins {
-            run_gh_json(workspace, &["api", &format!("users/{login}")]).with_context(|| {
+            crate::github_api::api_get_json(governance, &format!("users/{login}")).with_context(|| {
                 format!("immutable governance login '{login}' is not readable via GitHub API")
             })?;
         }
@@ -310,101 +290,37 @@ pub(crate) fn validate_remote_governance(workspace: &Path, governance: &Value) -
     Ok(())
 }
 
-pub(crate) fn ensure_gh_policy_enabled(workspace: &Path) -> Result<()> {
-    match capability_contract::policy_enabled(workspace, "gh")? {
-        Some(true) => {}
-        Some(false) => {
-            bail!("capabilities.gh.authorized.enabled=false blocks production-ready readiness")
-        }
-        None => bail!("capabilities.gh.authorized.enabled missing from workspace capability contract"),
-    }
-
-    let output = Command::new("gh")
-        .args(["auth", "status"])
-        .current_dir(workspace)
-        .output()
-        .context("running `gh auth status`")?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            bail!("gh auth status failed; production-ready readiness requires an authenticated gh session");
-        }
-        bail!(
-            "gh auth status failed; production-ready readiness requires an authenticated gh session: {stderr}"
-        );
-    }
-
-    Ok(())
-}
-
-fn load_branch_protection_rules(
-    workspace: &Path,
-    owner: &str,
-    repo: &str,
-) -> Result<Vec<RemoteBranchProtectionRule>> {
-    let response = run_gh_json(
-        workspace,
-        &[
-            "api",
-            "graphql",
-            "-f",
-            "query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){branchProtectionRules(first:100){nodes{pattern requiresApprovingReviews requiredApprovingReviewCount requiresCodeOwnerReviews requiresConversationResolution}}}}",
-            "-F",
-            &format!("owner={owner}"),
-            "-F",
-            &format!("name={repo}"),
-        ],
-    )?;
-
-    Ok(
-        response["data"]["repository"]["branchProtectionRules"]["nodes"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|node| {
-                Some(RemoteBranchProtectionRule {
-                    pattern: node["pattern"].as_str()?.to_string(),
-                    requires_approving_reviews: node["requiresApprovingReviews"]
-                        .as_bool()
-                        .unwrap_or(false),
-                    required_approving_review_count: node["requiredApprovingReviewCount"]
-                        .as_u64()
-                        .unwrap_or(0),
-                    requires_code_owner_reviews: node["requiresCodeOwnerReviews"]
-                        .as_bool()
-                        .unwrap_or(false),
-                    requires_conversation_resolution: node["requiresConversationResolution"]
-                        .as_bool()
-                        .unwrap_or(false),
-                })
-            })
-            .collect(),
+fn load_branch_protection_rule(
+    governance: &Value,
+    repo_full_name: &str,
+    branch: &str,
+) -> Result<RemoteBranchProtectionRule> {
+    let response = crate::github_api::api_get_json(
+        governance,
+        &format!(
+            "repos/{repo_full_name}/branches/{}/protection",
+            urlencoding::encode(branch)
+        ),
     )
-}
+    .with_context(|| format!("loading branch protection for '{branch}'"))?;
 
-pub(crate) fn run_gh_json(workspace: &Path, args: &[&str]) -> Result<JsonValue> {
-    let output = Command::new("gh")
-        .args(args)
-        .current_dir(workspace)
-        .output()
-        .with_context(|| format!("running `gh {}`", args.join(" ")))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            bail!(
-                "`gh {}` failed with exit code {:?}",
-                args.join(" "),
-                output.status.code()
-            );
-        }
-        bail!("`gh {}` failed: {stderr}", args.join(" "));
-    }
-
-    let stdout = String::from_utf8(output.stdout).context("gh command returned non-UTF8 output")?;
-    let parsed = serde_json::from_str::<JsonValue>(&stdout)
-        .with_context(|| format!("parsing JSON output from `gh {}`", args.join(" ")))?;
-    Ok(parsed)
+    Ok(RemoteBranchProtectionRule {
+        pattern: branch.to_string(),
+        requires_approving_reviews: response["required_pull_request_reviews"]
+            .is_object(),
+        required_approving_review_count: response["required_pull_request_reviews"]
+            ["required_approving_review_count"]
+            .as_u64()
+            .unwrap_or(0),
+        requires_code_owner_reviews: response["required_pull_request_reviews"]
+            ["require_code_owner_reviews"]
+            .as_bool()
+            .unwrap_or(false),
+        requires_conversation_resolution: response["required_conversation_resolution"]
+            ["enabled"]
+            .as_bool()
+            .unwrap_or(false),
+    })
 }
 
 pub(crate) fn parse_csv(value: &str) -> Vec<String> {
@@ -416,28 +332,10 @@ pub(crate) fn parse_csv(value: &str) -> Vec<String> {
         .collect()
 }
 
-fn rule_matches_branch(pattern: &str, branch: &str) -> bool {
-    if pattern == branch {
-        return true;
-    }
-    let regex = format!("^{}$", regex::escape(pattern).replace("\\*", ".*"));
-    Regex::new(&regex)
-        .map(|compiled| compiled.is_match(branch))
-        .unwrap_or(false)
-}
-
 pub(crate) fn yaml_string(root: &Value, path: &[&str]) -> Option<String> {
-    let mut current = root;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_str().map(str::to_string)
+    crate::github_api::yaml_string(root, path)
 }
 
 pub(crate) fn yaml_bool(root: &Value, path: &[&str]) -> Option<bool> {
-    let mut current = root;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_bool()
+    crate::github_api::yaml_bool(root, path)
 }

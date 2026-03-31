@@ -48,6 +48,7 @@ const TEMPLATE_STATE_ARTIFACTS: &[&str] = &[
     ".state/sqlite-bootstrap.pending.md",
     ".state/sqlite-bootstrap.report.md",
 ];
+const TEMPLATE_STATE_ALLOWED_FILES: &[&str] = &[".state/README.md", ".state/memory-schema.sql"];
 
 const EXECUTE_TOKENS: &[&str] = &[
     "execute available",
@@ -64,7 +65,6 @@ const EXECUTE_TOKENS: &[&str] = &[
 
 const PROMPTS_REQUIRING_EXECUTE: &[&str] = &[
     ".github/prompts/bootstrap-from-prd.prompt.md",
-    ".github/prompts/clarify-prd.prompt.md",
     ".github/prompts/client-review-uat.prompt.md",
     ".github/prompts/daily-standup.prompt.md",
     ".github/prompts/enrich-agents-from-architecture.prompt.md",
@@ -74,14 +74,15 @@ const PROMPTS_REQUIRING_EXECUTE: &[&str] = &[
     ".github/prompts/release-readiness.prompt.md",
     ".github/prompts/security-check.prompt.md",
     ".github/prompts/small-backend-change.prompt.md",
-    ".github/prompts/small-doc-update.prompt.md",
     ".github/prompts/small-frontend-change.prompt.md",
     ".github/prompts/validation-pack.prompt.md",
 ];
 
 const PROMPTS_FORBIDDEN_EXECUTE: &[&str] = &[
+    ".github/prompts/clarify-prd.prompt.md",
     ".github/prompts/deep-architecture-analysis.prompt.md",
     ".github/prompts/release-incident-analysis.prompt.md",
+    ".github/prompts/small-doc-update.prompt.md",
 ];
 
 const AGENTS_REQUIRING_EXECUTE: &[&str] = &[
@@ -120,6 +121,7 @@ const COPILOT_CONTRACT_DOCS: &[&str] = &[
     ".github/immutable-files.txt",
     "AGENTS.md",
     "docs/runtime/prdtp-agents-functions-cli-reference.md",
+    "docs/runtime/runtime-claims-coverage.md",
     "docs/runtime/runtime-operations.md",
     "docs/runtime/runtime-platform-compatibility.md",
     "docs/runtime/capability-contract.md",
@@ -176,6 +178,26 @@ const COPILOT_CONTRACT_FORBIDDEN: &[(&str, &str)] = &[
     (
         "GitHub Project board state",
         "GitHub Project must not be treated as current operational state",
+    ),
+    (
+        "Manual and CI-backed sandbox readiness evidence",
+        "runtime docs must not claim CI-backed enterprise evidence unless that evidence is actually maintained",
+    ),
+    (
+        "github-app",
+        "runtime docs must not advertise the unsupported github-app enterprise auth mode",
+    ),
+    (
+        "Allowed execute calls",
+        "execute tables must be framed as intended call sets, not allowed-call enforcement",
+    ),
+    (
+        "Permitted `execute` calls",
+        "execute tables must be framed as intended call sets, not permitted-call enforcement",
+    ),
+    (
+        "Permitted execute calls",
+        "execute tables must be framed as intended call sets, not permitted-call enforcement",
     ),
 ];
 const COPILOT_ROLE_DRIFT_PATTERNS: &[(&str, &str)] = &[
@@ -298,8 +320,6 @@ fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
         "=== CI Validate: Pre-commit Fixtures ===".cyan().bold()
     );
     let tmp_root = temp_workspace("precommit")?;
-    let previous_finalize = std::env::var("FINALIZE_WORK_UNIT_ALLOW_COMMIT").ok();
-    std::env::set_var("FINALIZE_WORK_UNIT_ALLOW_COMMIT", "1");
 
     let result = (|| -> Result<()> {
         let yaml_dir = tmp_root.join("yaml");
@@ -340,29 +360,28 @@ fn pre_commit_fixtures(workspace: &Path) -> Result<()> {
             staged_files: vec![".github/copilot-instructions.md".to_string()],
         };
         match crate::git::pre_commit::run(&immutable_dir, immutable_args) {
-            Ok(()) => tracing::debug!(
-                workspace = %immutable_dir.display(),
-                "immutable governance edit admitted locally and left to remote PR approval"
-            ),
             Err(error) => {
                 let text = format!("{error:#}");
-                tracing::error!(error = %text, "unexpected error while validating immutable edit fixture");
-                bail!("unexpected immutable fixture error: {text}");
+                if !text.contains("reviewed PR approval is enforced remotely")
+                    || !text.contains("Direct git commit is out of contract")
+                {
+                    tracing::error!(error = %text, "unexpected error while validating immutable edit fixture");
+                    bail!("unexpected immutable fixture error: {text}");
+                }
+                tracing::debug!(error = %text, "immutable governance edit blocked for manual commit as expected");
+            }
+            Ok(()) => {
+                tracing::error!(workspace = %immutable_dir.display(), "immutable governance edit unexpectedly allowed manual git commit");
+                bail!("shared pre-commit validator unexpectedly allowed immutable governance edit");
             }
         }
 
         Ok(())
     })();
 
-    if let Some(previous_finalize) = previous_finalize {
-        std::env::set_var("FINALIZE_WORK_UNIT_ALLOW_COMMIT", previous_finalize);
-    } else {
-        std::env::remove_var("FINALIZE_WORK_UNIT_ALLOW_COMMIT");
-    }
-
     let _ = fs::remove_dir_all(&tmp_root);
     result?;
-    print_pass("pre-commit fixtures rejected invalid YAML and admitted immutable edits only for remote PR approval");
+    print_pass("pre-commit fixtures rejected invalid YAML and blocked immutable governance edits on manual git commit");
     Ok(())
 }
 
@@ -459,13 +478,40 @@ fn raw_sql_prompts(workspace: &Path) -> Result<()> {
 fn template_state(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating template state cleanliness");
     println!("{}", "=== CI Validate: Template State ===".cyan().bold());
-    let failures: Vec<String> = TEMPLATE_STATE_ARTIFACTS
+    let state_dir = workspace.join(".state");
+    let mut failures: Vec<String> = TEMPLATE_STATE_ARTIFACTS
         .iter()
         .filter_map(|rel| {
             let full = workspace.join(rel);
             full.exists().then(|| rel.to_string())
         })
         .collect();
+
+    if state_dir.is_dir() {
+        failures.extend(
+            WalkDir::new(&state_dir)
+                .min_depth(1)
+                .into_iter()
+                .filter_map(|entry| entry.ok())
+                .filter_map(|entry| {
+                    let rel = entry
+                        .path()
+                        .strip_prefix(workspace)
+                        .ok()?
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    let allowed = entry.file_type().is_file()
+                        && TEMPLATE_STATE_ALLOWED_FILES.contains(&rel.as_str());
+                    (!allowed).then_some(if entry.file_type().is_dir() {
+                        format!("{rel}/")
+                    } else {
+                        rel
+                    })
+                }),
+        );
+        failures.sort();
+        failures.dedup();
+    }
 
     if !failures.is_empty() {
         tracing::error!(artifacts = ?failures, "template includes generated runtime artifacts");
@@ -1168,8 +1214,20 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
             "Prompt frontmatter should omit `execute` whenever the workflow can complete safely without shell or runtime-command use.",
         ),
         (
+            ".github/instructions/agents.instructions.md",
+            "This table is an intended call set, not a hard runtime permission boundary.",
+        ),
+        (
             ".github/copilot-instructions.md",
             "Prompt frontmatter narrows that access for bounded workflows that do not need command execution.",
+        ),
+        (
+            ".github/copilot-instructions.md",
+            "This table is an intended call set, not a hard runtime permission boundary.",
+        ),
+        (
+            "AGENTS.md",
+            "This table is an intended call set, not a hard runtime permission boundary.",
         ),
         (
             ".github/agents/identity/devops-release-engineer.md",
@@ -1188,8 +1246,24 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
             "immutable_governance",
         ),
         ("docs/runtime/runtime-operations.md", "remote PR approval"),
+        (
+            "docs/runtime/runtime-operations.md",
+            "These helpers are workspace-portable checks against the current tree",
+        ),
         ("docs/runtime/runtime-error-recovery.md", "validate pr-governance"),
         (".github/immutable-files.txt", "remote PR approval"),
+        (
+            "docs/runtime/prdtp-agents-functions-cli-reference.md",
+            "These checks are workflow-oriented but workspace-portable: they evaluate the current workspace tree",
+        ),
+        (
+            "docs/runtime/runtime-claims-coverage.md",
+            "Supported enterprise auth mode: `token-api` only.",
+        ),
+        (
+            "docs/runtime/runtime-claims-coverage.md",
+            "`enterprise` production-ready claims require `validate readiness`, `governance provision-enterprise`, and `audit sink test`.",
+        ),
     ];
 
     for (rel, snippet) in required_snippets {

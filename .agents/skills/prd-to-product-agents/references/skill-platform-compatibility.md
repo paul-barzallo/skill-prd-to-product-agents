@@ -23,9 +23,10 @@ Status vocabulary:
 
 | Capability / surface | Windows | Ubuntu/Linux | Evidence |
 | --- | --- | --- | --- |
-| `bootstrap workspace` | Verified | Verified | smoke and CI |
-| `validate all` | Verified | Verified | package validation checks, bundle integrity, Copilot contract checks |
-| `bootstrap --skip-git` | Verified | Verified | smoke and CI |
+| `bootstrap workspace` | Best-effort | Best-effort | exercised in maintainer smoke and CI, but the distributed skill does not embed portable per-platform evidence artifacts |
+| `validate package` | Best-effort | Best-effort | exercised in maintainer checks, bundle integrity, and Copilot contract checks, but not sealed inside the package as platform evidence |
+| `validate all` | Best-effort | Best-effort | maintainer validation from source checkout, including runtime smoke; not a consumer-facing package proof |
+| `bootstrap --skip-git` | Best-effort | Best-effort | exercised in maintainer smoke and CI, but not evidenced inside the published package |
 
 ## Honest compatibility statement
 

@@ -63,7 +63,9 @@ enum BootstrapCommands {
 // ── Validate sub-commands ────────────────────────────────────────
 #[derive(Subcommand)]
 enum ValidateCommands {
-    /// Run all skill-side validation checks
+    /// Run the portable skill-package validation surface
+    Package,
+    /// Run all maintainer-side validation checks from a source checkout
     All,
     /// Validate generated workspace structure
     Generated(validate::GeneratedArgs),
@@ -109,6 +111,7 @@ fn execute(command: Commands, skill_root: &std::path::Path) -> anyhow::Result<()
             BootstrapCommands::Commit(args) => bootstrap::commit(skill_root, args),
         },
         Commands::Validate { sub } => match sub {
+            ValidateCommands::Package => validate::package(skill_root),
             ValidateCommands::All => validate::all(skill_root),
             ValidateCommands::Generated(args) => validate::generated(skill_root, args),
             ValidateCommands::PackageHygiene => validate::package_hygiene(skill_root),

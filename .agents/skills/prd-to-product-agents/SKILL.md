@@ -112,7 +112,7 @@ Use these labels consistently:
 - `template`: content inside the bootstrap template
 - `bootstrapped`: workspace generated locally but still pending local configuration
 - `configured`: placeholders removed and governance configured locally
-- `production-ready`: configured workspace with hardened governance enabled
+- `production-ready`: configured workspace with the optional `enterprise` overlay enabled and externally validated
 
 ## What bootstrap really does
 
@@ -141,10 +141,11 @@ A fresh bootstrap may pass structural validation and still be not ready.
 
 Command semantics:
 
-- `prd-to-product-agents-cli validate all`: skill package integrity, including template encoding and agent consistency
+- `prd-to-product-agents-cli validate package`: portable skill package integrity for the distributed skill
+- `prd-to-product-agents-cli validate all`: maintainer validation from a source checkout, including runtime smoke
 - `prdtp-agents-functions-cli validate workspace`: structural validation of a generated workspace
 - `prdtp-agents-functions-cli validate governance`: governance validation for configured workspaces
-- `prdtp-agents-functions-cli validate readiness`: operational readiness validation for production-ready workspaces, including remote governance checks
+- `prdtp-agents-functions-cli validate readiness`: optional enterprise-overlay readiness validation for production-ready workspaces
 
 ## Dependency contract
 
@@ -206,6 +207,7 @@ Useful variants:
 ```shell
 prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <workspace> --preflight-only
 prd-to-product-agents-cli --skill-root <skill-root> bootstrap workspace --target <workspace> --dry-run
+prd-to-product-agents-cli --skill-root <skill-root> validate package
 prd-to-product-agents-cli --skill-root <skill-root> validate all
 ```
 

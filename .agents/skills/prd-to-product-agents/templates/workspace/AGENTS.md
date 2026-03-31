@@ -100,30 +100,30 @@ Every sub-agent delegation must end with a structured report returned to the del
 
 | Level | Agent | Role | Delegates to | Tools |
 | ----- | ------- | ------ | ------------- | ------- |
-| L0 | [pm-orchestrator](.github/agents/pm-orchestrator.agent.md) | Strategic orchestration | L1 agents only | search, read, edit/editFiles, execute, agent |
-| L1 | [tech-lead](.github/agents/tech-lead.agent.md) | Technical authority, L1-L2 bridge | backend-developer, frontend-developer | search, read, edit/editFiles, execute, agent |
+| L0 | [pm-orchestrator](.github/agents/pm-orchestrator.agent.md) | Strategic orchestration | L1 agents only | search, read, edit/editFiles, execute (runtime CLI only), agent |
+| L1 | [tech-lead](.github/agents/tech-lead.agent.md) | Technical authority, L1-L2 bridge | backend-developer, frontend-developer | search, read, edit/editFiles, execute (runtime CLI + scoped dev tooling), agent |
 
 ### Domain Agents (L1)
 
 | Level | Agent | Role | Primary docs | Tools |
 | ----- | ------- | ------ | ------------- | ------- |
-| L1 | [product-owner](.github/agents/product-owner.agent.md) | Business requirements and scope | vision.md, scope.md, backlog.yaml | search, read, edit/editFiles, execute |
-| L1 | [software-architect](.github/agents/software-architect.agent.md) | Technical design and ADRs | docs/project/architecture/, docs/project/decisions/ | search, read, edit/editFiles, execute |
-| L1 | [ux-designer](.github/agents/ux-designer.agent.md) | User experience design | wireframes, UX patterns | search, read, edit/editFiles, execute |
+| L1 | [product-owner](.github/agents/product-owner.agent.md) | Business requirements and scope | vision.md, scope.md, backlog.yaml | search, read, edit/editFiles, execute (runtime CLI only) |
+| L1 | [software-architect](.github/agents/software-architect.agent.md) | Technical design and ADRs | docs/project/architecture/, docs/project/decisions/ | search, read, edit/editFiles, execute (runtime CLI only) |
+| L1 | [ux-designer](.github/agents/ux-designer.agent.md) | User experience design | wireframes, UX patterns | search, read, edit/editFiles, execute (runtime CLI only) |
 
 ### Implementation Agents (L2)
 
 | Level | Agent | Role | Delegated by | Tools |
 | ----- | ------- | ------ | ------------ | ------- |
-| L2 | [backend-developer](.github/agents/backend-developer.agent.md) | Server-side implementation | tech-lead only | search, read, edit/editFiles, execute |
-| L2 | [frontend-developer](.github/agents/frontend-developer.agent.md) | Client-side implementation | tech-lead only | search, read, edit/editFiles, execute |
+| L2 | [backend-developer](.github/agents/backend-developer.agent.md) | Server-side implementation | tech-lead only | search, read, edit/editFiles, execute (runtime CLI + scoped dev tooling) |
+| L2 | [frontend-developer](.github/agents/frontend-developer.agent.md) | Client-side implementation | tech-lead only | search, read, edit/editFiles, execute (runtime CLI + scoped dev tooling) |
 
 ### Operations Agents (L1)
 
 | Level | Agent | Role | Tools |
 | ----- | ------- | ------ | ------- |
-| L1 | [qa-lead](.github/agents/qa-lead.agent.md) | Quality assurance and testing | search, read, edit/editFiles, execute |
-| L1 | [devops-release-engineer](.github/agents/devops-release-engineer.agent.md) | Deployment and monitoring | search, read, edit/editFiles, execute |
+| L1 | [qa-lead](.github/agents/qa-lead.agent.md) | Quality assurance and testing | search, read, edit/editFiles, execute (runtime CLI + scoped dev tooling) |
+| L1 | [devops-release-engineer](.github/agents/devops-release-engineer.agent.md) | Deployment and monitoring | search, read, edit/editFiles, execute (runtime CLI + scoped dev tooling) |
 
 ### Handoff Rules
 
@@ -145,7 +145,8 @@ Every sub-agent delegation must end with a structured report returned to the del
 - **Context system**: read `docs/runtime/context-system-runtime.md` for the files-first retrieval order, derivative surfaces, and recovery rules.
 - **Execution layer**: GitHub Issues, branches, commits and PRs. `docs/project/board.md` is a derived issues/PR snapshot, not a source of truth.
 - **Historical context**: Git (commits, PRs, issues, tags) for traceability.
-- **Operational capability contract**: `.github/workspace-capabilities.yaml` is the persisted detection + authorization snapshot consulted by Git, GitHub automation, SQLite audit, reporting, and markdownlint commands.
+- **Operational capability contract**: `.github/workspace-capabilities.yaml` is the persisted detection + authorization snapshot consulted by Git, GitHub automation, SQLite audit, reporting, and markdownlint commands. It governs runtime behavior but is not, by itself, a compliance-grade security boundary.
+- **Operating profiles**: `.github/github-governance.yaml` declares `operating_profile: core-local | enterprise`. `core-local` is the primary validated path. `enterprise` is an optional remote overlay that requires remote GitHub controls, non-interactive API auth, and a remote audit sink before `production-ready` is valid.
 - **GitHub governance contract**: `.github/github-governance.yaml` defines readiness, reviewers, labels, reserved future project metadata, and release-gate expectations.
 - A passive audit ledger exists at `.state/project_memory.db` but is managed automatically by infrastructure. Agents do not interact with it.
 - Governance immutability is driven only by `.github/immutable-files.txt`. Seeded project docs under `docs/project/` remain editable after bootstrap by their owning roles.
@@ -155,7 +156,7 @@ Every sub-agent delegation must end with a structured report returned to the del
 - Agents must not run `git commit` directly for task work. Use `prdtp-agents-functions-cli git finalize` so staged files, commit metadata, validation, and work-unit evidence are enforced together.
 - In Git-enabled workspaces, `prdtp-agents-functions-cli git finalize` executes the shared pre-commit validator and governance checks before commit creation. If validation fails, no commit is created.
 - The installed `pre-commit` hook blocks normal direct `git commit` attempts and tells the caller to use `prdtp-agents-functions-cli git finalize` instead.
-- If SQLite capability is disabled, audit falls back to spool-only mode under `.state/audit-spool/` and `.state/degraded-ops/`.
+- If SQLite capability is disabled, audit keeps a local hash-chained mirror under `.state/audit/`, may spool degraded operational evidence under `.state/audit-spool/` and `.state/degraded-ops/`, and `audit sync` records degraded success instead of failing closed.
 - `docs/project/management-dashboard.md` is the executive summary view generated from canonical docs plus the execution layer.
 - `.state/reporting/report-snapshot.json` is the shared reporting source for Markdown, UI, and exports.
 - `prdtp-agents-functions-cli report serve` is the local read-only reporting dashboard for PM and TL.
@@ -204,7 +205,7 @@ Model selection is part of the agent contract in VS Code / IDE environments. The
 
 ### Execute Scope
 
-`execute` is a controlled platform permission. Role frontmatter may include it when runtime CLI closure, governance, or technical validation require it. Prompt frontmatter must omit it for bounded workflows that do not need command execution. The canonical runtime binary lives under `.agents/bin/prd-to-product-agents/`; CI may install `prdtp-agents-functions-cli` into `PATH`, but the workspace-local copy is the contract.
+`execute` is a controlled platform permission. Role frontmatter may include it when runtime CLI closure, governance, or technical validation require it. Documentation-centered roles stay on runtime CLI and coordination wrappers only; engineering roles may additionally use scoped build/test/lint tooling. Prompt frontmatter must omit `execute` for bounded workflows that do not need command execution. The canonical runtime binary lives under `.agents/bin/prd-to-product-agents/`; CI may install `prdtp-agents-functions-cli` into `PATH`, but the workspace-local copy is the contract.
 
 > **Full command reference**: [docs/runtime/prdtp-agents-functions-cli-reference.md](docs/runtime/prdtp-agents-functions-cli-reference.md)
 
@@ -222,15 +223,20 @@ Model selection is part of the agent contract in VS Code / IDE environments. The
 | `prdtp-agents-functions-cli report snapshot` | Generate report-snapshot.json |
 | `prdtp-agents-functions-cli audit sync` | SQLite ledger synchronization |
 | `prdtp-agents-functions-cli audit replay-spool` | Replay degraded-mode spool into SQLite |
+| `prdtp-agents-functions-cli audit sink health/test` | Verify or probe the configured audit sink |
 | `prdtp-agents-functions-cli capabilities detect` | Tool detection -> workspace-capabilities.yaml |
 | `prdtp-agents-functions-cli validate workspace/prompts/agents/models` | Structural validation |
 | `prdtp-agents-functions-cli validate governance` | Governance validation for configured workspaces |
 | `prdtp-agents-functions-cli validate readiness` | Strong operational readiness validation for production-ready workspaces |
 
-#### Per-agent permitted calls
+#### Per-agent intended call set
 
-| Agent | Permitted `execute` calls |
-| ----- | ------------------------- |
+This table is an intended call set, not a hard runtime permission boundary.
+Frontmatter and tool support may narrow behavior, but durable containment still
+depends on workspace governance, CODEOWNERS, PR workflows, and review.
+
+| Agent | Intended `execute` call set |
+| ----- | ---------------------------- |
 | `pm-orchestrator` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli report dashboard`, `prdtp-agents-functions-cli report snapshot`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding update`, `prdtp-agents-functions-cli agents assemble` |
 | `tech-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli agents assemble` |
 | `product-owner` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update` |

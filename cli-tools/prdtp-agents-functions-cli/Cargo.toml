@@ -23,6 +23,10 @@ version = "1.1.0"
 edition = "2021"
 description = "Product agents workspace CLI — workspace/agent operations"
 
+[features]
+default = []
+published-skill-contract = []
+
 [dependencies]
 prdtp-agents-shared = { path = "crates/prdtp-agents-shared" }
 clap.workspace = true
@@ -45,6 +49,8 @@ open = "5"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
 tracing-appender = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+urlencoding = "2"
 
 [dev-dependencies]
 tempfile = "3"

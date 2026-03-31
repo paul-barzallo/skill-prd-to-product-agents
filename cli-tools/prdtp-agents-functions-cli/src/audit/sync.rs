@@ -9,37 +9,34 @@ use crate::common::yaml_ops;
 pub fn run(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "running audit sync");
     println!("{}", "=== Audit Sync ===".cyan().bold());
-    crate::common::capability_contract::require_policy_enabled(workspace, "sqlite", "audit sync")?;
+    match crate::common::capability_contract::policy_enabled(workspace, "sqlite")? {
+        Some(true) => {}
+        Some(false) => {
+            return write_degraded_log(
+                workspace,
+                "SQLite unauthorized; audit sync mirrored locally only",
+            );
+        }
+        None => {
+            return write_degraded_log(
+                workspace,
+                "SQLite authorization missing; audit sync mirrored locally only",
+            );
+        }
+    }
 
     let db_path = match audit::sqlite_db_path(workspace) {
-        Some(p) => p,
+        Some(path) => path,
         None => {
-            tracing::warn!(workspace = %workspace.display(), "sqlite db unavailable; writing degraded audit sync log");
-            eprintln!(
-                "  {} SQLite DB not found — writing degraded log",
-                "⚠".yellow()
+            return write_degraded_log(
+                workspace,
+                "SQLite unavailable; audit sync mirrored locally only",
             );
-            let log_path = workspace.join(".state/state-sync-degraded.log");
-            if let Some(parent) = log_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(
-                &log_path,
-                format!(
-                    "[{}] state-sync skipped: SQLite unavailable\n",
-                    yaml_ops::now_utc_iso()
-                ),
-            )?;
-            tracing::info!(log_path = %log_path.display(), "degraded audit sync log written");
-            println!("{} Degraded sync log written", "OK:".yellow().bold());
-            return Ok(());
         }
     };
 
     let conn = audit::open_db(&db_path)?;
 
-    // Tables already exist from init_sqlite_db — no CREATE needed for existing DB.
-    // If tables are missing (fresh DB), the fallback CREATE uses the real schema.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS artifacts (
             id TEXT PRIMARY KEY,
@@ -80,7 +77,6 @@ pub fn run(workspace: &Path) -> Result<()> {
         bail!("docs/project/ not found");
     }
 
-    // Keep YAML-derived sync consistent with the same advisory locks used by state ops.
     let _yaml_locks = [
         workspace.join("docs/project/handoffs.yaml"),
         workspace.join("docs/project/findings.yaml"),
@@ -101,11 +97,11 @@ pub fn run(workspace: &Path) -> Result<()> {
     for entry in WalkDir::new(&docs_path)
         .min_depth(1)
         .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.file_type().is_file())
     {
         let path = entry.path();
-        let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+        let ext = path.extension().and_then(|ext| ext.to_str()).unwrap_or("");
         if !["md", "yaml", "yml"].contains(&ext) {
             continue;
         }
@@ -118,7 +114,7 @@ pub fn run(workspace: &Path) -> Result<()> {
             .replace('\\', "/");
 
         let checksum = match yaml_ops::file_content_hash(path) {
-            Ok(h) => h,
+            Ok(value) => value,
             Err(_) => {
                 tracing::warn!(path = %rel, "failed to compute checksum during audit sync");
                 failures += 1;
@@ -129,7 +125,6 @@ pub fn run(workspace: &Path) -> Result<()> {
         let artifact_type = determine_artifact_type(&rel);
         let owner_role = determine_owner_role(&artifact_type);
 
-        // Check existing
         let existing_checksum: Option<String> = conn
             .query_row(
                 "SELECT checksum FROM artifacts WHERE path = ?1",
@@ -147,7 +142,7 @@ pub fn run(workspace: &Path) -> Result<()> {
         let art_id = yaml_ops::new_auto_id("art-");
         let title = path
             .file_stem()
-            .and_then(|s| s.to_str())
+            .and_then(|stem| stem.to_str())
             .unwrap_or("unknown")
             .to_string();
         conn.execute(
@@ -157,7 +152,6 @@ pub fn run(workspace: &Path) -> Result<()> {
             rusqlite::params![art_id, rel, artifact_type, title, owner_role, checksum, ts],
         )?;
 
-        // Log activity
         let log_id = yaml_ops::new_auto_id("al-");
         let _ = conn.execute(
             "INSERT OR IGNORE INTO agent_activity_log (id, agent_role, activity_type, entity_type, entity_ref, summary) \
@@ -166,11 +160,10 @@ pub fn run(workspace: &Path) -> Result<()> {
         );
     }
 
-    // Orphan detection
     let mut stmt = conn.prepare("SELECT path FROM artifacts WHERE status != 'removed'")?;
     let db_paths: Vec<String> = stmt
         .query_map([], |row| row.get(0))?
-        .filter_map(|r| r.ok())
+        .filter_map(|row| row.ok())
         .collect();
 
     let mut orphans = 0u32;
@@ -185,7 +178,6 @@ pub fn run(workspace: &Path) -> Result<()> {
         }
     }
 
-    // Record sync run
     let result = if failures > 0 { "partial" } else { "completed" };
     let notes =
         format!("processed={processed} changed={changed} skipped={skipped} orphans={orphans}");
@@ -195,14 +187,30 @@ pub fn run(workspace: &Path) -> Result<()> {
         rusqlite::params![sync_id, ts, yaml_ops::now_utc_iso(), result, processed, changed, failures, notes],
     )?;
 
-    println!("\n{}", "────────────────────────────".dimmed());
+    println!("\n{}", "----------------------------".dimmed());
     println!("  Processed: {processed}");
     println!("  Changed (drift): {changed}");
     println!("  Skipped (same): {skipped}");
     println!("  Failures: {failures}");
     println!("  Orphans: {orphans}");
     tracing::info!(sync_id = %sync_id, processed, changed, skipped, failures, orphans, result, "audit sync completed");
-    println!("{} Sync {sync_id} — {result}", "OK:".green().bold());
+    println!("{} Sync {sync_id} - {result}", "OK:".green().bold());
+    Ok(())
+}
+
+fn write_degraded_log(workspace: &Path, reason: &str) -> Result<()> {
+    tracing::warn!(workspace = %workspace.display(), reason, "audit sync running in degraded mode");
+    eprintln!("  {} {reason}", "WARN:".yellow().bold());
+    let log_path = workspace.join(".state/state-sync-degraded.log");
+    if let Some(parent) = log_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(
+        &log_path,
+        format!("[{}] state-sync degraded: {reason}\n", yaml_ops::now_utc_iso()),
+    )?;
+    tracing::info!(log_path = %log_path.display(), reason, "degraded audit sync log written");
+    println!("{} Degraded sync log written", "OK:".yellow().bold());
     Ok(())
 }
 

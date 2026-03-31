@@ -15,7 +15,15 @@
 .state/bootstrap-manifest.txt
 .state/bootstrap-rerun-report.md
 .state/sqlite-bootstrap.report.md
+.state/context-checksums.json
 .state/local-history/
+.state/work-units/
+.state/reporting/
+.state/audit/
+.state/audit-spool/
+.state/degraded-ops/
+.state/logs/
+.state/state-sync-degraded.log
 
 # OS artifacts
 Thumbs.db

@@ -164,3 +164,6 @@ jobs:
 
       - name: Reporting validation
         run: prdtp-agents-functions-cli validate ci reporting
+
+      - name: Copilot runtime contract validation
+        run: prdtp-agents-functions-cli validate ci copilot-runtime-contract

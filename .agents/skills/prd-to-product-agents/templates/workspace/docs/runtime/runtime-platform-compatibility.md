@@ -20,11 +20,11 @@ Status vocabulary:
 
 | Capability / surface | Windows | Ubuntu/Linux | Evidence |
 | --- | --- | --- | --- |
-| `database init` | Verified | Verified | Exercised by bootstrap smoke and post-bootstrap validation |
-| `audit sync` | Verified | Verified | Smoke and CI exercise normal and degraded sync paths |
-| `state *` | Verified | Verified | CI runs create/update lifecycle checks for handoffs, findings, and releases |
-| `git pre-commit-validate` | Verified | Verified | Shared validators are invoked directly in smoke tests and CI |
-| `git install-hooks` | Verified | Verified | Hook installation is exercised in smoke tests |
+| `database init` | Best-effort | Best-effort | Exercised in maintainer smoke and CI, but the published skill package does not embed portable per-platform evidence artifacts |
+| `audit sync` | Best-effort | Best-effort | Exercised in maintainer smoke and CI, but the published skill package does not embed portable per-platform evidence artifacts |
+| `state *` | Best-effort | Best-effort | Exercised in maintainer CI, but the published skill package does not embed portable per-platform evidence artifacts |
+| `git pre-commit-validate` | Best-effort | Best-effort | Exercised in maintainer smoke and CI, but the published skill package does not embed portable per-platform evidence artifacts |
+| `git install-hooks` | Best-effort | Best-effort | Exercised in maintainer smoke and CI, but the published skill package does not embed portable per-platform evidence artifacts |
 
 ## Required tool versions
 

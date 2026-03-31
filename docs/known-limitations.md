@@ -8,13 +8,17 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 - Repository validation is only as strong as the commands maintainers actually run; documentation alone does not enforce compliance.
 - The GitHub workflow validates the repository on CI, but local maintenance still depends on contributors using the documented checks.
 - Pre-commit hooks reduce drift but are not a substitute for CI or release-gate execution.
+- The packaged skill still governs `execute` through prompt/tool contracts and capability policy rather than a universal command sandbox; that boundary must remain explicit in enterprise claims.
 
 ## Packaging limitations
 
 - Published binary integrity is now checked through checksum manifests, SPDX SBOMs, provenance policy files, a reviewed refresh PR, dependency review, and CI build provenance attestation.
-- Consumer-side attestation verification is strict for packaged consumption, but the repository source checkout still skips remote attestation verification intentionally so local maintainer development remains possible.
+- `prd-to-product-agents-cli validate package` is the portable consumer validation surface; `validate all` remains maintainer-only because it adds repository-scoped runtime smoke and version checks.
+- Portable package validation now verifies local bundle materials and provenance-policy structure, but it does not perform mandatory remote attestation verification in the default consumer path.
+- The packaged workspace template is maintained through source-side runtime commands such as agent assembly; those commands now log to temp for the packaged template, but future maintenance changes still need regression coverage so the distributed template does not silently regain runtime residue.
 - Local Rust build outputs are still easy to confuse with shipped artifacts if hygiene slips.
 - Release packaging discipline depends on maintainers respecting the documented boundaries around `bin/` and build outputs.
+- `core-local` is intentionally not marketed as compliance-grade evidence: it keeps local hash-chained audit data, but only `enterprise` requires remote audit acknowledgement.
 
 ## Documentation limitations
 
@@ -28,6 +32,9 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 - Maintainer support and escalation flow is still minimal even though the runbook and issue templates now exist.
 - Binary refresh now routes through a reviewed PR, but reviewers still need to inspect tracked binaries, SBOMs, provenance policies, and checksums before merge.
 - GitHub issue and PR mutation are wrapped by the runtime CLI, but the broader GitHub write surface is still intentionally narrower than the full `gh` CLI and must stay that way unless new wrappers, tests, and docs land together.
+- Enterprise readiness still depends on real remote infrastructure: the maintained sandbox workflow can now produce evidence, but GitHub API credentials, remote branch protection targets, sandbox variables/secrets, and a reachable remote audit sink must still exist outside the repo for the strongest profile to be meaningful.
+- Remote audit acknowledgement currently means only that the configured sink returned a non-empty `ack_id`; it does not by itself prove immutable retention, independent timestamping, or a cryptographic receipt.
+- Immutable governance currently proves separate reviewer identities plus approval from one declared immutable-governance reviewer; it should not be described as formal dual-control unless validation is intentionally strengthened.
 - Decision history is only now being formalized; some older choices still live mainly in code and scattered docs.
 
 ## Scope limitations

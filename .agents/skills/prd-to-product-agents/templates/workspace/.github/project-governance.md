@@ -31,15 +31,16 @@ before treating the workspace as configured.
 Remote provisioning means:
 
 - create labels,
-- apply branch protection when permissions allow it,
+- apply branch protection through `prdtp-agents-functions-cli governance provision-enterprise` when permissions allow it,
 - move from `configured` toward `production-ready`.
 
 Do not claim remote provisioning if any of these are missing:
 
-- `gh`,
-- `gh auth login`,
+- `operating_profile=enterprise`,
+- `github.auth.mode=token-api`,
+- one of `PRDTP_GITHUB_TOKEN`, `GITHUB_TOKEN`, or `GH_TOKEN`,
 - real repository owner/name,
-- real reviewer identities,
+- real reviewer identities and reviewer logins,
 - sufficient GitHub permissions,
 - branch protection applied to the configured protected branches.
 

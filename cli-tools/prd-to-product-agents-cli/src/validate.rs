@@ -31,10 +31,11 @@ const FRESHNESS_PATHS: &[&str] = &[
     "docs/project/refined-stories.yaml",
     "docs/project/decisions",
 ];
+const TEMPLATE_STATE_ALLOWED_FILES: &[&str] = &["README.md", "memory-schema.sql"];
 
-/// Run all skill-side validations in sequence.
-pub fn all(skill_root: &Path) -> Result<()> {
-    println!("{}", "--- Running all skill validations ---".cyan());
+/// Run the portable skill-package validation surface.
+pub fn package(skill_root: &Path) -> Result<()> {
+    println!("{}", "--- Running portable package validations ---".cyan());
     let mut errors = 0u32;
 
     print!("  Package hygiene... ");
@@ -48,15 +49,6 @@ pub fn all(skill_root: &Path) -> Result<()> {
 
     print!("  Platform claims... ");
     match platform_claims(skill_root) {
-        Ok(()) => println!("{}", "PASS".green()),
-        Err(e) => {
-            println!("{} {e}", "FAIL".red());
-            errors += 1;
-        }
-    }
-
-    print!("  Package version metadata... ");
-    match version_metadata(skill_root) {
         Ok(()) => println!("{}", "PASS".green()),
         Err(e) => {
             println!("{} {e}", "FAIL".red());
@@ -91,8 +83,8 @@ pub fn all(skill_root: &Path) -> Result<()> {
         }
     }
 
-    print!("  Runtime smoke... ");
-    match runtime_smoke(skill_root) {
+    print!("  Published runtime surface... ");
+    match published_runtime_surface(skill_root) {
         Ok(()) => println!("{}", "PASS".green()),
         Err(e) => {
             println!("{} {e}", "FAIL".red());
@@ -112,7 +104,42 @@ pub fn all(skill_root: &Path) -> Result<()> {
     if errors > 0 {
         bail!("{errors} validation(s) failed");
     }
-    println!("{}", "All skill validations passed.".green());
+    println!("{}", "Portable package validations passed.".green());
+    Ok(())
+}
+
+/// Run all maintainer-side validations in sequence.
+pub fn all(skill_root: &Path) -> Result<()> {
+    println!("{}", "--- Running all maintainer validations ---".cyan());
+    let mut errors = 0u32;
+
+    if let Err(e) = package(skill_root) {
+        println!("  {}", e);
+        errors += 1;
+    }
+
+    print!("  Package version metadata... ");
+    match version_metadata(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
+    print!("  Maintainer runtime smoke... ");
+    match runtime_smoke(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
+    if errors > 0 {
+        bail!("{errors} validation(s) failed");
+    }
+    println!("{}", "All maintainer validations passed.".green());
     Ok(())
 }
 
@@ -233,6 +260,8 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
                 "@acme-devops",
                 "--reviewer-infra",
                 "@acme-infra",
+                "--reviewer-infra-login",
+                "acme-infra",
             ],
         )?;
         run_runtime_cli(
@@ -524,6 +553,74 @@ fn binary_bundle_integrity(skill_root: &Path) -> Result<()> {
     Ok(())
 }
 
+fn published_runtime_surface(skill_root: &Path) -> Result<()> {
+    let runtime_binary = current_platform_runtime_binary(skill_root)?;
+    let global_help = run_binary_capture(&runtime_binary, &["--help"])
+        .with_context(|| format!("reading published runtime help from {}", runtime_binary.display()))?;
+    assert_help_absent(&global_help, "github", "published runtime must not expose the github command")?;
+
+    let governance_help = run_binary_capture(&runtime_binary, &["governance", "--help"])?;
+    assert_help_absent(
+        &governance_help,
+        "promote-enterprise-readiness",
+        "published runtime must not expose local enterprise readiness promotion",
+    )?;
+
+    let audit_help = run_binary_capture(&runtime_binary, &["audit", "--help"])?;
+    assert_help_absent(
+        &audit_help,
+        "export",
+        "published runtime must not expose audit export in the public skill contract",
+    )?;
+
+    Ok(())
+}
+
+fn current_platform_runtime_binary(skill_root: &Path) -> Result<PathBuf> {
+    let base = template_root(skill_root)
+        .join(".agents")
+        .join("bin")
+        .join("prd-to-product-agents");
+    let candidate = if cfg!(target_os = "windows") {
+        base.join("prdtp-agents-functions-cli-windows-x64.exe")
+    } else if cfg!(target_os = "macos") {
+        base.join("prdtp-agents-functions-cli-darwin-arm64")
+    } else {
+        base.join("prdtp-agents-functions-cli-linux-x64")
+    };
+    if !candidate.is_file() {
+        bail!(
+            "published runtime binary for this platform is missing: {}",
+            candidate.display()
+        );
+    }
+    Ok(candidate)
+}
+
+fn run_binary_capture(binary: &Path, args: &[&str]) -> Result<String> {
+    let output = Command::new(binary)
+        .args(args)
+        .output()
+        .with_context(|| format!("running {}", binary.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        bail!(
+            "published runtime command failed (`{} {}`): {}",
+            binary.display(),
+            args.join(" "),
+            stderr
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn assert_help_absent(help_output: &str, needle: &str, message: &str) -> Result<()> {
+    if help_output.contains(needle) {
+        bail!("{message}");
+    }
+    Ok(())
+}
+
 fn copilot_runtime_contract(skill_root: &Path) -> Result<()> {
     const FORBIDDEN_TERMS: &[(&str, &str)] = &[
         (
@@ -565,6 +662,14 @@ fn copilot_runtime_contract(skill_root: &Path) -> Result<()> {
         (
             "GitHub Project board state",
             "GitHub Project must not be treated as current operational state",
+        ),
+        (
+            "promote-enterprise-readiness",
+            "published runtime docs must not reference hidden enterprise promotion helpers",
+        ),
+        (
+            "audit export",
+            "published runtime docs must not reference audit export in the public skill contract",
         ),
     ];
 
@@ -943,47 +1048,31 @@ fn diff_context_checksums(
 pub fn package_hygiene(skill_root: &Path) -> Result<()> {
     let mut errors: Vec<String> = Vec::new();
 
-    // Check for .state/ artifacts in skill root (allow only template ones)
-    let state_dir = skill_root.join(".state");
-    if state_dir.is_dir() {
-        for entry in WalkDir::new(&state_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-            .filter(|e| e.file_type().is_file())
-        {
-            let rel = util::to_relative_posix(entry.path(), skill_root);
-            // Allow template .state files
-            if rel.contains("templates/") {
-                continue;
-            }
-            // Allow README.md and memory-schema.sql in template .state
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name == "README.md" || name == "memory-schema.sql" {
-                continue;
-            }
-            errors.push(format!("runtime artifact in skill package: {rel}"));
-        }
-    }
+    collect_disallowed_state_files(&skill_root.join(".state"), skill_root, &[], &mut errors);
+    collect_disallowed_state_files(
+        &template_root(skill_root).join(".state"),
+        skill_root,
+        TEMPLATE_STATE_ALLOWED_FILES,
+        &mut errors,
+    );
 
     // Check for .bootstrap-overlays/
     if skill_root.join(".bootstrap-overlays").is_dir() {
         errors.push(".bootstrap-overlays/ directory present in skill package".to_string());
     }
 
-    // Check for *.new merge marker files
+    // Check for generic distributable residue anywhere in the packaged skill.
     for entry in WalkDir::new(skill_root)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
     {
         let name = entry.file_name().to_string_lossy();
-        if name.ends_with(".new") && !entry.path().to_string_lossy().contains("templates") {
+        if name.ends_with(".new") {
             let rel = util::to_relative_posix(entry.path(), skill_root);
             errors.push(format!("pending merge marker: {rel}"));
         }
-        if (name.ends_with(".log") || name.ends_with(".tmp") || name.ends_with(".bak"))
-            && !entry.path().to_string_lossy().contains("templates")
-        {
+        if name.ends_with(".log") || name.ends_with(".tmp") || name.ends_with(".bak") {
             let rel = util::to_relative_posix(entry.path(), skill_root);
             errors.push(format!("distributable residue in skill package: {rel}"));
         }
@@ -1008,6 +1097,42 @@ pub fn package_hygiene(skill_root: &Path) -> Result<()> {
         bail!("Package hygiene failed:\n  {msg}");
     }
     Ok(())
+}
+
+fn collect_disallowed_state_files(
+    state_dir: &Path,
+    skill_root: &Path,
+    allowed_files: &[&str],
+    errors: &mut Vec<String>,
+) {
+    if !state_dir.is_dir() {
+        return;
+    }
+
+    for entry in WalkDir::new(state_dir)
+        .min_depth(1)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let rel = util::to_relative_posix(entry.path(), skill_root);
+        let allowed = entry
+            .path()
+            .strip_prefix(state_dir)
+            .ok()
+            .and_then(|path| path.to_str())
+            .map(|path| path.replace('\\', "/"))
+            .map(|path| entry.file_type().is_file() && allowed_files.contains(&path.as_str()))
+            .unwrap_or(false);
+
+        if !allowed {
+            let rel = if entry.file_type().is_dir() {
+                format!("{rel}/")
+            } else {
+                rel
+            };
+            errors.push(format!("runtime artifact in skill package: {rel}"));
+        }
+    }
 }
 
 /// Validate platform compatibility claims in documentation.

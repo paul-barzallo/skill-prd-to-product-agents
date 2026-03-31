@@ -47,6 +47,7 @@ impl YamlLock {
     pub fn acquire(yaml_path: &Path) -> Result<Self> {
         let lock_path = yaml_path.with_extension("yaml.lock");
         let deadline = Instant::now() + Duration::from_secs(5);
+        let stale_after = Duration::from_secs(30);
 
         loop {
             match fs::OpenOptions::new()
@@ -55,11 +56,30 @@ impl YamlLock {
                 .open(&lock_path)
             {
                 Ok(_) => {
-                    // Write PID for diagnostics
-                    let _ = fs::write(&lock_path, std::process::id().to_string());
+                    let _ = fs::write(
+                        &lock_path,
+                        format!(
+                            "pid={}\ncreated_at={}\npath={}\n",
+                            std::process::id(),
+                            now_utc_iso(),
+                            yaml_path.display()
+                        ),
+                    );
                     return Ok(Self { lock_path });
                 }
                 Err(_) if Instant::now() < deadline => {
+                    if let Ok(metadata) = fs::metadata(&lock_path) {
+                        if let Ok(modified) = metadata.modified() {
+                            if modified
+                                .elapsed()
+                                .map(|age| age > stale_after)
+                                .unwrap_or(false)
+                            {
+                                let _ = fs::remove_file(&lock_path);
+                                continue;
+                            }
+                        }
+                    }
                     thread::sleep(Duration::from_millis(100));
                 }
                 Err(e) => bail!(

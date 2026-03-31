@@ -8,6 +8,7 @@ use crate::common::enums::{
     FindingStatus, FindingType, Role, Severity, FINDING_SOURCE_ROLES, FINDING_TARGET_ROLES,
 };
 use crate::common::yaml_ops;
+use crate::operations::state_store::{self, FindingEntry};
 
 #[derive(Args)]
 pub struct CreateFindingArgs {
@@ -81,42 +82,33 @@ pub fn create(workspace: &Path, args: CreateFindingArgs) -> Result<()> {
         bail!("Title must be at least 3 characters long");
     }
 
-    let yaml_path = workspace.join(FINDINGS_FILE);
-    let header = "# Findings register - operational state (source of truth)\n\nfindings: []\n";
-    let content = yaml_ops::ensure_yaml_file(&yaml_path, header)?;
-
     let id = args.id.unwrap_or_else(|| yaml_ops::new_auto_id("fi-"));
-    if yaml_ops::entry_exists(&content, &id) {
-        bail!("Finding with ID '{id}' already exists");
-    }
-
     let today = yaml_ops::today_utc();
-    let entry = format!(
-        "  - id: {id}\n    source: {}\n    target: {}\n    type: {}\n    severity: {}\n    entity: {}\n    title: \"{}\"\n    status: open\n    created: {today}\n",
-        args.source_role,
-        args.target_role,
-        args.finding_type,
-        args.severity,
-        args.entity,
-        yaml_ops::yaml_escape(&args.title)
-    );
-
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let updated = if content.contains("findings: []") {
-        content.replace("findings: []", &format!("findings:\n{entry}"))
-    } else if content.trim().ends_with("findings:") {
-        format!("{content}\n{entry}")
-    } else {
-        format!("{content}{entry}")
-    };
-
-    yaml_ops::atomic_write(&yaml_path, &updated)?;
-
-    let written = std::fs::read_to_string(&yaml_path)?;
-    if !yaml_ops::entry_exists(&written, &id) {
-        bail!("Post-write verification failed: ID '{id}' not found after write");
-    }
+    let id_for_entry = id.clone();
+    let id_for_check = id.clone();
+    let source_role = args.source_role.to_string();
+    let target_role = args.target_role.to_string();
+    let finding_type = args.finding_type.to_string();
+    let severity = args.severity.to_string();
+    let entity = args.entity.clone();
+    let title = args.title.clone();
+    state_store::mutate_findings(workspace, move |document| {
+        if document.findings.iter().any(|entry| entry.id == id_for_check) {
+            bail!("Finding with ID '{id_for_check}' already exists");
+        }
+        document.findings.push(FindingEntry {
+            id: id_for_entry,
+            source: source_role,
+            target: target_role,
+            finding_type,
+            severity,
+            entity,
+            title,
+            status: "open".to_string(),
+            created: today,
+        });
+        Ok(())
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,
@@ -149,69 +141,50 @@ pub fn update(workspace: &Path, args: UpdateFindingArgs) -> Result<()> {
     if !yaml_path.exists() {
         bail!("findings.yaml not found");
     }
+    let finding_id = args.finding_id.clone();
+    let agent_role = args.agent_role.to_string();
+    let new_status = args.new_status;
+    let new_status_value = args.new_status.to_string();
+    let current_status = state_store::mutate_findings(workspace, move |document| {
+        let entry = document
+            .findings
+            .iter_mut()
+            .find(|entry| entry.id == finding_id)
+            .ok_or_else(|| anyhow::anyhow!("Finding '{}' not found", finding_id))?;
 
-    let content = std::fs::read_to_string(&yaml_path)?;
-    let content = yaml_ops::normalize_lf(&content);
+        let current_status = match entry.status.as_str() {
+            "open" => FindingStatus::Open,
+            "triaged" => FindingStatus::Triaged,
+            "in_progress" => FindingStatus::InProgress,
+            "resolved" => FindingStatus::Resolved,
+            "wont_fix" => FindingStatus::WontFix,
+            other => bail!("Unknown current status '{other}'"),
+        };
 
-    let current_status_str = yaml_ops::read_yaml_entry_field(&content, &args.finding_id, "status")
-        .ok_or_else(|| anyhow::anyhow!("Finding '{}' not found", args.finding_id))?;
+        let valid = current_status.valid_transitions();
+        if !valid.contains(&new_status) {
+            bail!(
+                "Invalid transition: {} -> {} (valid: {:?})",
+                current_status,
+                new_status,
+                valid
+            );
+        }
 
-    let current_status = match current_status_str.as_str() {
-        "open" => FindingStatus::Open,
-        "triaged" => FindingStatus::Triaged,
-        "in_progress" => FindingStatus::InProgress,
-        "resolved" => FindingStatus::Resolved,
-        "wont_fix" => FindingStatus::WontFix,
-        other => bail!("Unknown current status '{other}'"),
-    };
+        let authorized = agent_role == Role::QaLead.to_string()
+            || agent_role == Role::PmOrchestrator.to_string()
+            || agent_role == entry.target;
+        if !authorized {
+            bail!(
+                "Role '{}' not authorized to update this finding (target: {})",
+                agent_role,
+                entry.target
+            );
+        }
 
-    let valid = current_status.valid_transitions();
-    if !valid.contains(&args.new_status) {
-        bail!(
-            "Invalid transition: {} -> {} (valid: {:?})",
-            current_status,
-            args.new_status,
-            valid
-        );
-    }
-
-    let target_role_str =
-        yaml_ops::read_yaml_entry_field(&content, &args.finding_id, "target").unwrap_or_default();
-    let authorized = args.agent_role == Role::QaLead
-        || args.agent_role == Role::PmOrchestrator
-        || args.agent_role.to_string() == target_role_str;
-    if !authorized {
-        bail!(
-            "Role '{}' not authorized to update this finding (target: {target_role_str})",
-            args.agent_role
-        );
-    }
-
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let old_pattern = format!("id: {}\n", args.finding_id);
-    if let Some(start) = content.find(&old_pattern) {
-        let block_start = content[..start].rfind("  - id:").unwrap_or(start);
-        let rest = &content[block_start..];
-        let next_entry = rest[1..]
-            .find("  - id:")
-            .map(|index| block_start + 1 + index)
-            .unwrap_or(content.len());
-        let block = &content[block_start..next_entry];
-
-        let old_status_line = format!("status: {current_status}");
-        let new_status_line = format!("status: {}", args.new_status);
-        let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!(
-            "{}{new_block}{}",
-            &content[..block_start],
-            &content[next_entry..]
-        );
-
-        yaml_ops::atomic_write(&yaml_path, &updated)?;
-    } else {
-        bail!("Could not locate entry block for '{}'", args.finding_id);
-    }
+        entry.status = new_status_value;
+        Ok(current_status)
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,

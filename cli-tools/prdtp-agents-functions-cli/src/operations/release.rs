@@ -6,6 +6,7 @@ use std::path::Path;
 use crate::common::audit;
 use crate::common::enums::{ReleaseStatus, Role};
 use crate::common::yaml_ops;
+use crate::operations::state_store::{self, ReleaseEntry};
 
 #[derive(Args)]
 pub struct CreateReleaseArgs {
@@ -71,63 +72,46 @@ pub fn create(workspace: &Path, args: CreateReleaseArgs) -> Result<()> {
         );
     }
 
-    let yaml_path = workspace.join(RELEASES_FILE);
-    let header = "# Release tracker - operational state (source of truth)\n\nreleases: []\n";
-    let content = yaml_ops::ensure_yaml_file(&yaml_path, header)?;
-
-    let id = args
-        .id
-        .unwrap_or_else(|| yaml_ops::next_release_id(&content));
-
-    if yaml_ops::entry_exists(&content, &id) {
-        bail!("Release with ID '{id}' already exists");
-    }
+    let id = args.id.unwrap_or_else(|| {
+        let yaml_path = workspace.join(RELEASES_FILE);
+        let raw = std::fs::read_to_string(&yaml_path).unwrap_or_default();
+        yaml_ops::next_release_id(&raw)
+    });
 
     let today = yaml_ops::today_utc();
-    let stories_yaml = match &args.stories {
-        Some(s) => {
-            let items: Vec<&str> = s
+    let id_for_entry = id.clone();
+    let id_for_check = id.clone();
+    let agent_role = args.agent_role.to_string();
+    let name = args.name.clone();
+    let target_date = args.target_date.clone();
+    let notes = args.notes.clone();
+    let stories = args
+        .stories
+        .as_deref()
+        .map(|value| {
+            value
                 .split(',')
-                .map(|i| i.trim())
-                .filter(|i| !i.is_empty())
-                .collect();
-            if items.is_empty() {
-                String::new()
-            } else {
-                let lines: Vec<String> = items.iter().map(|i| format!("      - {i}")).collect();
-                format!("\n    stories:\n{}", lines.join("\n"))
-            }
+                .map(|item| item.trim().to_string())
+                .filter(|item| !item.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    state_store::mutate_releases(workspace, move |document| {
+        if document.releases.iter().any(|entry| entry.id == id_for_check) {
+            bail!("Release with ID '{id_for_check}' already exists");
         }
-        None => String::new(),
-    };
-    let notes_yaml = match &args.notes {
-        Some(n) => format!("\n    notes: \"{}\"", yaml_ops::yaml_escape(n)),
-        None => String::new(),
-    };
-
-    let entry = format!(
-        "  - id: {id}\n    name: \"{}\"\n    target_date: {}\n    agent_role: {}\n    created: {today}\n    status: planning{stories_yaml}{notes_yaml}\n",
-        yaml_ops::yaml_escape(&args.name),
-        args.target_date,
-        args.agent_role
-    );
-
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let updated = if content.contains("releases: []") {
-        content.replace("releases: []", &format!("releases:\n{entry}"))
-    } else if content.trim().ends_with("releases:") {
-        format!("{content}\n{entry}")
-    } else {
-        format!("{content}{entry}")
-    };
-
-    yaml_ops::atomic_write(&yaml_path, &updated)?;
-
-    let written = std::fs::read_to_string(&yaml_path)?;
-    if !yaml_ops::entry_exists(&written, &id) {
-        bail!("Post-write verification failed: ID '{id}' not found after write");
-    }
+        document.releases.push(ReleaseEntry {
+            id: id_for_entry,
+            name,
+            target_date,
+            agent_role,
+            created: today,
+            status: "planning".to_string(),
+            stories,
+            notes,
+        });
+        Ok(())
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,
@@ -164,57 +148,38 @@ pub fn update(workspace: &Path, args: UpdateReleaseArgs) -> Result<()> {
     if !yaml_path.exists() {
         bail!("releases.yaml not found");
     }
+    let release_ref = args.release_ref.clone();
+    let new_status = args.new_status;
+    let new_status_value = args.new_status.to_string();
+    let current_status = state_store::mutate_releases(workspace, move |document| {
+        let entry = document
+            .releases
+            .iter_mut()
+            .find(|entry| entry.id == release_ref)
+            .ok_or_else(|| anyhow::anyhow!("Release '{}' not found", release_ref))?;
 
-    let content = std::fs::read_to_string(&yaml_path)?;
-    let content = yaml_ops::normalize_lf(&content);
+        let current_status = match entry.status.as_str() {
+            "planning" => ReleaseStatus::Planning,
+            "ready" => ReleaseStatus::Ready,
+            "approved" => ReleaseStatus::Approved,
+            "deployed" => ReleaseStatus::Deployed,
+            "rolled_back" => ReleaseStatus::RolledBack,
+            other => bail!("Unknown current status '{other}'"),
+        };
 
-    let current_status_str = yaml_ops::read_yaml_entry_field(&content, &args.release_ref, "status")
-        .ok_or_else(|| anyhow::anyhow!("Release '{}' not found", args.release_ref))?;
+        let valid = current_status.valid_transitions();
+        if !valid.contains(&new_status) {
+            bail!(
+                "Invalid transition: {} -> {} (valid: {:?})",
+                current_status,
+                new_status,
+                valid
+            );
+        }
 
-    let current_status = match current_status_str.as_str() {
-        "planning" => ReleaseStatus::Planning,
-        "ready" => ReleaseStatus::Ready,
-        "approved" => ReleaseStatus::Approved,
-        "deployed" => ReleaseStatus::Deployed,
-        "rolled_back" => ReleaseStatus::RolledBack,
-        other => bail!("Unknown current status '{other}'"),
-    };
-
-    let valid = current_status.valid_transitions();
-    if !valid.contains(&args.new_status) {
-        bail!(
-            "Invalid transition: {} -> {} (valid: {:?})",
-            current_status,
-            args.new_status,
-            valid
-        );
-    }
-
-    let _lock = yaml_ops::YamlLock::acquire(&yaml_path)?;
-
-    let old_pattern = format!("id: {}\n", args.release_ref);
-    if let Some(start) = content.find(&old_pattern) {
-        let block_start = content[..start].rfind("  - id:").unwrap_or(start);
-        let rest = &content[block_start..];
-        let next_entry = rest[1..]
-            .find("  - id:")
-            .map(|i| block_start + 1 + i)
-            .unwrap_or(content.len());
-        let block = &content[block_start..next_entry];
-
-        let old_status_line = format!("status: {current_status}");
-        let new_status_line = format!("status: {}", args.new_status);
-        let new_block = block.replace(&old_status_line, &new_status_line);
-        let updated = format!(
-            "{}{new_block}{}",
-            &content[..block_start],
-            &content[next_entry..]
-        );
-
-        yaml_ops::atomic_write(&yaml_path, &updated)?;
-    } else {
-        bail!("Could not locate entry block for '{}'", args.release_ref);
-    }
+        entry.status = new_status_value;
+        Ok(current_status)
+    })?;
 
     let _ = audit::try_audit_activity(
         workspace,

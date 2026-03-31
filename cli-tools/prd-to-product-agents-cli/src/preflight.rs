@@ -173,23 +173,19 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
     } else {
         false
     };
-    let sqlite_authorized = if preserve {
-        util::yaml_bool(
-            &caps_path,
-            "capabilities.sqlite.authorized.enabled",
-            sqlite_runtime_available,
-        )
-    } else {
-        sqlite_runtime_available
-    };
+    let sqlite_authorized = util::yaml_bool(
+        &caps_path,
+        "capabilities.sqlite.authorized.enabled",
+        false,
+    );
     let mdlint_authorized = if preserve {
         util::yaml_bool(
             &caps_path,
             "capabilities.markdownlint.authorized.enabled",
-            markdownlint_installed,
+            false,
         )
     } else {
-        markdownlint_installed
+        false
     };
     let local_history_authorized = if preserve {
         util::yaml_bool(
@@ -238,9 +234,9 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
         db_initialized,
         sqlite_authorized,
         sqlite_authorization_source: if sqlite_authorized {
-            "detected-default".to_string()
+            "manual-maintainer".to_string()
         } else {
-            "missing-runtime".to_string()
+            "manual-default-deny".to_string()
         },
         sqlite_mode: if sqlite_authorized && db_initialized {
             "ledger".to_string()
@@ -254,9 +250,9 @@ pub fn detect(_skill_root: &Path, args: DetectArgs) -> Result<()> {
         markdownlint_native_linux: markdownlint_installed,
         markdownlint_authorized: mdlint_authorized,
         markdownlint_authorization_source: if mdlint_authorized {
-            "detected-default".to_string()
+            "manual-maintainer".to_string()
         } else {
-            "missing-runtime".to_string()
+            "manual-default-deny".to_string()
         },
         local_history_authorized,
         local_history_authorization_source: "detected-default".to_string(),

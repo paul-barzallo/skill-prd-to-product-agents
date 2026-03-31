@@ -141,19 +141,11 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
     let sqlite_authorized = if args.disable_sqlite {
         false
     } else {
-        existing_policies
-            .sqlite_authorized
-            .unwrap_or(sqlite_runtime_available)
+        existing_policies.sqlite_authorized.unwrap_or(false)
     };
     let sqlite_authorization_source = existing_policies
         .sqlite_authorization_source
-        .unwrap_or_else(|| {
-            if sqlite_runtime_available {
-                "detected-default".to_string()
-            } else {
-                "missing-runtime".to_string()
-            }
-        });
+        .unwrap_or_else(|| "manual-default-deny".to_string());
     let sqlite_mode = existing_policies.sqlite_mode.unwrap_or_else(|| {
         if sqlite_authorized && db_initialized {
             "ledger".to_string()
@@ -166,17 +158,11 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
     } else {
         existing_policies
             .markdownlint_authorized
-            .unwrap_or(mdlint_installed)
+            .unwrap_or(false)
     };
     let markdownlint_authorization_source = existing_policies
         .markdownlint_authorization_source
-        .unwrap_or_else(|| {
-            if mdlint_installed {
-                "detected-default".to_string()
-            } else {
-                "missing-runtime".to_string()
-            }
-        });
+        .unwrap_or_else(|| "manual-default-deny".to_string());
     let reporting_authorized = existing_policies.reporting_authorized.unwrap_or(true);
     let reporting_authorization_source = existing_policies
         .reporting_authorization_source
@@ -562,23 +548,43 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn sqlite_policy_defaults_to_enabled_when_not_explicitly_disabled() {
-        let explicit_policy = None;
-        let sqlite_runtime_available = true;
-        let sqlite_policy = explicit_policy.unwrap_or(sqlite_runtime_available);
-        assert!(sqlite_policy);
-    }
+    fn detection_does_not_auto_authorize_sensitive_capabilities_when_file_is_missing() {
+        let temp = TempDir::new().expect("failed to create temp workspace");
 
-    #[test]
-    fn sqlite_policy_respects_explicit_disable() {
-        let disable_sqlite = true;
-        let explicit_policy = Some(true);
-        let sqlite_policy = if disable_sqlite {
-            false
-        } else {
-            explicit_policy.unwrap_or(true)
-        };
-        assert!(!sqlite_policy);
+        run(
+            temp.path(),
+            DetectArgs {
+                disable_git: false,
+                disable_gh: false,
+                disable_sqlite: false,
+                disable_markdownlint: false,
+            },
+        )
+        .expect("capabilities detect failed");
+
+        let content = std::fs::read_to_string(
+            temp.path().join(".github").join("workspace-capabilities.yaml"),
+        )
+        .expect("failed to read generated capabilities yaml");
+        let parsed: Value =
+            serde_yaml::from_str(&content).expect("generated capabilities yaml must parse");
+
+        assert_eq!(
+            parsed["capabilities"]["git"]["authorized"]["enabled"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed["capabilities"]["gh"]["authorized"]["enabled"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed["capabilities"]["sqlite"]["authorized"]["enabled"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            parsed["capabilities"]["markdownlint"]["authorized"]["enabled"].as_bool(),
+            Some(false)
+        );
     }
 
     #[test]

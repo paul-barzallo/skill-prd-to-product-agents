@@ -35,6 +35,12 @@ pub fn run(workspace: &Path, args: ExportArgs) -> Result<()> {
         "governance_contract",
         &mut lines,
     )?;
+    append_jsonl_file(
+        workspace,
+        ".state/audit/sensitive-actions.jsonl",
+        "sensitive_action",
+        &mut lines,
+    )?;
     append_json_directory(workspace, ".state/audit-spool", "audit_spool", &mut lines)?;
     append_json_directory(workspace, ".state/work-units", "work_unit", &mut lines)?;
     append_operational_yaml(workspace, "docs/project/handoffs.yaml", "handoffs", &mut lines)?;
@@ -101,6 +107,32 @@ fn append_json_directory(
             json!({
                 "event_type": event_type,
                 "entity_path": path.strip_prefix(workspace).unwrap_or(&path).display().to_string(),
+                "payload": payload
+            })
+            .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn append_jsonl_file(
+    workspace: &Path,
+    relative_path: &str,
+    event_type: &str,
+    lines: &mut Vec<String>,
+) -> Result<()> {
+    let path = workspace.join(relative_path);
+    if !path.is_file() {
+        return Ok(());
+    }
+    let raw = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    for line in raw.lines().filter(|line| !line.trim().is_empty()) {
+        let payload: JsonValue =
+            serde_json::from_str(line).with_context(|| format!("parsing {}", path.display()))?;
+        lines.push(
+            json!({
+                "event_type": event_type,
+                "entity_path": relative_path,
                 "payload": payload
             })
             .to_string(),

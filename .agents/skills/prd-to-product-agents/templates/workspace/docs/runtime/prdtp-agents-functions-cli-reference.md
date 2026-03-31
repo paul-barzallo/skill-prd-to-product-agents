@@ -49,6 +49,7 @@ prdtp-agents-functions-cli --workspace . validate ci copilot-runtime-contract
 #### validate ci
 
 CI-focused validation helpers used by workflow automation and release gates.
+These checks are workflow-oriented but workspace-portable: they evaluate the current workspace tree and do not require publisher-only checkout state.
 
 ```text
 prdtp-agents-functions-cli --workspace . validate ci pre-commit-fixtures
@@ -142,7 +143,7 @@ prdtp-agents-functions-cli --workspace . git install-hooks
 | `pre-commit-validate` | Governance, branch protection, immutable file validation |
 | `install-hooks` | Install git hooks into `.git/hooks/` |
 
-> **Security note:** The env vars `BOOTSTRAP_ALLOW_MAIN_COMMIT` and `FINALIZE_WORK_UNIT_ALLOW_COMMIT` are internal bypass flags used exclusively by `bootstrap commit` and `git finalize` respectively. They must never be exported manually or set in production CI pipelines.
+> **Security note:** direct `git commit` stays blocked by the installed hook. Only the runtime-owned paths (`bootstrap commit` and `git finalize`) may create commits, and they do so internally after validation rather than through exported bypass env vars.
 
 ### audit
 
@@ -151,14 +152,16 @@ Audit ledger operations.
 ```text
 prdtp-agents-functions-cli --workspace . audit sync
 prdtp-agents-functions-cli --workspace . audit replay-spool
-prdtp-agents-functions-cli --workspace . audit export
+prdtp-agents-functions-cli --workspace . audit sink health
+prdtp-agents-functions-cli --workspace . audit sink test
 ```
 
 | Subcommand | Purpose |
 | ---------- | ------- |
 | `sync` | Sync canonical docs into the SQLite audit ledger |
 | `replay-spool` | Replay JSON spool entries into the ledger |
-| `export` | Export structured audit evidence as JSONL from canonical state, spool, and work-unit records |
+| `sink health` | Verify local audit hash-chain integrity and remote sink configuration |
+| `sink test` | Emit a probe event through the configured audit path |
 
 ### report
 
@@ -228,12 +231,18 @@ Notes:
 Governance operations.
 
 ```text
-prdtp-agents-functions-cli --workspace . governance configure --owner acme-org --repo product-workspace --release-gate-login acme-devops --reviewer-product @acme-product --reviewer-architecture @acme-arch --reviewer-tech-lead @acme-techlead --reviewer-qa @acme-qa --reviewer-devops @acme-devops --reviewer-infra @acme-infra
+prdtp-agents-functions-cli --workspace . governance configure --owner acme-org --repo product-workspace --release-gate-login acme-devops --reviewer-product @acme-product --reviewer-architecture @acme-arch --reviewer-tech-lead @acme-techlead --reviewer-qa @acme-qa --reviewer-devops @acme-devops --reviewer-infra @acme-infra --reviewer-infra-login acme-infra
+prdtp-agents-functions-cli --workspace . governance provision-enterprise
 ```
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, `github.immutable_governance` reviewer fields, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
+| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, `github.immutable_governance` reviewer fields, declare the operating profile and auth/audit modes, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
+| `provision-enterprise` | Apply optional remote branch protection and governance labels through the GitHub API for `operating_profile=enterprise`, then re-verify the remote controls. |
+
+`operating_profile=enterprise` is an optional remote overlay on top of the
+validated `core-local` path. The default verified API mode is `token-api`.
+Other enterprise auth modes are out of the current supported contract.
 
 ### dependencies
 
@@ -253,28 +262,9 @@ prdtp-agents-functions-cli --workspace . board sync
 
 Syncs GitHub issues and pull requests to `docs/project/board.md`. It is an execution snapshot, not a GitHub Project field synchronizer.
 
-### github issue
+### Published contract note
 
-GitHub Issue mutation wrappers.
-
-```text
-prdtp-agents-functions-cli --workspace . github issue create --title "Story: checkout flow" --body "..." --label role:backend
-prdtp-agents-functions-cli --workspace . github issue update --issue-ref GH-42 --title "Updated title"
-prdtp-agents-functions-cli --workspace . github issue comment --issue-ref GH-42 --body "Blocked by API contract"
-prdtp-agents-functions-cli --workspace . github issue label --issue-ref GH-42 --add status:blocked --remove status:ready
-```
-
-These commands are gated by `capabilities.gh.authorized.enabled=true`.
-
-### github pr
-
-GitHub pull-request mutation wrappers.
-
-```text
-prdtp-agents-functions-cli --workspace . github pr create --title "feat(frontend): GH-42 checkout form" --body "..." --base develop --head frontend/GH-42-checkout-form --label role:frontend
-prdtp-agents-functions-cli --workspace . github pr update --pr-ref 42 --title "Updated PR title" --add-label priority:p1
-prdtp-agents-functions-cli --workspace . github pr comment --pr-ref 42 --body "Ready for review"
-prdtp-agents-functions-cli --workspace . github pr label --pr-ref 42 --add criticality:critical --remove status:blocked
-```
-
-These commands are gated by `capabilities.gh.authorized.enabled=true`.
+The published skill contract intentionally omits local readiness promotion,
+maintainer-only reporting helpers, and repository mutation wrappers. If your
+organization keeps those extra surfaces in a source checkout, treat them as
+repository maintenance tooling rather than part of the distributed skill.

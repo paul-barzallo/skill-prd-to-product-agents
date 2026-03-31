@@ -656,14 +656,45 @@ pub fn smoke(skill_root: &Path, args: SmokeArgs) -> Result<()> {
         }
 
         print!("  [13] Database init... ");
-        let mut args = runtime_args_base.clone();
-        args.extend(["database".to_string(), "init".to_string()]);
-        let result = run_executable(&runtime_cli, &args, None)?;
-        if result.success {
+        let mut authorize_args = runtime_args_base.clone();
+        authorize_args.extend([
+            "capabilities".to_string(),
+            "authorize".to_string(),
+            "--capability".to_string(),
+            "sqlite".to_string(),
+            "--enabled".to_string(),
+            "true".to_string(),
+            "--source".to_string(),
+            "smoke-test".to_string(),
+            "--mode".to_string(),
+            "ledger".to_string(),
+        ]);
+        let authorize_result = run_executable(&runtime_cli, &authorize_args, None)?;
+
+        let mut init_args = runtime_args_base.clone();
+        init_args.extend(["database".to_string(), "init".to_string()]);
+        let init_result = run_executable(&runtime_cli, &init_args, None)?;
+
+        if authorize_result.success && init_result.success {
             println!("{}", "PASS".green());
             passed += 1;
         } else {
-            println!("{} (exit {})", "FAIL".red(), format_status(result.code));
+            let detail = if !authorize_result.success {
+                authorize_result.combined_output()
+            } else {
+                init_result.combined_output()
+            };
+            let code = if !authorize_result.success {
+                authorize_result.code
+            } else {
+                init_result.code
+            };
+            println!(
+                "{} (exit {})\n{}",
+                "FAIL".red(),
+                format_status(code),
+                detail
+            );
             failed += 1;
         }
 

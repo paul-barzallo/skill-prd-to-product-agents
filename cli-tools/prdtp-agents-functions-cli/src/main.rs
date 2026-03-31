@@ -7,7 +7,9 @@ mod database;
 mod dependencies;
 mod encoding;
 mod git;
+#[cfg(not(feature = "published-skill-contract"))]
 mod github;
+mod github_api;
 mod governance;
 mod logging;
 mod operations;
@@ -91,6 +93,7 @@ enum Commands {
         #[command(subcommand)]
         sub: BoardCommands,
     },
+    #[cfg(not(feature = "published-skill-contract"))]
     /// GitHub mutations routed through the runtime CLI
     Github {
         #[command(subcommand)]
@@ -197,8 +200,22 @@ enum AuditCommands {
     Sync,
     /// Replay JSON spool entries into the ledger
     ReplaySpool,
+    #[cfg(not(feature = "published-skill-contract"))]
     /// Export structured audit evidence as JSONL
     Export(audit::export::ExportArgs),
+    /// Validate or probe configured audit sinks
+    Sink {
+        #[command(subcommand)]
+        sub: AuditSinkCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum AuditSinkCommands {
+    /// Validate configured audit sinks and local hash-chain integrity
+    Health,
+    /// Emit a probe event through the configured audit sink
+    Test,
 }
 
 #[derive(Subcommand)]
@@ -243,6 +260,11 @@ enum DatabaseCommands {
 enum GovernanceCommands {
     /// Configure local GitHub governance and render CODEOWNERS
     Configure(governance::ConfigureArgs),
+    #[cfg(not(feature = "published-skill-contract"))]
+    /// Promote an enterprise-configured workspace to the typed production-ready contract
+    PromoteEnterpriseReadiness(governance::PromoteEnterpriseReadinessArgs),
+    /// Provision remote GitHub controls for the enterprise profile
+    ProvisionEnterprise(governance::ProvisionEnterpriseArgs),
 }
 
 #[derive(Subcommand)]
@@ -270,6 +292,7 @@ fn command_name(command: &Commands) -> &'static str {
         Commands::Governance { .. } => "governance",
         Commands::Dependencies { .. } => "dependencies",
         Commands::Board { .. } => "board",
+        #[cfg(not(feature = "published-skill-contract"))]
         Commands::Github { .. } => "github",
     }
 }
@@ -316,7 +339,12 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         Commands::Audit { sub } => match sub {
             AuditCommands::Sync => audit::sync::run(workspace),
             AuditCommands::ReplaySpool => audit::replay::run(workspace),
+            #[cfg(not(feature = "published-skill-contract"))]
             AuditCommands::Export(args) => audit::export::run(workspace, args),
+            AuditCommands::Sink { sub } => match sub {
+                AuditSinkCommands::Health => audit::sink::health(workspace),
+                AuditSinkCommands::Test => audit::sink::test(workspace),
+            },
         },
         Commands::Report { sub } => match sub {
             ReportCommands::Snapshot => reporting::snapshot::run(workspace),
@@ -339,6 +367,13 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         },
         Commands::Governance { sub } => match sub {
             GovernanceCommands::Configure(args) => governance::configure(workspace, args),
+            #[cfg(not(feature = "published-skill-contract"))]
+            GovernanceCommands::PromoteEnterpriseReadiness(args) => {
+                governance::promote_enterprise_readiness(workspace, args)
+            }
+            GovernanceCommands::ProvisionEnterprise(args) => {
+                governance::provision_enterprise(workspace, args)
+            }
         },
         Commands::Dependencies { sub } => match sub {
             DependenciesCommands::Check(args) => dependencies::run(workspace, args),
@@ -346,6 +381,7 @@ fn execute(command: Commands, workspace: &std::path::Path) -> anyhow::Result<()>
         Commands::Board { sub } => match sub {
             BoardCommands::Sync(args) => board::run(workspace, args),
         },
+        #[cfg(not(feature = "published-skill-contract"))]
         Commands::Github { sub } => github::run(workspace, sub),
     }
 }

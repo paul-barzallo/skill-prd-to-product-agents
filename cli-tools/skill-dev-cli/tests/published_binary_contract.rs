@@ -41,6 +41,19 @@ fn read_workflow_yaml(relative_path: &str) -> Value {
         .unwrap_or_else(|error| panic!("failed to parse {relative_path} as YAML: {error}"))
 }
 
+fn read_checksum_entries(relative_path: &str) -> Vec<String> {
+    read_repo_file(relative_path)
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            trimmed.split_whitespace().nth(1).map(str::to_owned)
+        })
+        .collect()
+}
+
 fn mapping_get<'a>(mapping: &'a Mapping, key: &str) -> &'a Value {
     mapping
         .get(Value::String(key.to_owned()))
@@ -379,11 +392,9 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
         .expect("failed to read build-skill-binaries workflow");
 
     let expected_entries = [
-        "sha256sum skill-dev-cli-* > checksums.sha256",
-        "sha256sum prd-to-product-agents-cli-* > checksums.sha256",
-        "sha256sum prdtp-agents-functions-cli-* > checksums.sha256",
-        "provenance-policy.json",
-        "sbom.spdx.json",
+        "python .github/scripts/generate_bundle_metadata.py --bundle-dir \"${ROOT_BIN_DIR}\"",
+        "python .github/scripts/generate_bundle_metadata.py --bundle-dir \"${SKILL_BIN_DIR}\"",
+        "python .github/scripts/generate_bundle_metadata.py --bundle-dir \"${WORKSPACE_RUNTIME_BIN_DIR}\"",
     ];
 
     let mut missing = Vec::new();
@@ -395,9 +406,83 @@ fn build_workflow_publish_refreshes_checksum_manifests() {
 
     assert!(
         missing.is_empty(),
-        "Build workflow publish step must refresh checksum manifests when it updates binaries:\n  {}",
+        "Build workflow publish step must refresh bundle metadata through the canonical generator:\n  {}",
         missing.join("\n  ")
     );
+
+    assert!(
+        repo_root()
+            .join(".github")
+            .join("scripts")
+            .join("generate_bundle_metadata.py")
+            .is_file(),
+        "canonical bundle metadata generator must exist at .github/scripts/generate_bundle_metadata.py"
+    );
+}
+
+#[test]
+fn build_workflow_publishes_runtime_with_published_skill_contract_feature() {
+    let content = read_repo_file(".github/workflows/build-skill-binaries.yml");
+    assert!(
+        content.contains(
+            "cargo build --release --target ${{ matrix.target }} --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml --features published-skill-contract"
+        ),
+        "build workflow must compile the published runtime CLI with the published-skill-contract feature"
+    );
+}
+
+#[test]
+fn build_workflow_package_acceptance_checks_hidden_runtime_commands() {
+    let content = read_repo_file(".github/workflows/build-skill-binaries.yml");
+    for expected in [
+        "governance --help | grep -qE '^[[:space:]]+promote-enterprise-readiness([[:space:]]|$)'",
+        "audit --help | grep -qE '^[[:space:]]+export([[:space:]]|$)'",
+        "--help | grep -qE '^[[:space:]]+github([[:space:]]|$)'",
+    ] {
+        assert!(
+            content.contains(expected),
+            "package contract acceptance must check hidden runtime command drift: missing '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn build_workflow_validates_published_help_contract_on_every_runner() {
+    let content = read_repo_file(".github/workflows/build-skill-binaries.yml");
+    for expected in [
+        "Validate published binary contract (Unix)",
+        "Validate published binary contract (Windows)",
+        "validate package --help",
+        "validate all --help",
+        "governance --help",
+        "audit --help",
+    ] {
+        assert!(
+            content.contains(expected),
+            "build workflow must validate the published help contract before uploading artifacts: missing '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn published_checksum_manifests_cover_policy_and_sbom_files() {
+    let bundles = [
+        "bin/checksums.sha256",
+        ".agents/skills/prd-to-product-agents/bin/checksums.sha256",
+        ".agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/checksums.sha256",
+    ];
+
+    for manifest in bundles {
+        let entries = read_checksum_entries(manifest);
+        assert!(
+            entries.iter().any(|entry| entry == "provenance-policy.json"),
+            "{manifest} must track provenance-policy.json"
+        );
+        assert!(
+            entries.iter().any(|entry| entry == "sbom.spdx.json"),
+            "{manifest} must track sbom.spdx.json"
+        );
+    }
 }
 
 #[test]
@@ -441,6 +526,22 @@ fn build_workflow_skips_redundant_bot_publish_runs() {
         condition.contains(expected_guard),
         "publish must skip bot-authored reruns to avoid redundant binary-refresh PR churn"
     );
+}
+
+#[test]
+fn release_checklist_declares_ci_pr_only_binary_refresh() {
+    let content = read_repo_file("docs/repo-release-checklist.md");
+    for expected in [
+        "The only supported refresh path for tracked binaries is `.github/workflows/build-skill-binaries.yml`",
+        "Do not hand-refresh tracked binaries",
+        "Local binary rebuilds are diagnostic only",
+        "Treat any attempt to bypass the workflow PR path for tracked binaries as a release-process failure",
+    ] {
+        assert!(
+            content.contains(expected),
+            "repo release checklist must declare the CI PR-only binary refresh path: missing '{expected}'"
+        );
+    }
 }
 
 #[test]

@@ -43,15 +43,8 @@ pub fn init(skill_root: &Path, use_temp_dir: bool) -> Result<WorkerGuard> {
     Ok(guard)
 }
 
-fn diagnostic_log_dir(skill_root: &Path, use_temp_dir: bool) -> PathBuf {
-    if use_temp_dir || is_packaged_skill_root(skill_root) {
-        std::env::temp_dir().join(TEMP_LOG_DIR_NAME).join("logs")
-    } else {
-        skill_root.join(".state").join("logs")
-    }
-}
-
-fn is_packaged_skill_root(skill_root: &Path) -> bool {
-    let normalized = skill_root.to_string_lossy().replace('\\', "/");
-    normalized.contains("/.agents/skills/prd-to-product-agents")
+fn diagnostic_log_dir(_skill_root: &Path, _use_temp_dir: bool) -> PathBuf {
+    // The skill CLI must never mutate the distributed package during bootstrap or validation.
+    // Keep diagnostics out of the skill root so copied packages remain portable and clean.
+    std::env::temp_dir().join(TEMP_LOG_DIR_NAME).join("logs")
 }
