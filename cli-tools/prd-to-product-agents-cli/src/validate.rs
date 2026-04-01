@@ -148,17 +148,7 @@ fn template_root(skill_root: &Path) -> std::path::PathBuf {
 }
 
 fn runtime_smoke(skill_root: &Path) -> Result<()> {
-    let repo_root = repo_root_for_runtime_smoke(skill_root)?;
-    let runtime_manifest = repo_root
-        .join("cli-tools")
-        .join("prdtp-agents-functions-cli")
-        .join("Cargo.toml");
-    if !runtime_manifest.is_file() {
-        bail!(
-            "runtime smoke requires repository sources at {}",
-            runtime_manifest.display()
-        );
-    }
+    let runtime_binary = current_platform_runtime_binary(skill_root)?;
 
     let workspace =
         std::env::temp_dir().join(format!("prdtp-runtime-smoke-{}", Uuid::new_v4().simple()));
@@ -197,15 +187,9 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
             "creating initial runtime smoke commit",
         )?;
 
+        run_runtime_cli(&runtime_binary, &workspace, &["capabilities", "detect"])?;
         run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
-            &workspace,
-            &["capabilities", "detect"],
-        )?;
-        run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &[
                 "capabilities",
@@ -236,8 +220,7 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
         }
 
         run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &[
                 "governance",
@@ -264,27 +247,19 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
                 "acme-infra",
             ],
         )?;
+        run_runtime_cli(&runtime_binary, &workspace, &["validate", "governance"])?;
         run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
-            &workspace,
-            &["validate", "governance"],
-        )?;
-        run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &["validate", "ci", "prompt-tool-contracts"],
         )?;
         run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &["validate", "ci", "copilot-runtime-contract"],
         )?;
         run_runtime_cli(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &["agents", "assemble", "--verify"],
         )?;
@@ -296,8 +271,7 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
         util::write_utf8_lf(&vision_path, &vision)?;
 
         let branch_output = run_runtime_cli_capture(
-            &runtime_manifest,
-            &repo_root,
+            &runtime_binary,
             &workspace,
             &[
                 "git",
@@ -327,12 +301,8 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
             );
         }
 
-        let readiness_output = run_runtime_cli_capture(
-            &runtime_manifest,
-            &repo_root,
-            &workspace,
-            &["validate", "readiness"],
-        )?;
+        let readiness_output =
+            run_runtime_cli_capture(&runtime_binary, &workspace, &["validate", "readiness"])?;
         if readiness_output.status.success() {
             bail!("runtime smoke expected validate readiness to fail until production-ready");
         }
@@ -357,23 +327,6 @@ fn runtime_smoke(skill_root: &Path) -> Result<()> {
     }
 
     smoke_result
-}
-
-fn repo_root_for_runtime_smoke(skill_root: &Path) -> Result<PathBuf> {
-    for ancestor in skill_root.ancestors() {
-        if ancestor
-            .join("cli-tools")
-            .join("prdtp-agents-functions-cli")
-            .join("Cargo.toml")
-            .is_file()
-        {
-            return Ok(ancestor.to_path_buf());
-        }
-    }
-    bail!(
-        "could not locate repository root from {}; runtime smoke is repository-only",
-        skill_root.display()
-    )
 }
 
 fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
@@ -420,13 +373,8 @@ fn run_command(name: &str, args: &[&str], cwd: Option<&Path>, context: &str) -> 
     bail!("{context}: {}", combined.trim());
 }
 
-fn run_runtime_cli(
-    manifest_path: &Path,
-    repo_root: &Path,
-    workspace: &Path,
-    args: &[&str],
-) -> Result<()> {
-    let output = run_runtime_cli_capture(manifest_path, repo_root, workspace, args)?;
+fn run_runtime_cli(runtime_binary: &Path, workspace: &Path, args: &[&str]) -> Result<()> {
+    let output = run_runtime_cli_capture(runtime_binary, workspace, args)?;
     if output.status.success() {
         return Ok(());
     }
@@ -448,23 +396,13 @@ fn run_runtime_cli(
 }
 
 fn run_runtime_cli_capture(
-    manifest_path: &Path,
-    repo_root: &Path,
+    runtime_binary: &Path,
     workspace: &Path,
     args: &[&str],
 ) -> Result<Output> {
-    let mut command = Command::new("cargo");
+    let mut command = Command::new(runtime_binary);
     command
-        .current_dir(repo_root)
-        .args([
-            "run",
-            "--quiet",
-            "--manifest-path",
-            &manifest_path.to_string_lossy(),
-            "--",
-            "--workspace",
-            &workspace.to_string_lossy(),
-        ])
+        .args(["--workspace", &workspace.to_string_lossy()])
         .args(args);
     let output = command
         .output()
@@ -555,9 +493,17 @@ fn binary_bundle_integrity(skill_root: &Path) -> Result<()> {
 
 fn published_runtime_surface(skill_root: &Path) -> Result<()> {
     let runtime_binary = current_platform_runtime_binary(skill_root)?;
-    let global_help = run_binary_capture(&runtime_binary, &["--help"])
-        .with_context(|| format!("reading published runtime help from {}", runtime_binary.display()))?;
-    assert_help_absent(&global_help, "github", "published runtime must not expose the github command")?;
+    let global_help = run_binary_capture(&runtime_binary, &["--help"]).with_context(|| {
+        format!(
+            "reading published runtime help from {}",
+            runtime_binary.display()
+        )
+    })?;
+    assert_help_absent(
+        &global_help,
+        "github",
+        "published runtime must not expose the github command",
+    )?;
 
     let governance_help = run_binary_capture(&runtime_binary, &["governance", "--help"])?;
     assert_help_absent(
