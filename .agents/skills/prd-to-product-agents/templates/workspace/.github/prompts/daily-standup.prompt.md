@@ -88,5 +88,5 @@ Present the standup report to the user with:
 
 ## Write
 
-- Record progress or new findings using permitted calls in your boundary to `prdtp-agents-functions-cli state *`
-- Always use `prdtp-agents-functions-cli git finalize` to close the operational branch and commit the new state.
+- Record progress or new findings using permitted calls in your boundary to `prdtp-agents-functions-cli --workspace . state *`
+- Always use `prdtp-agents-functions-cli --workspace . git finalize` to close the operational branch and commit the new state.

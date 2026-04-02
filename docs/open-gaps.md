@@ -18,10 +18,7 @@ release quality, and operational discipline.
 
 ## Priority 1
 
-- Support and escalation guidance for maintainers is still minimal.
-- Release workflow behavior and release documentation still need periodic drift review, especially around the reviewed binary-refresh PR path and any future provenance controls.
-- Published Unix binaries still need periodic verification that git executable bits remain intact across repository updates.
-- The relationship between issue templates and audit follow-up process is not yet documented in the maintainer-facing repo docs.
+No active Priority 1 repository gaps right now. Keep release/workflow drift and published-binary mode integrity under Watch items because `test repo-validation` now enforces the current contract.
 
 ## Priority 2
 

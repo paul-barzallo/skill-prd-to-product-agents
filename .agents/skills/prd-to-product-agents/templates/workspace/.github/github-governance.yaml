@@ -22,10 +22,12 @@ github:
     required: true
     reviewer_handles: "@team-devops"
     reviewer_logins: "REPLACE_ME_DEVOPS_LOGIN"
+    approval_quorum: 1
   immutable_governance:
     required: true
     reviewer_handles: "@team-devops,@team-infra"
     reviewer_logins: "REPLACE_ME_DEVOPS_LOGIN,REPLACE_ME_INFRA_LOGIN"
+    approval_quorum: 1
     required_labels: "criticality:critical"
   labels:
     role: "role:backend,role:frontend,role:qa,role:arch,role:ux,role:product,role:ops,role:techlead"

@@ -5,6 +5,7 @@ use prdtp_agents_shared::capabilities::{
     read_capabilities_document, render_capabilities_yaml, write_capabilities_document,
     CapabilitySnapshotInput,
 };
+use prdtp_agents_shared::tool_detection::command_exists as tool_command_exists;
 use serde_json::json;
 use serde_yaml::Value;
 use std::path::Path;
@@ -85,17 +86,17 @@ pub fn run(workspace: &Path, args: DetectArgs) -> Result<()> {
     let host = detect_host();
     println!("  OS: {os}, Host: {host}");
 
-    let git_installed = !args.disable_git && command_exists("git");
+    let git_installed = !args.disable_git && tool_command_exists("git");
     let git_identity = git_installed && git_identity_configured();
-    let gh_installed = !args.disable_gh && command_exists("gh");
+    let gh_installed = !args.disable_gh && tool_command_exists("gh");
     let gh_auth = gh_installed && gh_authenticated();
     let sqlite_runtime_available = !args.disable_sqlite;
-    let sqlite_cli_available = command_exists("sqlite3");
+    let sqlite_cli_available = tool_command_exists("sqlite3");
     let db_initialized = workspace.join(".state/project_memory.db").exists();
-    let node_installed = command_exists("node");
-    let npm_installed = command_exists("npm");
+    let node_installed = tool_command_exists("node");
+    let npm_installed = tool_command_exists("npm");
     let node_native = node_installed;
-    let mdlint_installed = !args.disable_markdownlint && command_exists("markdownlint");
+    let mdlint_installed = !args.disable_markdownlint && tool_command_exists("markdownlint");
     let mdlint_native = mdlint_installed;
     let ui_available = workspace.join("reporting-ui/index.html").exists();
     let xlsx_ready = workspace
@@ -373,25 +374,6 @@ fn detect_host() -> &'static str {
         "vscode"
     } else {
         "local"
-    }
-}
-
-fn command_exists(name: &str) -> bool {
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("where")
-            .arg(name)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-    }
-    #[cfg(not(target_os = "windows"))]
-    {
-        Command::new("which")
-            .arg(name)
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
     }
 }
 

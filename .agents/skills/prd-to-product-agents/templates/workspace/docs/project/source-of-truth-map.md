@@ -19,20 +19,20 @@ These files drive workflow decisions. They are mutated **only** through `prdtp-a
 
 These files are the single source of truth for product, architecture, and quality decisions. They are edited directly by their stewards.
 
-| Artifact | Canonical location | Primary steward | Consumers |
-| --- | --- | --- | --- |
-| Vision | `docs/project/vision.md` | product-owner | bootstrap-from-prd |
-| Scope | `docs/project/scope.md` | product-owner | bootstrap-from-prd, client-review-uat |
-| Backlog | `docs/project/backlog.yaml` | product-owner | daily-standup, release-readiness |
-| Refined stories | `docs/project/refined-stories.yaml` | tech-lead | daily-standup, release-readiness, client-review-uat |
-| Architecture | `docs/project/architecture/overview.md` | software-architect | security-check, enrich-agents-from-architecture |
-| Decisions | `docs/project/decisions/` | software-architect | enrich-agents-from-architecture |
-| Quality gates | `docs/project/quality-gates.yaml` | qa-lead | release-readiness |
-| Release notes | `docs/project/releases.md` | devops-release-engineer | release-readiness, post-release-monitoring, client-review-uat |
-| Acceptance criteria | `docs/project/acceptance-criteria.md` | product-owner / qa-lead | client-review-uat |
-| Risks | `docs/project/risks.md` | product-owner | security-check |
-| Test strategy | `docs/project/qa/test-strategy.md` | qa-lead | security-check |
-| UX journeys | `docs/project/ux/journeys.md` | ux-designer | enrich-agents-from-prd |
+| Artifact | Canonical location | Schema | Primary steward | Consumers |
+| --- | --- | --- | --- | --- |
+| Vision | `docs/project/vision.md` | n/a | product-owner | bootstrap-from-prd |
+| Scope | `docs/project/scope.md` | n/a | product-owner | bootstrap-from-prd, client-review-uat |
+| Backlog | `docs/project/backlog.yaml` | `schemas/backlog.schema.yaml` | product-owner | daily-standup, release-readiness |
+| Refined stories | `docs/project/refined-stories.yaml` | `schemas/refined-stories.schema.yaml` | tech-lead | daily-standup, release-readiness, client-review-uat |
+| Architecture | `docs/project/architecture/overview.md` | n/a | software-architect | security-check, enrich-agents-from-architecture |
+| Decisions | `docs/project/decisions/` | n/a | software-architect | enrich-agents-from-architecture |
+| Quality gates | `docs/project/quality-gates.yaml` | `schemas/quality-gates.schema.yaml` | qa-lead | release-readiness |
+| Release notes | `docs/project/releases.md` | n/a | devops-release-engineer | release-readiness, post-release-monitoring, client-review-uat |
+| Acceptance criteria | `docs/project/acceptance-criteria.md` | n/a | product-owner / qa-lead | client-review-uat |
+| Risks | `docs/project/risks.md` | n/a | product-owner | security-check |
+| Test strategy | `docs/project/qa/test-strategy.md` | n/a | qa-lead | security-check |
+| UX journeys | `docs/project/ux/journeys.md` | n/a | ux-designer | enrich-agents-from-prd |
 
 ## Governance files
 

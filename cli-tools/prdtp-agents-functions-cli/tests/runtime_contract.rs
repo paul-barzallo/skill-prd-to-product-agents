@@ -259,6 +259,24 @@ fn set_governance_string(workspace: &Path, path: &[&str], value: &str) {
     .expect("failed to write governance yaml");
 }
 
+fn set_governance_u64(workspace: &Path, path: &[&str], value: u64) {
+    let governance_path = workspace.join(".github/github-governance.yaml");
+    let raw = fs::read_to_string(&governance_path).expect("failed to read governance yaml");
+    let mut parsed: Value = serde_yaml::from_str(&raw).expect("failed to parse governance yaml");
+    let mut current = &mut parsed;
+    for key in &path[..path.len() - 1] {
+        current = current
+            .get_mut(*key)
+            .unwrap_or_else(|| panic!("missing governance key '{}'", key));
+    }
+    current[path[path.len() - 1]] = Value::Number(serde_yaml::Number::from(value));
+    fs::write(
+        &governance_path,
+        serde_yaml::to_string(&parsed).expect("failed to render governance yaml"),
+    )
+    .expect("failed to write governance yaml");
+}
+
 fn init_git_repo(workspace: &Path) {
     let output = Command::new("git")
         .args(["init", "-b", "main"])
@@ -330,6 +348,23 @@ fn configure_governance(workspace: &Path) {
         "governance configure failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn configure_enterprise_remote_governance(workspace: &Path, audit_endpoint: &str) {
+    configure_governance(workspace);
+    set_governance_string(workspace, &["operating_profile"], "enterprise");
+    set_governance_string(workspace, &["github", "auth", "mode"], "token-api");
+    set_governance_string(workspace, &["audit", "mode"], "remote");
+    set_governance_string(
+        workspace,
+        &["audit", "remote", "endpoint"],
+        audit_endpoint,
+    );
+    set_governance_string(
+        workspace,
+        &["audit", "remote", "auth_header_env"],
+        "PRDTP_AUDIT_TOKEN",
     );
 }
 
@@ -486,7 +521,7 @@ fn governance_configure_rejects_duplicate_infra_login() {
         "governance configure unexpectedly accepted duplicate immutable reviewer login"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("reviewer-infra-login must differ from release-gate-login"));
+    assert!(stderr.contains("reviewer-infra-login must differ from every release-gate login"));
 }
 
 #[test]
@@ -524,7 +559,119 @@ fn governance_configure_happy_path_leaves_workspace_configured() {
         String::from_utf8_lossy(&readiness_output.stdout),
         String::from_utf8_lossy(&readiness_output.stderr)
     );
-    assert!(readiness_combined.contains("production-ready"));
+    assert!(readiness_combined.contains("validate readiness is out of contract"));
+    assert!(readiness_combined.contains("capabilities.gh.authorized.enabled=false"));
+}
+
+#[test]
+fn governance_configure_supports_release_gate_quorums_and_extra_logins() {
+    let workspace = make_workspace();
+    let output = run_cli(
+        workspace.path(),
+        &[
+            "governance",
+            "configure",
+            "--owner",
+            "acme-org",
+            "--repo",
+            "copilot-workspace",
+            "--release-gate-login",
+            "devops-login",
+            "--release-gate-extra-logins",
+            "backup-login,devops-login",
+            "--release-gate-approval-quorum",
+            "2",
+            "--reviewer-product",
+            "@acme-product",
+            "--reviewer-architecture",
+            "@acme-arch",
+            "--reviewer-tech-lead",
+            "@acme-techlead",
+            "--reviewer-qa",
+            "@acme-qa",
+            "--reviewer-devops",
+            "@acme-devops",
+            "--reviewer-infra",
+            "@acme-infra",
+            "--reviewer-infra-login",
+            "infra-login",
+            "--immutable-governance-approval-quorum",
+            "2",
+        ],
+        &[],
+    );
+    assert!(
+        output.status.success(),
+        "governance configure with quorum options failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let governance_path = workspace.path().join(".github/github-governance.yaml");
+    let governance = fs::read_to_string(&governance_path).expect("failed to read governance yaml");
+    let parsed: Value = serde_yaml::from_str(&governance).expect("failed to parse governance yaml");
+    assert_eq!(
+        parsed["github"]["release_gate"]["reviewer_logins"].as_str(),
+        Some("devops-login,backup-login")
+    );
+    assert_eq!(
+        parsed["github"]["release_gate"]["approval_quorum"].as_u64(),
+        Some(2)
+    );
+    assert_eq!(
+        parsed["github"]["immutable_governance"]["reviewer_logins"].as_str(),
+        Some("devops-login,infra-login")
+    );
+    assert_eq!(
+        parsed["github"]["immutable_governance"]["approval_quorum"].as_u64(),
+        Some(2)
+    );
+
+    let governance_output = run_cli(workspace.path(), &["validate", "governance"], &[]);
+    assert!(
+        governance_output.status.success(),
+        "validate governance failed after quorum configure:\n{}",
+        String::from_utf8_lossy(&governance_output.stderr)
+    );
+}
+
+#[test]
+fn validate_governance_accepts_missing_quorum_fields_for_backward_compatibility() {
+    let workspace = make_workspace();
+    configure_governance(workspace.path());
+
+    let governance_path = workspace.path().join(".github/github-governance.yaml");
+    let raw = fs::read_to_string(&governance_path).expect("failed to read governance yaml");
+    let mutated = raw
+        .replace("    approval_quorum: 1\n", "")
+        .replacen("    approval_quorum: 1\n", "", 1);
+    fs::write(&governance_path, mutated).expect("failed to update governance yaml");
+
+    let output = run_cli(workspace.path(), &["validate", "governance"], &[]);
+    assert!(
+        output.status.success(),
+        "validate governance unexpectedly rejected missing quorum fields:\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn validate_governance_rejects_release_gate_quorum_larger_than_reviewer_pool() {
+    let workspace = make_workspace();
+    configure_governance(workspace.path());
+    set_governance_u64(
+        workspace.path(),
+        &["github", "release_gate", "approval_quorum"],
+        2,
+    );
+
+    let output = run_cli(workspace.path(), &["validate", "governance"], &[]);
+    assert!(
+        !output.status.success(),
+        "validate governance unexpectedly accepted impossible release-gate quorum"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("github.release_gate.approval_quorum=2 exceeds the 1 configured reviewer login(s)"));
 }
 
 #[test]
@@ -579,6 +726,53 @@ fn audit_sync_degrades_when_sqlite_policy_disabled() {
     assert!(degraded_log.is_file(), "expected degraded audit sync log to be written");
     let log = fs::read_to_string(&degraded_log).expect("failed to read degraded audit sync log");
     assert!(log.contains("SQLite unauthorized"));
+}
+
+#[test]
+fn audit_sink_health_local_hashchain_stays_available_when_gh_policy_disabled() {
+    let workspace = make_workspace();
+
+    let output = run_cli(workspace.path(), &["audit", "sink", "health"], &[]);
+    assert!(
+        output.status.success(),
+        "audit sink health unexpectedly failed in local-hashchain mode:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn audit_sink_health_requires_gh_when_remote_mode_is_configured() {
+    let workspace = make_workspace();
+    configure_enterprise_remote_governance(
+        workspace.path(),
+        "https://audit.example.test/events",
+    );
+
+    let output = run_cli(workspace.path(), &["audit", "sink", "health"], &[]);
+    assert!(
+        !output.status.success(),
+        "audit sink health unexpectedly succeeded with gh disabled in remote mode"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("audit sink health is out of contract"));
+}
+
+#[test]
+fn audit_sink_test_requires_gh_when_remote_mode_is_configured() {
+    let workspace = make_workspace();
+    configure_enterprise_remote_governance(
+        workspace.path(),
+        "https://audit.example.test/events",
+    );
+
+    let output = run_cli(workspace.path(), &["audit", "sink", "test"], &[]);
+    assert!(
+        !output.status.success(),
+        "audit sink test unexpectedly succeeded with gh disabled in remote mode"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("audit sink test is out of contract"));
 }
 
 #[test]
@@ -749,7 +943,7 @@ fn readiness_requires_enterprise_profile_when_marked_production_ready() {
         &["github", "branch_protection", "enabled"],
         true,
     );
-    set_capability_policy(workspace.path(), "gh", false);
+    set_capability_policy(workspace.path(), "gh", true);
 
     let output = run_cli(workspace.path(), &["validate", "readiness"], &[]);
     assert!(
@@ -766,6 +960,7 @@ fn readiness_rejects_github_project_until_supported() {
     configure_governance(workspace.path());
     set_governance_status(workspace.path(), "production-ready");
     set_governance_bool(workspace.path(), &["github", "project", "enabled"], true);
+    set_capability_policy(workspace.path(), "gh", true);
 
     let output = run_cli(workspace.path(), &["validate", "readiness"], &[]);
     assert!(
@@ -801,6 +996,49 @@ fn governance_validation_rejects_github_app_for_enterprise_profile() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("enterprise profile requires github.auth.mode=token-api"));
+}
+
+#[test]
+fn pr_governance_requires_gh_when_policy_disabled() {
+    let workspace = make_workspace();
+
+    let output = run_cli(workspace.path(), &["validate", "pr-governance"], &[]);
+    assert!(
+        !output.status.success(),
+        "validate pr-governance unexpectedly succeeded with gh disabled"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("validate pr-governance is out of contract"));
+}
+
+#[test]
+fn release_gate_requires_gh_when_policy_disabled() {
+    let workspace = make_workspace();
+
+    let output = run_cli(workspace.path(), &["validate", "release-gate"], &[]);
+    assert!(
+        !output.status.success(),
+        "validate release-gate unexpectedly succeeded with gh disabled"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("validate release-gate is out of contract"));
+}
+
+#[test]
+fn provision_enterprise_requires_gh_when_policy_disabled() {
+    let workspace = make_workspace();
+    configure_enterprise_remote_governance(
+        workspace.path(),
+        "https://audit.example.test/events",
+    );
+
+    let output = run_cli(workspace.path(), &["governance", "provision-enterprise"], &[]);
+    assert!(
+        !output.status.success(),
+        "governance provision-enterprise unexpectedly succeeded with gh disabled"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("governance provision-enterprise is out of contract"));
 }
 
 #[test]
@@ -892,6 +1130,75 @@ fn copilot_runtime_contract_rejects_github_app_claims() {
 }
 
 #[test]
+fn copilot_runtime_contract_rejects_issue_wrapper_claims() {
+    let workspace = make_workspace();
+    let doc_path = workspace.path().join("docs/runtime/capability-contract.md");
+    let mut content = fs::read_to_string(&doc_path).expect("failed to read capability contract");
+    content.push_str("\nLegacy note: GitHub issue/PR wrappers may run when gh is enabled.\n");
+    fs::write(&doc_path, content).expect("failed to mutate capability contract");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "copilot-runtime-contract"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "copilot-runtime-contract unexpectedly accepted GitHub issue wrapper drift"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("must not advertise GitHub issue/PR wrappers"));
+}
+
+#[test]
+fn copilot_runtime_contract_rejects_preinstalled_hook_claims() {
+    let workspace = make_workspace();
+    let doc_path = workspace
+        .path()
+        .join("docs/runtime/prdtp-agents-functions-cli-reference.md");
+    let mut content = fs::read_to_string(&doc_path).expect("failed to read runtime reference");
+    content.push_str(
+        "\nThe installed `pre-commit` hook blocks normal direct `git commit` attempts.\n",
+    );
+    fs::write(&doc_path, content).expect("failed to mutate runtime reference");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "copilot-runtime-contract"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "copilot-runtime-contract unexpectedly accepted preinstalled hook drift"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("docs must not claim hooks are already installed"));
+}
+
+#[test]
+fn copilot_runtime_contract_requires_packaged_enterprise_evidence_wording() {
+    let workspace = make_workspace();
+    let doc_path = workspace
+        .path()
+        .join("docs/runtime/runtime-claims-coverage.md");
+    let content = fs::read_to_string(&doc_path).expect("failed to read runtime claims coverage");
+    let mutated = content.replace("isolated packaged skill copy", "packaged skill copy");
+    fs::write(&doc_path, mutated).expect("failed to mutate runtime claims coverage");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "copilot-runtime-contract"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "copilot-runtime-contract unexpectedly accepted weaker enterprise evidence wording"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("isolated packaged skill copy"));
+}
+
+#[test]
 fn copilot_runtime_contract_rejects_execute_enforcement_headings() {
     let workspace = make_workspace();
     let doc_path = workspace.path().join("AGENTS.md");
@@ -914,4 +1221,122 @@ fn copilot_runtime_contract_rejects_execute_enforcement_headings() {
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("execute tables must be framed as intended call sets"));
+}
+
+#[test]
+fn copilot_runtime_contract_requires_execute_broker_deferral_wording() {
+    let workspace = make_workspace();
+    let doc_path = workspace.path().join("docs/runtime/runtime-claims-coverage.md");
+    let content = fs::read_to_string(&doc_path).expect("failed to read runtime claims coverage");
+    let mutated = content.replace(
+        "No technical role broker is in scope for this P0. ",
+        "",
+    );
+    fs::write(&doc_path, mutated).expect("failed to mutate runtime claims coverage");
+
+    let output = run_cli(
+        workspace.path(),
+        &["validate", "ci", "copilot-runtime-contract"],
+        &[],
+    );
+    assert!(
+        !output.status.success(),
+        "copilot-runtime-contract unexpectedly accepted missing execute broker deferral wording"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("No technical role broker is in scope for this P0."));
+}
+
+#[test]
+fn yaml_schemas_reject_refined_story_contract_drift() {
+    let workspace = make_workspace();
+    let refined_path = workspace.path().join("docs/project/refined-stories.yaml");
+    fs::write(
+        &refined_path,
+        "stories:\n  - id: US-999\n    title: Drifted story\n    status: refined\n    priority: high\n    owner_role: product-owner\n    acceptance_ref: docs/project/acceptance-criteria.md#missing-anchor\n",
+    )
+    .expect("failed to write refined stories drift fixture");
+
+    let output = run_cli(workspace.path(), &["validate", "ci", "yaml-schemas"], &[]);
+    assert!(
+        !output.status.success(),
+        "yaml-schemas unexpectedly accepted refined story contract drift"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("implementation_map")
+            || stderr.contains("missing matching story in backlog.yaml")
+            || stderr.contains("missing matching heading in acceptance-criteria.md"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn yaml_schemas_reject_backlog_story_with_missing_epic_when_epics_list_is_empty() {
+    let workspace = make_workspace();
+    let backlog_path = workspace.path().join("docs/project/backlog.yaml");
+    fs::write(
+        &backlog_path,
+        "epics: []\nstories:\n  - id: US-001\n    epic_id: EPIC-404\n    title: Drifted backlog story\n    priority: high\n    status: draft\n    owner_role: product-owner\n    acceptance_ref: docs/project/acceptance-criteria.md#us-001\n",
+    )
+    .expect("failed to write backlog drift fixture");
+
+    let output = run_cli(workspace.path(), &["validate", "ci", "yaml-schemas"], &[]);
+    assert!(
+        !output.status.success(),
+        "yaml-schemas unexpectedly accepted backlog story with missing epic when epics list is empty"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("missing matching epic in backlog.yaml"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn yaml_schemas_reject_refined_story_when_backlog_story_list_is_empty() {
+    let workspace = make_workspace();
+    let backlog_path = workspace.path().join("docs/project/backlog.yaml");
+    fs::write(
+        &backlog_path,
+        "epics:\n  - id: EPIC-001\n    title: Example epic\n    priority: high\n    status: proposed\n    owner_role: product-owner\nstories: []\n",
+    )
+    .expect("failed to write empty backlog stories fixture");
+
+    let refined_path = workspace.path().join("docs/project/refined-stories.yaml");
+    fs::write(
+        &refined_path,
+        "stories:\n  - id: US-001\n    title: Drifted refined story\n    status: refined\n    priority: high\n    owner_role: tech-lead\n    acceptance_ref: docs/project/acceptance-criteria.md#us-001\n    implementation_map:\n      - action: update\n        path: src/main.rs\n        description: Example implementation step\n",
+    )
+    .expect("failed to write refined stories fixture");
+
+    let output = run_cli(workspace.path(), &["validate", "ci", "yaml-schemas"], &[]);
+    assert!(
+        !output.status.success(),
+        "yaml-schemas unexpectedly accepted refined story when backlog story list is empty"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("missing matching story in backlog.yaml"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn yaml_schemas_reject_acceptance_refs_when_acceptance_doc_has_no_headings() {
+    let workspace = make_workspace();
+    let acceptance_path = workspace.path().join("docs/project/acceptance-criteria.md");
+    fs::write(&acceptance_path, "Acceptance criteria body without headings.\n")
+        .expect("failed to write acceptance criteria fixture");
+
+    let output = run_cli(workspace.path(), &["validate", "ci", "yaml-schemas"], &[]);
+    assert!(
+        !output.status.success(),
+        "yaml-schemas unexpectedly accepted acceptance refs without heading anchors"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("missing matching heading in acceptance-criteria.md"),
+        "unexpected stderr: {stderr}"
+    );
 }

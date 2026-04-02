@@ -143,7 +143,7 @@ prdtp-agents-functions-cli --workspace . git install-hooks
 | `pre-commit-validate` | Governance, branch protection, immutable file validation |
 | `install-hooks` | Install git hooks into `.git/hooks/` |
 
-> **Security note:** direct `git commit` stays blocked by the installed hook. Only the runtime-owned paths (`bootstrap commit` and `git finalize`) may create commits, and they do so internally after validation rather than through exported bypass env vars.
+> **Security note:** after `git install-hooks` has been applied in a Git-enabled workspace, direct `git commit` stays blocked by the installed hook. Only the runtime-owned paths (`bootstrap commit` and `git finalize`) may create commits, and they do so internally after validation rather than through exported bypass env vars.
 
 ### audit
 
@@ -237,12 +237,14 @@ prdtp-agents-functions-cli --workspace . governance provision-enterprise
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate login, `github.immutable_governance` reviewer fields, declare the operating profile and auth/audit modes, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
+| `configure` | Fill local GitHub repository identifiers, reviewer handles, release-gate logins, approval quorums, and `github.immutable_governance` reviewer fields, declare the operating profile and auth/audit modes, regenerate `CODEOWNERS`, and move readiness to `configured`. `production-ready` is a separately reviewed state checked by `validate readiness` and `validate release-gate`. |
 | `provision-enterprise` | Apply optional remote branch protection and governance labels through the GitHub API for `operating_profile=enterprise`, then re-verify the remote controls. |
 
 `operating_profile=enterprise` is an optional remote overlay on top of the
 validated `core-local` path. The default verified API mode is `token-api`.
 Other enterprise auth modes are out of the current supported contract.
+
+`configure` also accepts `--release-gate-extra-logins`, `--release-gate-approval-quorum`, and `--immutable-governance-approval-quorum` when a workspace intentionally requires more than the default single-reviewer threshold.
 
 ### dependencies
 

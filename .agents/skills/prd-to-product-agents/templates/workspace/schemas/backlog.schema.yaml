@@ -1,0 +1,26 @@
+# Schema reference for docs/project/backlog.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+epics: list(include('epic'), required=False)
+stories: list(include('story'), required=False)
+
+---
+epic:
+  id: str(matches=r'^EPIC-[0-9]+$')
+  title: str(min=1)
+  description: str(required=False)
+  priority: enum('low', 'medium', 'high', 'critical')
+  status: str(min=1)
+  owner_role: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer', required=False)
+  release_ref: str(required=False)
+
+story:
+  id: str(matches=r'^(US|ST|JOB)-[A-Za-z0-9_-]+$')
+  epic_id: str(min=1)
+  title: str(min=1)
+  description: str(required=False)
+  priority: enum('low', 'medium', 'high', 'critical')
+  status: str(min=1)
+  owner_role: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer', required=False)
+  depends_on: list(str(), required=False)
+  acceptance_ref: str(matches=r'^docs/project/acceptance-criteria\.md#[A-Za-z0-9_-]+$')

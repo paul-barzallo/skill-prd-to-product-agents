@@ -32,6 +32,87 @@ const FRESHNESS_PATHS: &[&str] = &[
     "docs/project/decisions",
 ];
 const TEMPLATE_STATE_ALLOWED_FILES: &[&str] = &["README.md", "memory-schema.sql"];
+const WORKSPACE_FLAG_SURFACES: &[&str] = &[
+    "README.md",
+    "SKILL.md",
+    "templates/workspace/.instructions.md",
+    "templates/workspace/AGENTS.md",
+    "templates/workspace/.github/copilot-instructions.md",
+    "templates/workspace/.github/instructions/agents.instructions.md",
+    "templates/workspace/.github/project-governance.md",
+    "templates/workspace/.github/workflows/smoke-tests.yml",
+    "templates/workspace/.vscode/tasks.json",
+    "templates/workspace/.github/agents/identity/backend-developer.md",
+    "templates/workspace/.github/agents/identity/frontend-developer.md",
+    "templates/workspace/.github/agents/backend-developer.agent.md",
+    "templates/workspace/.github/agents/frontend-developer.agent.md",
+    "templates/workspace/.github/prompts/bootstrap-from-prd.prompt.md",
+    "templates/workspace/.github/prompts/validation-pack.prompt.md",
+    "templates/workspace/.github/prompts/small-frontend-change.prompt.md",
+    "templates/workspace/.github/prompts/small-backend-change.prompt.md",
+    "templates/workspace/.github/prompts/security-check.prompt.md",
+    "templates/workspace/.github/prompts/release-readiness.prompt.md",
+    "templates/workspace/.github/prompts/post-release-monitoring.prompt.md",
+    "templates/workspace/.github/prompts/client-review-uat.prompt.md",
+    "templates/workspace/.github/prompts/daily-standup.prompt.md",
+    "templates/workspace/.github/prompts/enrich-agents-from-prd.prompt.md",
+    "templates/workspace/.github/prompts/enrich-agents-from-architecture.prompt.md",
+    "templates/workspace/.github/prompts/enrich-agents-from-implementation.prompt.md",
+    "templates/workspace/.agents/skills/runtime-incident-triage/SKILL.md",
+];
+const WORKSPACE_COMMAND_KEYWORDS: &[&str] = &[
+    "agents",
+    "audit",
+    "board",
+    "capabilities",
+    "database",
+    "dependencies",
+    "git",
+    "governance",
+    "report",
+    "state",
+    "validate",
+];
+const DEVELOPER_IDENTITY_GIT_SURFACES: &[(&str, &str)] = &[
+    (
+        "templates/workspace/.github/agents/identity/backend-developer.md",
+        "backend-developer",
+    ),
+    (
+        "templates/workspace/.github/agents/identity/frontend-developer.md",
+        "frontend-developer",
+    ),
+    (
+        "templates/workspace/.github/agents/backend-developer.agent.md",
+        "backend-developer",
+    ),
+    (
+        "templates/workspace/.github/agents/frontend-developer.agent.md",
+        "frontend-developer",
+    ),
+];
+const FORBIDDEN_MANUAL_GIT_FLOW: &[(&str, &str)] = &[
+    (
+        "git fetch origin --prune",
+        "legacy manual fetch flow is out of contract when the wrapper exists",
+    ),
+    (
+        "git checkout develop",
+        "manual checkout of develop is out of contract when the wrapper exists",
+    ),
+    (
+        "git pull --ff-only origin develop",
+        "manual develop synchronization is out of contract when the wrapper exists",
+    ),
+    (
+        "git pull --rebase origin <branch>",
+        "manual branch rebasing is out of contract when the wrapper exists",
+    ),
+    (
+        "git rebase develop",
+        "manual rebasing onto develop is out of contract when the wrapper exists",
+    ),
+];
 
 /// Run the portable skill-package validation surface.
 pub fn package(skill_root: &Path) -> Result<()> {
@@ -85,6 +166,33 @@ pub fn package(skill_root: &Path) -> Result<()> {
 
     print!("  Published runtime surface... ");
     match published_runtime_surface(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
+    print!("  Source-of-truth split... ");
+    match source_of_truth_split(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
+    print!("  Published runtime command surface... ");
+    match published_runtime_command_surface(skill_root) {
+        Ok(()) => println!("{}", "PASS".green()),
+        Err(e) => {
+            println!("{} {e}", "FAIL".red());
+            errors += 1;
+        }
+    }
+
+    print!("  Developer identity git flow... ");
+    match developer_identity_git_flow(skill_root) {
         Ok(()) => println!("{}", "PASS".green()),
         Err(e) => {
             println!("{} {e}", "FAIL".red());
@@ -565,6 +673,193 @@ fn assert_help_absent(help_output: &str, needle: &str, message: &str) -> Result<
         bail!("{message}");
     }
     Ok(())
+}
+
+fn contains_with_normalized_whitespace(text: &str, needle: &str) -> bool {
+    let normalized_text = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let normalized_needle = needle.split_whitespace().collect::<Vec<_>>().join(" ");
+    normalized_text.contains(&normalized_needle)
+}
+
+fn source_of_truth_split(skill_root: &Path) -> Result<()> {
+    let skill_contract = fs::read_to_string(skill_root.join("SKILL.md"))
+        .context("reading SKILL.md for source-of-truth split")?;
+    let package_readme = fs::read_to_string(skill_root.join("README.md"))
+        .context("reading packaged README.md for source-of-truth split")?;
+    let runtime_readme_path = template_root(skill_root)
+        .join("docs")
+        .join("runtime")
+        .join("README.md");
+    let runtime_readme = fs::read_to_string(&runtime_readme_path)
+        .with_context(|| format!("reading {}", runtime_readme_path.display()))?;
+
+    let mut failures = Vec::new();
+    for (path, content, snippet) in [
+        (
+            "SKILL.md",
+            skill_contract.as_str(),
+            "`SKILL.md` is the source of truth for the packaged skill bootstrap and maintenance contract.",
+        ),
+        (
+            "SKILL.md",
+            skill_contract.as_str(),
+            "`templates/workspace/docs/runtime/README.md` is the source of truth for deployed-workspace runtime operation.",
+        ),
+        (
+            "SKILL.md",
+            skill_contract.as_str(),
+            "Other docs may summarize or reference those contracts, but they must not introduce stronger behavioral claims than those two sources.",
+        ),
+        (
+            "README.md",
+            package_readme.as_str(),
+            "After bootstrap, the deployed workspace must operate from its own files,",
+        ),
+        (
+            "README.md",
+            package_readme.as_str(),
+            "After bootstrap, the generated workspace uses its own runtime docs and local",
+        ),
+        (
+            "templates/workspace/docs/runtime/README.md",
+            runtime_readme.as_str(),
+            "This directory is the source of truth for deployed-workspace runtime behavior.",
+        ),
+        (
+            "templates/workspace/docs/runtime/README.md",
+            runtime_readme.as_str(),
+            "Package-level docs may reference it, but they must not add stronger runtime claims than the documents listed here.",
+        ),
+    ] {
+        if !contains_with_normalized_whitespace(content, snippet) {
+            failures.push(format!(
+                "{path}: required source-of-truth snippet missing (`{snippet}`)"
+            ));
+        }
+    }
+
+    for (needle, message) in [
+        (
+            "skill-dev-cli",
+            "runtime README must stay free of repository-maintenance CLI guidance",
+        ),
+        (
+            "project-memory-cli",
+            "runtime README must stay free of repository-only CLI guidance",
+        ),
+        (
+            "prd-to-product-agents-cli validate package",
+            "runtime README must not become the source of truth for package validation commands",
+        ),
+        (
+            "prd-to-product-agents-cli validate all",
+            "runtime README must not become the source of truth for maintainer package validation commands",
+        ),
+    ] {
+        if runtime_readme.contains(needle) {
+            failures.push(format!(
+                "templates/workspace/docs/runtime/README.md: {message} (`{needle}`)"
+            ));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        bail!("source-of-truth split failed:\n  {}", failures.join("\n  "))
+    }
+}
+
+fn published_runtime_command_surface(skill_root: &Path) -> Result<()> {
+    let mut failures = Vec::new();
+
+    for rel in WORKSPACE_FLAG_SURFACES {
+        let path = skill_root.join(rel);
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("reading {rel} for runtime command surface validation"))?;
+
+        for (index, line) in content.lines().enumerate() {
+            if !line_missing_required_workspace_flag(line) {
+                continue;
+            }
+            failures.push(format!(
+                "{rel}:{}: runtime CLI invocation missing required --workspace flag (`{}`)",
+                index + 1,
+                line.trim()
+            ));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        bail!(
+            "published runtime command surface failed:\n  {}",
+            failures.join("\n  ")
+        )
+    }
+}
+
+fn line_missing_required_workspace_flag(line: &str) -> bool {
+    let Some(position) = line.find("prdtp-agents-functions-cli") else {
+        return false;
+    };
+
+    if line.contains("prdtp-agents-functions-cli-reference.md") {
+        return false;
+    }
+
+    let tail = &line[position + "prdtp-agents-functions-cli".len()..];
+    let trimmed = tail.trim_start_matches(|ch: char| {
+        ch.is_whitespace() || matches!(ch, '`' | ':' | '(' | '[' | '{')
+    });
+    let Some(first_token) = trimmed.split_whitespace().next() else {
+        return false;
+    };
+
+    let first_token = first_token.trim_matches(|ch: char| {
+        ch.is_ascii_punctuation() && ch != '-' && ch != '_'
+    });
+
+    if first_token == "--workspace" {
+        return false;
+    }
+
+    WORKSPACE_COMMAND_KEYWORDS.contains(&first_token)
+}
+
+fn developer_identity_git_flow(skill_root: &Path) -> Result<()> {
+    let mut failures = Vec::new();
+
+    for (rel, role) in DEVELOPER_IDENTITY_GIT_SURFACES {
+        let path = skill_root.join(rel);
+        let content = fs::read_to_string(&path)
+            .with_context(|| format!("reading {rel} for developer identity git flow validation"))?;
+
+        let expected_wrapper = format!(
+            "prdtp-agents-functions-cli --workspace . git checkout-task-branch --role {role}"
+        );
+        if !content.contains(&expected_wrapper) {
+            failures.push(format!(
+                "{rel}: missing wrapper-only task-branch routine (`{expected_wrapper}`)"
+            ));
+        }
+
+        for (needle, message) in FORBIDDEN_MANUAL_GIT_FLOW {
+            if content.contains(needle) {
+                failures.push(format!("{rel}: {message} (`{needle}`)"));
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        bail!(
+            "developer identity git flow failed:\n  {}",
+            failures.join("\n  ")
+        )
+    }
 }
 
 fn copilot_runtime_contract(skill_root: &Path) -> Result<()> {

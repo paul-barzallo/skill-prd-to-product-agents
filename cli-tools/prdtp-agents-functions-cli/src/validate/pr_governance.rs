@@ -63,6 +63,11 @@ struct LabelPayload {
 
 pub fn run(workspace: &Path, args: PrGovernanceArgs) -> Result<()> {
     println!("{}", "=== Validate PR Governance ===".cyan().bold());
+    crate::common::capability_contract::require_policy_enabled(
+        workspace,
+        "gh",
+        "validate pr-governance",
+    )?;
     let event = load_pr_event(args.event_path.as_deref())?;
     let governance =
         readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
@@ -97,6 +102,11 @@ pub fn run(workspace: &Path, args: PrGovernanceArgs) -> Result<()> {
 
 pub fn run_release_gate(workspace: &Path, args: ReleaseGateArgs) -> Result<()> {
     println!("{}", "=== Validate Release Gate ===".cyan().bold());
+    crate::common::capability_contract::require_policy_enabled(
+        workspace,
+        "gh",
+        "validate release-gate",
+    )?;
     let event = load_pr_event(args.event_path.as_deref())?;
     let governance =
         readiness::load_governance(&workspace.join(".github/github-governance.yaml"))?;
@@ -335,31 +345,39 @@ fn validate_release_gate_internal(
         bail!("Workspace is marked production-ready but github.branch_protection.enabled is not true.");
     }
 
-    let reviewer_logins = readiness::parse_csv(
-        &readiness::yaml_string(governance, &["github", "release_gate", "reviewer_logins"])
-            .unwrap_or_default(),
-    );
-    if reviewer_logins.is_empty()
-        || reviewer_logins
-            .iter()
-            .any(|value| value.contains("REPLACE_ME") || value.contains("team-"))
-    {
-        bail!("production-ready requires real github.release_gate.reviewer_logins values in .github/github-governance.yaml");
-    }
+    let reviewer_logins = configured_reviewer_logins(
+        governance,
+        &["github", "release_gate", "reviewer_logins"],
+        "production-ready requires real github.release_gate.reviewer_logins values in .github/github-governance.yaml",
+    )?;
+    let approval_quorum = configured_approval_quorum(
+        governance,
+        &["github", "release_gate", "approval_quorum"],
+        "github.release_gate.approval_quorum",
+        reviewer_logins.len(),
+        Some(6),
+    )?;
 
     readiness::validate_remote_governance(workspace, governance)?;
 
     let latest_by_reviewer = latest_review_states(workspace, event)?;
 
-    let has_gate_approval = reviewer_logins
-        .iter()
-        .any(|login| latest_by_reviewer.get(login).map(|state| state == "APPROVED").unwrap_or(false));
-    if !has_gate_approval {
+    let approved_reviewers = approved_reviewers(&reviewer_logins, &latest_by_reviewer);
+    if approved_reviewers.len() < approval_quorum as usize {
         bail!(
-            "production-ready requires final release gate approval from one of: {}",
+            "production-ready requires {} release-gate approval(s) from github.release_gate.reviewer_logins. Approved: {}. Allowed: {}",
+            approval_quorum,
+            format_login_list(&approved_reviewers),
             reviewer_logins.join(", ")
         );
     }
+
+    println!(
+        "  Release gate approvals: {} of {} required ({})",
+        approved_reviewers.len(),
+        approval_quorum,
+        approved_reviewers.join(", ")
+    );
 
     Ok(())
 }
@@ -394,19 +412,18 @@ fn validate_immutable_governance_internal(
         return Ok(());
     }
 
-    let reviewer_logins = readiness::parse_csv(
-        &readiness::yaml_string(governance, &["github", "immutable_governance", "reviewer_logins"])
-            .unwrap_or_default(),
-    );
-    if reviewer_logins.is_empty()
-        || reviewer_logins
-            .iter()
-            .any(|value| value.contains("REPLACE_ME") || value.contains("team-"))
-    {
-        bail!(
-            "immutable governance changes require real github.immutable_governance.reviewer_logins values in .github/github-governance.yaml"
-        );
-    }
+    let reviewer_logins = configured_reviewer_logins(
+        governance,
+        &["github", "immutable_governance", "reviewer_logins"],
+        "immutable governance changes require real github.immutable_governance.reviewer_logins values in .github/github-governance.yaml",
+    )?;
+    let approval_quorum = configured_approval_quorum(
+        governance,
+        &["github", "immutable_governance", "approval_quorum"],
+        "github.immutable_governance.approval_quorum",
+        reviewer_logins.len(),
+        None,
+    )?;
 
     let required_labels = readiness::parse_csv(
         &readiness::yaml_string(governance, &["github", "immutable_governance", "required_labels"])
@@ -432,21 +449,21 @@ fn validate_immutable_governance_internal(
     }
 
     let latest_by_reviewer = latest_review_states(workspace, event)?;
-    let has_required_approval = reviewer_logins.iter().any(|login| {
-        latest_by_reviewer
-            .get(login)
-            .map(|state| state == "APPROVED")
-            .unwrap_or(false)
-    });
-    if !has_required_approval {
+    let approved_reviewers = approved_reviewers(&reviewer_logins, &latest_by_reviewer);
+    if approved_reviewers.len() < approval_quorum as usize {
         bail!(
-            "immutable governance changes require approval from one of github.immutable_governance.reviewer_logins: {}",
+            "immutable governance changes require {} approval(s) from github.immutable_governance.reviewer_logins. Approved: {}. Allowed: {}",
+            approval_quorum,
+            format_login_list(&approved_reviewers),
             reviewer_logins.join(", ")
         );
     }
 
     println!(
-        "  Immutable governance approval verified for: {}",
+        "  Immutable governance approvals: {} of {} required ({}) for {}",
+        approved_reviewers.len(),
+        approval_quorum,
+        approved_reviewers.join(", "),
         immutable_hits.join(", ")
     );
     Ok(())
@@ -540,4 +557,145 @@ fn normalize_repo_path(path: &str) -> String {
         normalized = stripped.to_string();
     }
     normalized.trim_start_matches('/').to_string()
+}
+
+fn configured_reviewer_logins(governance: &Value, path: &[&str], error_message: &str) -> Result<Vec<String>> {
+    let mut unique = BTreeSet::new();
+    let reviewer_logins = readiness::parse_csv(
+        &readiness::yaml_string(governance, path).unwrap_or_default(),
+    )
+    .into_iter()
+    .filter(|login| unique.insert(login.clone()))
+    .collect::<Vec<_>>();
+
+    if reviewer_logins.is_empty()
+        || reviewer_logins
+            .iter()
+            .any(|value| value.contains("REPLACE_ME") || value.contains("team-"))
+    {
+        bail!("{error_message}");
+    }
+
+    Ok(reviewer_logins)
+}
+
+fn configured_approval_quorum(
+    governance: &Value,
+    path: &[&str],
+    label: &str,
+    reviewer_count: usize,
+    max: Option<u64>,
+) -> Result<u64> {
+    if reviewer_count == 0 {
+        bail!("{label} requires at least one configured reviewer login");
+    }
+
+    let quorum = match crate::github_api::yaml_value(governance, path) {
+        None => 1,
+        Some(value) => value
+            .as_u64()
+            .with_context(|| format!("{label} must be an integer"))?,
+    };
+    if quorum == 0 {
+        bail!("{label} must be at least 1");
+    }
+    if quorum > reviewer_count as u64 {
+        bail!(
+            "{label}={quorum} exceeds the {reviewer_count} configured reviewer login(s)"
+        );
+    }
+    if let Some(maximum) = max {
+        if quorum > maximum {
+            bail!(
+                "{label}={quorum} exceeds the GitHub branch-protection maximum of {maximum} approving reviews"
+            );
+        }
+    }
+
+    Ok(quorum)
+}
+
+fn approved_reviewers(
+    reviewer_logins: &[String],
+    latest_by_reviewer: &HashMap<String, String>,
+) -> Vec<String> {
+    reviewer_logins
+        .iter()
+        .filter(|login| {
+            latest_by_reviewer
+                .get(*login)
+                .map(|state| state == "APPROVED")
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
+
+fn format_login_list(logins: &[String]) -> String {
+    if logins.is_empty() {
+        "none".to_string()
+    } else {
+        logins.join(", ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{approved_reviewers, configured_approval_quorum, format_login_list};
+    use serde_yaml::Value;
+    use std::collections::HashMap;
+
+    #[test]
+    fn approved_reviewers_respect_threshold_candidates() {
+        let reviewers = vec!["devops-login".to_string(), "backup-login".to_string()];
+        let latest_by_reviewer = HashMap::from([
+            ("devops-login".to_string(), "APPROVED".to_string()),
+            ("backup-login".to_string(), "COMMENTED".to_string()),
+            ("outsider".to_string(), "APPROVED".to_string()),
+        ]);
+
+        let approved = approved_reviewers(&reviewers, &latest_by_reviewer);
+        assert_eq!(approved, vec!["devops-login".to_string()]);
+        assert_eq!(format_login_list(&approved), "devops-login");
+    }
+
+    #[test]
+    fn configured_approval_quorum_defaults_to_one_when_missing() {
+        let governance: Value = serde_yaml::from_str(
+            "github:\n  release_gate:\n    reviewer_logins: devops-login\n",
+        )
+        .expect("failed to parse governance fixture");
+
+        let quorum = configured_approval_quorum(
+            &governance,
+            &["github", "release_gate", "approval_quorum"],
+            "github.release_gate.approval_quorum",
+            1,
+            Some(6),
+        )
+        .expect("missing quorum should default to 1");
+
+        assert_eq!(quorum, 1);
+    }
+
+    #[test]
+    fn configured_approval_quorum_rejects_values_above_reviewer_count() {
+        let governance: Value = serde_yaml::from_str(
+            "github:\n  immutable_governance:\n    approval_quorum: 3\n",
+        )
+        .expect("failed to parse governance fixture");
+
+        let error = configured_approval_quorum(
+            &governance,
+            &["github", "immutable_governance", "approval_quorum"],
+            "github.immutable_governance.approval_quorum",
+            2,
+            None,
+        )
+        .expect_err("quorum larger than reviewer count should fail");
+
+        assert!(error
+            .to_string()
+            .contains("exceeds the 2 configured reviewer login(s)"));
+    }
 }

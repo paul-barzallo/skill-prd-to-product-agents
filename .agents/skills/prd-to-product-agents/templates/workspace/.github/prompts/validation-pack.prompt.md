@@ -21,8 +21,8 @@ Run the shared validation pass on the current workspace state and route findings
 
 ## Write
 
-- findings to `docs/project/findings.yaml` via `prdtp-agents-functions-cli state finding create` when validation fails
-- handoffs to `docs/project/handoffs.yaml` via `prdtp-agents-functions-cli state handoff create` when rework is needed
+- findings to `docs/project/findings.yaml` via `prdtp-agents-functions-cli --workspace . state finding create` when validation fails
+- handoffs to `docs/project/handoffs.yaml` via `prdtp-agents-functions-cli --workspace . state handoff create` when rework is needed
 - structured validation outcome only
 
 ## Exit

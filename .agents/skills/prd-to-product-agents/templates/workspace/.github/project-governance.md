@@ -23,7 +23,7 @@ Local setup means:
 - move readiness from `bootstrapped` to `configured`.
 
 Bootstrap only creates the local skeleton. Use
-`prdtp-agents-functions-cli governance configure` to complete local governance
+`prdtp-agents-functions-cli --workspace . governance configure` to complete local governance
 before treating the workspace as configured.
 
 ### 2. Remote governance provisioning
@@ -31,7 +31,7 @@ before treating the workspace as configured.
 Remote provisioning means:
 
 - create labels,
-- apply branch protection through `prdtp-agents-functions-cli governance provision-enterprise` when permissions allow it,
+- apply branch protection through `prdtp-agents-functions-cli --workspace . governance provision-enterprise` when permissions allow it,
 - move from `configured` toward `production-ready`.
 
 Do not claim remote provisioning if any of these are missing:
@@ -105,6 +105,8 @@ Current rule:
 
 - Domain review follows `CODEOWNERS`.
 - `devops-release-engineer` is the final approval gate before merge to `main`, and that gate applies only after the workspace reaches `production-ready`.
+- `github.release_gate.approval_quorum` defines how many listed release-gate logins must hold the latest `APPROVED` review before release promotion can pass.
+- `github.immutable_governance.approval_quorum` defines how many listed immutable-governance logins must approve immutable-file changes. If you need explicit DevOps plus infra dual control, keep distinct logins and set this quorum to `2`.
 - Merge requires green checks, resolved conversations, and the correct label
   set.
 
@@ -116,7 +118,8 @@ Configure repository protection to require:
 - PRs for all changes
 - required status checks
 - required CODEOWNERS review
-- final approval by `devops-release-engineer`
+- approving review count at least `github.release_gate.approval_quorum`
+- final release-gate approval from a login declared in `github.release_gate.reviewer_logins`
 - resolved conversations before merge
 
 ## Readiness states
@@ -128,8 +131,8 @@ Configure repository protection to require:
 - `configured`
 - `production-ready`
 
-Use `prdtp-agents-functions-cli validate governance` and
-`prdtp-agents-functions-cli validate readiness` to see what is still missing
+Use `prdtp-agents-functions-cli --workspace . validate governance` and
+`prdtp-agents-functions-cli --workspace . validate readiness` to see what is still missing
 for the next state.
 
 ## Visibility surfaces
@@ -140,8 +143,8 @@ for the next state.
 
 Refresh those views with:
 
-- `prdtp-agents-functions-cli board sync`
-- `prdtp-agents-functions-cli report dashboard`
+- `prdtp-agents-functions-cli --workspace . board sync`
+- `prdtp-agents-functions-cli --workspace . report dashboard`
 
 `board sync` refreshes GitHub issues and pull requests only. It does not synchronize GitHub Project field state.
 

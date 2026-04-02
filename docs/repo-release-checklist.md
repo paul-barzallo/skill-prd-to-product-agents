@@ -15,6 +15,7 @@ Shorthand:
 
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test repo-validation` as the GitHub-aligned local validation command before release work.
 - Use `skill-dev-cli --skill-root <repo-or-skill-root> test workflow-release-gate` when you specifically need the current-platform simulation of the build workflow gate.
+- Treat `test repo-validation` plus `test workflow-release-gate` as the local drift-review pair for release automation, binary publication, and release guidance.
 
 - Run `skill-dev-cli --skill-root <repo-or-skill-root> test unit`.
 - Run `cargo test --manifest-path cli-tools/project-memory-cli/Cargo.toml` when the current release work touches `project-memory-cli`.
@@ -52,6 +53,7 @@ Shorthand:
 - Confirm the publish path still goes through a reviewed PR and not a direct push of tracked binaries to `main`.
 - The only supported refresh path for tracked binaries is `.github/workflows/build-skill-binaries.yml`:
   `build -> test -> release-gate -> publish PR`.
+- Confirm published Unix binaries in all tracked bundle scopes still preserve `100755` executable mode in the git index.
 - Do not hand-refresh tracked binaries, `checksums.sha256`, `sbom.spdx.json`, or
   `provenance-policy.json` from a local workstation as a publish path.
 - Local binary rebuilds are diagnostic only and must not become the published
@@ -61,11 +63,16 @@ Shorthand:
 
 - Review any maintainer-facing command or flag changes added in Rust code.
 - Review generated binary names or supported platform claims if build outputs changed.
-- For releases that touch runtime governance, readiness, or the operational contract, run the manual workflow `.github/workflows/enterprise-readiness-sandbox.yml` or execute the equivalent steps from `.agents/skills/prd-to-product-agents/templates/workspace/docs/runtime/enterprise-readiness-sandbox.md`.
-- Do not approve release if the sandbox evidence is missing and the change affects `validate readiness`, governance configuration, release-gate semantics, or execution-boundary enforcement.
+- When dependency policy, binary refresh behavior, or provenance expectations changed, compare this checklist against `.github/workflows/build-skill-binaries.yml` and `.github/workflows/dependency-review.yml` in the same review.
+- For releases that touch runtime governance, readiness, or the operational contract, confirm `.github/workflows/enterprise-readiness-sandbox.yml` is published on the remote branch or tag candidate under review so GitHub can actually dispatch it.
+- If packaged binaries or the distributed skill changed, run the enterprise sandbox only after the branch under review contains the tracked binary-refresh result that represents the release candidate you intend to publish.
+- Run the manual workflow `.github/workflows/enterprise-readiness-sandbox.yml` from the publishing repository. Use `.agents/skills/prd-to-product-agents/templates/workspace/docs/runtime/enterprise-readiness-sandbox.md` as the interpretation and break-glass runbook, not as a substitute for a remotely dispatchable workflow artifact.
+- Review the uploaded `enterprise-readiness-evidence` artifact for at least `workflow-context.txt`, `packaged-skill-paths.txt`, `package-validate.txt`, `bootstrap-report.md`, `bootstrap-manifest.txt`, `github-governance.yaml`, `workspace-capabilities.yaml`, `validate-governance.txt`, `governance-promote-enterprise-readiness.txt`, `provision-enterprise.txt`, `validate-readiness.txt`, `audit-sink-health.txt`, `audit-sink-test.txt`, `repository.json`, `labels.json`, and the branch-protection snapshots.
+- Do not approve release if the workflow is not remotely dispatchable, if the sandbox evidence is missing, or if the evidence artifact does not match the release candidate branch/ref under review.
 - Confirm `.github/workflows/dependency-review.yml` still covers dependency review and `cargo deny`, and do not release if that gate is broken or silently bypassed.
 - Confirm `.github/workflows/build-skill-binaries.yml` still emits CI build provenance attestation for non-PR publication runs.
 - Confirm the publish step refreshes `checksums.sha256`, `sbom.spdx.json`, and `provenance-policy.json` for every published bundle scope.
+- Do not approve release if `test repo-validation` or `test release-gate` reports Unix executable-bit drift in published binaries.
 - Treat missing attestation, broken checksums, SBOM drift, provenance-policy drift, or undocumented binary refresh steps as release blockers for `production-ready` claims.
 
 ## 6. Publish decision

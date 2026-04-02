@@ -1,0 +1,25 @@
+# Schema reference for docs/project/refined-stories.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+stories: list(include('refined_story'), required=False)
+
+---
+refined_story:
+  id: str(matches=r'^(US|ST|JOB)-[A-Za-z0-9_-]+$')
+  title: str(min=1)
+  status: str(min=1)
+  priority: enum('low', 'medium', 'high', 'critical')
+  owner_role: enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer')
+  acceptance_ref: str(matches=r'^docs/project/acceptance-criteria\.md#[A-Za-z0-9_-]+$')
+  refined_by: list(str(), required=False)
+  dependencies: list(str(), required=False)
+  functional_notes: list(str(), required=False)
+  tech_notes: list(str(), required=False)
+  edge_cases: list(str(), required=False)
+  qa_notes: list(str(), required=False)
+  implementation_map: list(include('implementation_step'), required=False)
+
+implementation_step:
+  action: str(min=1)
+  path: str(min=1)
+  description: str(min=1)

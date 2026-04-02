@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use prdtp_agents_shared::tool_detection::command_exists as shared_command_exists;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -161,24 +162,7 @@ fn command_result(output: std::process::Output) -> CommandResult {
 
 /// Check if a command is available on PATH.
 pub fn command_exists(name: &str) -> bool {
-    match std::process::Command::new(name).arg("--version").output() {
-        Ok(output) => {
-            if !output.status.success() {
-                log_command_failure(name, &["--version"], &output);
-                let err = String::from_utf8_lossy(&output.stderr);
-                if !err.trim().is_empty() {
-                    eprintln!(
-                        "[Preflight Warning] '{}' exists but returned error on --version: {}",
-                        name,
-                        err.trim()
-                    );
-                }
-                return false;
-            }
-            true
-        }
-        Err(_) => false,
-    }
+    shared_command_exists(name)
 }
 
 /// SQLite runtime support is bundled into the packaged CLI via rusqlite.

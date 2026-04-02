@@ -64,9 +64,9 @@ GitHub.com is intentionally documented as a degraded surface. The supported cont
 | --- | --- |
 | `prd-to-product-agents-cli validate package` | portable skill package validation |
 | `prd-to-product-agents-cli validate all` | maintainer validation from a source checkout, including runtime smoke |
-| `prdtp-agents-functions-cli validate workspace` | workspace structural validation |
-| `prdtp-agents-functions-cli validate governance` | configured workspace governance validation |
-| `prdtp-agents-functions-cli validate readiness` | optional enterprise-overlay readiness validation for production-ready workspaces |
+| `prdtp-agents-functions-cli --workspace <workspace> validate workspace` | workspace structural validation |
+| `prdtp-agents-functions-cli --workspace <workspace> validate governance` | configured workspace governance validation |
+| `prdtp-agents-functions-cli --workspace <workspace> validate readiness` | optional enterprise-overlay readiness validation for production-ready workspaces |
 
 `validate package` is the consumer-safe validation surface for the distributed skill.
 `validate all` is maintainer-oriented and assumes repository sources are available.

@@ -1,133 +1,81 @@
 
 # Bootstrap Error Recovery
 
-Error recovery procedures for the skill CLI (`prd-to-product-agents-cli`)
-bootstrap and validation operations.
+This reference documents the current Rust CLI behavior for
+`prd-to-product-agents-cli` package validation and workspace bootstrap.
+It replaces older shell-script recovery guidance.
 
-## YAML invalid
+## Package validation fails before bootstrap
 
-- keep the generated file for inspection
-- infrastructure will not sync invalid content into the audit ledger
-- record the error in the report
-- if possible, place a corrected suggestion in `.bootstrap-overlays/`
+Do not continue bootstrapping from a package that fails validation.
 
-## SQLite missing (infrastructure handles recovery)
+- Run `prd-to-product-agents-cli --skill-root <skill-root> validate package`.
+- Common causes: missing bundle metadata, checksum drift, unexpected `.state/`
+  residue in the distributed skill, or published command-surface drift.
+- Recovery: fix the packaged skill contents at the source, then rerun
+  validation. Do not patch a generated workspace to hide a package failure.
 
-- infrastructure tries automated installation if possible
-- if not possible, leaves `.state/sqlite-bootstrap.pending.md`
-- continue with canonical docs only
+## Bootstrap finishes with `Status: DEGRADED`
 
-## SQL schema failure (infrastructure)
+`DEGRADED` means the workspace files were written, but an optional runtime step
+could not be completed during bootstrap.
 
-- stop DB initialization
-- report which table or statement failed
-- do not leave the DB in a fake ready state
+- Read `.state/bootstrap-report.md` for the recorded reason.
+- The most common current cause is deferred or failed database initialization.
+- If SQLite should be active, intentionally authorize it and then run
+  `prdtp-agents-functions-cli --workspace <workspace> database init`.
+- If SQLite remains unauthorized, spool-only audit behavior is expected and is
+  not itself a bootstrap failure.
 
-## Git init failure
+## File collision or host merge
 
-- keep all generated files
-- record the failure in the report
-- do not retry dangerous commands blindly
+Bootstrap preserves existing user files rather than overwriting them silently.
 
-## File collision
+- The existing file stays in place.
+- The proposed replacement is written under `.bootstrap-overlays/`.
+- Recovery: review the overlay, merge it manually if needed, and rerun
+  bootstrap once the host file is in the desired state.
 
-- preserve the existing file
-- write the proposed version under `.bootstrap-overlays/`
-- report the collision
+## Git unavailable, disabled, or not yet initialized
 
-## Git stderr warnings (CRLF)
+Bootstrap does not require Git to generate the workspace.
 
-Git writes CRLF normalization warnings to stderr. These are
-**informational, not errors**. PowerShell's `$ErrorActionPreference =
-"Stop"` treats any stderr output as a terminating error, which breaks
-`git add` calls.
+- If `.git/` is missing, the commit and hook-installation path is skipped.
+- If `capabilities.git.authorized.enabled=false`, Git-backed task flow remains
+  out of contract after bootstrap.
+- Recovery: initialize the repository, run
+  `prdtp-agents-functions-cli --workspace <workspace> capabilities detect`,
+  intentionally authorize Git if desired, and then run
+  `prdtp-agents-functions-cli --workspace <workspace> git install-hooks`.
 
-### Symptoms
+## Governance or readiness still blocked after bootstrap
 
-```text
-git : warning: in the working copy of '.github/agents/.instructions.md',
-CRLF will be replaced by LF the next time Git touches it
-```
+A fresh workspace is expected to be incomplete.
 
-The script aborts on the first `git add` even though the file was
-staged successfully.
+- `Workspace State: bootstrapped` plus `Readiness status: not_ready` is normal.
+- Recovery: run
+  `prdtp-agents-functions-cli --workspace <workspace> governance configure`
+  first, then use `validate governance` for the configured local gate.
+- Use `validate readiness` only for the stronger optional enterprise overlay.
 
-### Fix pattern
+## Template tokens remain unreplaced
 
-Suppress stderr from git commands. In PowerShell:
+If `{{PROJECT_NAME}}` remains in generated files, treat it as a template-source
+or bootstrap-interruption problem.
 
-```powershell
-$oldPref = $ErrorActionPreference
-$ErrorActionPreference = 'Continue'
-git add -- "$p" 2>&1 | Out-Null
-$ErrorActionPreference = $oldPref
-```
+- Search the generated workspace for `{{PROJECT_NAME}}`.
+- Rerun bootstrap with `--project-name "Your Name"` if the original run omitted
+  an intentional name.
+- If a collision prevented replacement, review `.bootstrap-overlays/` or edit
+  the canonical file manually.
 
-In Bash:
+## Historical shell notes
 
-```bash
-git add -- "${path}" 2>/dev/null
-```
+Older PowerShell and Bash recovery notes about CRLF stderr suppression, shell
+wrapper parsing, or `.ps1` em-dash handling are historical only.
 
-### Root cause
-
-The `.gitattributes` file declares `*.md text eol=lf` but older shell-based
-bootstrap paths generated files with `\r\n` line endings. Git's
-auto-normalization detects the mismatch and
-emits a warning. This is expected and harmless - Git will normalize
-the file on the next checkout.
-
-## Template token left in files
-
-If `{{PROJECT_NAME}}` appears in generated files (e.g. `vision.md`),
-the bootstrap script failed to replace the token.
-
-### Detection for template tokens
-
-```powershell
-Get-ChildItem -Recurse -Filter '*.md' | Select-String '{{PROJECT_NAME}}'
-```
-
-### Fix for template tokens
-
-The bootstrap now defaults to the target folder name when no project
-name is provided, with `"Unnamed Project"` only as a final fallback.
-If the token is still present:
-
-1. Edit the file manually and replace the token.
-2. Or re-run bootstrap with `-ProjectName "YourName"`.
-
-## UTF-8 em-dash breaks PowerShell 5.1 parsing
-
-UTF-8 encoded em-dash (bytes `E2 80 94`) in `.ps1` files
-**without a BOM** causes PowerShell 5.1 to misparse the file.
-This is a historical note - the CLIs are Rust binaries and
-are unaffected by this issue.
-
-### Root cause of em-dash parsing failure
-
-PowerShell 5.1 reads BOM-less files as Windows-1252. In that encoding,
-byte `0x94` maps to `"` (RIGHT DOUBLE QUOTATION MARK, U+201D).
-PowerShell's parser recognizes Unicode smart quotes as string
-delimiters, so an em-dash inside a string literal like:
-
-```powershell
-Write-Error ".git/hooks/ not found - is this a git repository?"
-```
-
-becomes a prematurely terminated string followed
-by unexpected bare tokens. This cascades into `ParseException` errors
-on later lines.
-
-### Fix for em-dash parsing failure
-
-Replace all em-dashes in `.ps1` files with ASCII `--`:
-
-```powershell
-# Bad:  Write-Error "Not found - skipping"
-# Good: Write-Error "Not found -- skipping"
-```
-
-Em-dashes are safe in comments (they don't break parsing), but we
-replace them everywhere for consistency. Bash `.sh` files are
-unaffected since the shell reads UTF-8 natively.
+- The supported bootstrap path is now the Rust CLI.
+- Generated text files are normalized to LF during bootstrap.
+- Current failures should be diagnosed from `validate package`,
+  `.state/bootstrap-report.md`, and the runtime validation commands rather than
+  from historical shell-script behavior.

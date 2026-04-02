@@ -2,8 +2,16 @@ use anyhow::Result;
 use colored::Colorize;
 use std::path::Path;
 
+fn require_gh_when_remote(workspace: &Path, command_label: &str) -> Result<()> {
+    if crate::audit::events::current_audit_mode(workspace)? == crate::github_api::AuditMode::Remote {
+        crate::common::capability_contract::require_policy_enabled(workspace, "gh", command_label)?;
+    }
+    Ok(())
+}
+
 pub fn health(workspace: &Path) -> Result<()> {
     println!("{}", "=== Audit Sink Health ===".cyan().bold());
+    require_gh_when_remote(workspace, "audit sink health")?;
     let mode = crate::audit::events::current_audit_mode(workspace)?;
     let count = crate::audit::events::verify_local_hashchain(workspace)?;
     println!("  Local hash-chain: {} event(s) verified", count);
@@ -33,6 +41,7 @@ pub fn health(workspace: &Path) -> Result<()> {
 
 pub fn test(workspace: &Path) -> Result<()> {
     println!("{}", "=== Audit Sink Test ===".cyan().bold());
+    require_gh_when_remote(workspace, "audit sink test")?;
     crate::audit::events::record_sensitive_action(
         workspace,
         "audit.sink.test",

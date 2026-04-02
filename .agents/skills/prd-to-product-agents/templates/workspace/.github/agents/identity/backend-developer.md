@@ -99,7 +99,9 @@ Technical, precise. Comment code defensively. Document assumptions. When reporti
 ## Delivery workflow
 
 - Start from an assigned GitHub Issue and keep your branch aligned with `develop`.
-- Before editing code: `git fetch origin --prune`, `git checkout develop`, `git pull --ff-only origin develop`, `git checkout backend/<issue-id>-slug` (or create it from `develop`), `git pull --rebase origin <branch>` when the branch already exists, then `git rebase develop`.
+- Before editing code, use the controlled branch wrapper: `prdtp-agents-functions-cli --workspace . git checkout-task-branch --role backend-developer --issue-id <id> --slug <slug>`.
+- Branch naming convention: `backend/<issue-id>-slug`.
+- The wrapper performs a safe branch switch only. It refuses dirty worktrees and does not rebase or fast-forward implicitly.
 - Commit with Conventional Commits and the issue reference, for example `feat(backend): GH-123 validate policy payload`.
 - Open or update a PR to `develop`, complete `.github/PULL_REQUEST_TEMPLATE.md`, add `role:backend` plus one `kind:*` and one `priority:*` label, and link the driving issue.
 - Before handoff or merge request, review PR comments and commit comments, address them or respond with facts, and refresh the PR description if scope changed.
@@ -112,7 +114,7 @@ Technical, precise. Comment code defensively. Document assumptions. When reporti
 
 ### Canonical docs (write)
 
-`docs/project/handoffs.yaml` (via `prdtp-agents-functions-cli state handoff create`)
+`docs/project/handoffs.yaml` (via `prdtp-agents-functions-cli --workspace . state handoff create`)
 
 ### Git context (read when applicable)
 

@@ -51,7 +51,7 @@ Valid results: `approved`, `changes_requested`, `rejected`, `not_applicable`.
 Example - approved result:
 
 ```shell
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     pm-orchestrator \
   --to-role       devops-release-engineer \
   --handoff-type  approval \
@@ -64,7 +64,7 @@ Example - changes_requested result:
 
 ```shell
 # Route refinement to product-owner
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     pm-orchestrator \
   --to-role       product-owner \
   --handoff-type  normal \
@@ -73,7 +73,7 @@ prdtp-agents-functions-cli state handoff create \
   --details       "Client requested changes to checkout flow"
 
 # Optional rework handoff when implementation impact is already known
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     pm-orchestrator \
   --to-role       tech-lead \
   --handoff-type  rework \
@@ -91,9 +91,9 @@ If changes were requested, mark affected items in `docs/project/refined-stories.
 ## Write
 
 - Update `docs/project/releases.md` with review outcomes and supporting notes
-- Run `prdtp-agents-functions-cli state handoff create` for routing rework or approval
+- Run `prdtp-agents-functions-cli --workspace . state handoff create` for routing rework or approval
 - Update `docs/project/refined-stories.yaml` when changes are requested
-- Do NOT write YAML directly to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` - always use `prdtp-agents-functions-cli state *`
+- Do NOT write YAML directly to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` - always use `prdtp-agents-functions-cli --workspace . state *`
 
 ## Exit
 

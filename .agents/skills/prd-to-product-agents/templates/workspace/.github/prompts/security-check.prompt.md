@@ -59,13 +59,13 @@ Evaluate each area and record results:
 | Result | Action |
 | --- | --- |
 | `fail` | Create finding via state ops (type `security`, severity from check) targeting `tech-lead` |
-| `warning` | Create finding via `prdtp-agents-functions-cli state finding create` (type `security`, severity `medium`) targeting `tech-lead` |
+| `warning` | Create finding via `prdtp-agents-functions-cli --workspace . state finding create` (type `security`, severity `medium`) targeting `tech-lead` |
 | `pass` | No finding needed |
 
 For each failing or warning check, run:
 
 ```shell
-prdtp-agents-functions-cli state finding create \
+prdtp-agents-functions-cli --workspace . state finding create \
   --source-role  qa-lead \
   --target-role  tech-lead \
   --finding-type security \
@@ -77,7 +77,7 @@ prdtp-agents-functions-cli state finding create \
 Critical or high security findings also get an escalation handoff:
 
 ```shell
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     qa-lead \
   --to-role       tech-lead \
   --handoff-type  escalation \
@@ -88,8 +88,8 @@ prdtp-agents-functions-cli state handoff create \
 
 ## Write
 
-- Run `prdtp-agents-functions-cli state finding create` for each failing or warning check
-- Run `prdtp-agents-functions-cli state handoff create` for escalation of critical/high issues
+- Run `prdtp-agents-functions-cli --workspace . state finding create` for each failing or warning check
+- Run `prdtp-agents-functions-cli --workspace . state handoff create` for escalation of critical/high issues
 - Do not modify source code directly from this prompt; route remediation to `tech-lead`
 - Do not write YAML directly to `findings.yaml` or `handoffs.yaml`
 

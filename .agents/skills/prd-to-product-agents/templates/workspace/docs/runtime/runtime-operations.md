@@ -60,7 +60,7 @@ Before using reporting, audit, or database commands, read
 | `prdtp-agents-functions-cli state finding create/update` | Finding YAML operations. |
 | `prdtp-agents-functions-cli state release create/update` | Release YAML operations. |
 | `prdtp-agents-functions-cli state event record` | Environment event recording. |
-| `prdtp-agents-functions-cli governance configure` | Configure local repository owner/name, reviewers, release-gate login, and regenerate `CODEOWNERS`. |
+| `prdtp-agents-functions-cli governance configure` | Configure local repository owner/name, reviewers, release-gate logins and quorums, and regenerate `CODEOWNERS`. |
 | `prdtp-agents-functions-cli governance provision-enterprise` | Provision optional remote branch protection and governance labels for the enterprise profile. |
 | `prdtp-agents-functions-cli board sync` | Refresh the operational board snapshot from GitHub issues and pull requests. |
 

@@ -144,6 +144,44 @@ fn workspace_capabilities_seed_exists_and_uses_schema_v2() {
     );
 }
 
+#[test]
+fn governance_template_exposes_approval_quorums() {
+    let governance_path = template_root()
+        .join(".github")
+        .join("github-governance.yaml");
+    let raw = std::fs::read_to_string(&governance_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", governance_path.display()));
+    let parsed: serde_yaml::Value = serde_yaml::from_str(&raw)
+        .unwrap_or_else(|error| panic!("failed to parse {}: {error}", governance_path.display()));
+
+    assert_eq!(
+        parsed["github"]["release_gate"]["approval_quorum"].as_u64(),
+        Some(1)
+    );
+    assert_eq!(
+        parsed["github"]["immutable_governance"]["approval_quorum"].as_u64(),
+        Some(1)
+    );
+}
+
+#[test]
+fn execute_contract_docs_defer_runtime_broker() {
+    for rel in [
+        ".github/instructions/agents.instructions.md",
+        ".github/copilot-instructions.md",
+        "AGENTS.md",
+        "docs/runtime/runtime-claims-coverage.md",
+    ] {
+        let path = template_root().join(rel);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        assert!(
+            content.contains("No technical role broker is in scope for this P0."),
+            "published execute contract is missing explicit broker deferral in {rel}"
+        );
+    }
+}
+
 /// Verify every agent name in workspace_paths::AGENT_NAMES has .agent.md in the template.
 #[test]
 fn agent_names_match_template() {
@@ -179,6 +217,110 @@ fn immutable_files_path_exists_in_template() {
         "IMMUTABLE_FILES_PATH '{}' not found in template",
         prdtp_agents_shared::workspace_paths::IMMUTABLE_FILES_PATH
     );
+}
+
+#[test]
+fn published_workspace_ci_stays_consumer_safe() {
+    let workflow_path = template_root()
+        .join(".github")
+        .join("workflows")
+        .join("smoke-tests.yml");
+    let workflow = std::fs::read_to_string(&workflow_path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", workflow_path.display()));
+
+    for forbidden in [
+        "validate ci pre-commit-fixtures",
+        "validate ci template-state",
+        "validate ci degraded-runtime",
+    ] {
+        assert!(
+            !workflow.contains(forbidden),
+            "published workspace CI must not include maintainer-only check '{forbidden}'"
+        );
+    }
+
+    for required in [
+        "'.agents/**'",
+        "'AGENTS.md'",
+        "'reporting-ui/**'",
+        "'schemas/**'",
+        "checksums.txt",
+        "Get-FileHash",
+        "validate ci copilot-runtime-contract",
+    ] {
+        assert!(
+            workflow.contains(required),
+            "published workspace CI is missing required consumer-contract coverage '{required}'"
+        );
+    }
+}
+
+#[test]
+fn published_workspace_surfaces_use_explicit_workspace_flag() {
+    let template_root = template_root();
+    for (rel, expected) in [
+        (
+            ".github/workflows/smoke-tests.yml",
+            "prdtp-agents-functions-cli --workspace . agents assemble --verify",
+        ),
+        (
+            ".vscode/tasks.json",
+            "prdtp-agents-functions-cli --workspace . audit sync",
+        ),
+        (
+            ".github/project-governance.md",
+            "prdtp-agents-functions-cli --workspace . governance configure",
+        ),
+        (
+            ".github/copilot-instructions.md",
+            "prdtp-agents-functions-cli --workspace . git checkout-task-branch",
+        ),
+        (
+            "AGENTS.md",
+            "prdtp-agents-functions-cli --workspace . git finalize",
+        ),
+    ] {
+        let path = template_root.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        assert!(
+            content.contains(expected),
+            "published workspace surface '{rel}' must contain '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn backend_and_frontend_developer_contracts_use_wrapper_only_git_flow() {
+    let template_root = template_root();
+    for rel in [
+        ".github/agents/identity/backend-developer.md",
+        ".github/agents/identity/frontend-developer.md",
+        ".github/agents/backend-developer.agent.md",
+        ".github/agents/frontend-developer.agent.md",
+    ] {
+        let path = template_root.join(rel);
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+
+        assert!(
+            content.contains("prdtp-agents-functions-cli --workspace . git checkout-task-branch"),
+            "developer contract '{rel}' must use the wrapper-only branch routine"
+        );
+
+        for forbidden in [
+            "git fetch origin --prune",
+            "git checkout develop",
+            "git pull --ff-only origin develop",
+            "git pull --rebase origin <branch>",
+            "git rebase develop",
+        ] {
+            assert!(
+                !content.contains(forbidden),
+                "developer contract '{rel}' must not contain legacy manual git flow '{forbidden}'"
+            );
+        }
+    }
 }
 
 #[test]

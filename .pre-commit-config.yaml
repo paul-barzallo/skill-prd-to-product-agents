@@ -13,6 +13,7 @@ repos:
         exclude: \.md$
       - id: check-yaml
         files: \.(yaml|yml)$
+        exclude: \.schema\.yaml$
 
   - repo: local
     hooks:

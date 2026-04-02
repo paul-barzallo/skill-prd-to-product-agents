@@ -1,0 +1,12 @@
+# Schema reference for docs/project/quality-gates.yaml
+# Structural validation is handled by prdtp-agents-functions-cli validate workspace
+
+gates: list(include('quality_gate'), required=False)
+
+---
+quality_gate:
+  id: str(matches=r'^GATE-[A-Za-z0-9_-]+$')
+  name: str(min=1)
+  status: str(min=1)
+  owner_roles: list(enum('pm-orchestrator', 'product-owner', 'ux-designer', 'software-architect', 'tech-lead', 'backend-developer', 'frontend-developer', 'qa-lead', 'devops-release-engineer'))
+  pass_conditions: list(str(), required=False)

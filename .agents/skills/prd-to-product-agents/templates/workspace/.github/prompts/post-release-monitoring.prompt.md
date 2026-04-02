@@ -56,10 +56,10 @@ IF event_type = 'health_restored':
 
 For critical incidents requiring code changes:
 
-1. Create a finding via prdtp-agents-functions-cli:
+1. Create a finding via `prdtp-agents-functions-cli --workspace .`:
 
 ```shell
-prdtp-agents-functions-cli state finding create \
+prdtp-agents-functions-cli --workspace . state finding create \
   --source-role  devops-release-engineer \
   --target-role  tech-lead \
   --finding-type bug \
@@ -71,7 +71,7 @@ prdtp-agents-functions-cli state finding create \
 2. Create an escalation handoff:
 
 ```shell
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     devops-release-engineer \
   --to-role       tech-lead \
   --handoff-type  escalation \
@@ -84,13 +84,13 @@ prdtp-agents-functions-cli state handoff create \
 
 ## Write
 
-- Run `prdtp-agents-functions-cli state finding create` for incidents and hotfix needs
-- Run `prdtp-agents-functions-cli state handoff create` for escalation routing
-- Run `prdtp-agents-functions-cli state release update` if rollback is required
-- Run `prdtp-agents-functions-cli state finding update` to transition existing findings
+- Run `prdtp-agents-functions-cli --workspace . state finding create` for incidents and hotfix needs
+- Run `prdtp-agents-functions-cli --workspace . state handoff create` for escalation routing
+- Run `prdtp-agents-functions-cli --workspace . state release update` if rollback is required
+- Run `prdtp-agents-functions-cli --workspace . state finding update` to transition existing findings
 - Update `docs/project/releases.md` only for narrative notes, incident summaries, or rollback details
 - Update canonical docs for hotfix stories
-- Do NOT write YAML directly to `findings.yaml`, `handoffs.yaml`, or `releases.yaml` - always use `prdtp-agents-functions-cli state *`
+- Do NOT write YAML directly to `findings.yaml`, `handoffs.yaml`, or `releases.yaml` - always use `prdtp-agents-functions-cli --workspace . state *`
 
 ## Exit
 

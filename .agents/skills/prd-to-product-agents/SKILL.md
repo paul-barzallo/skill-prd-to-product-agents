@@ -143,9 +143,9 @@ Command semantics:
 
 - `prd-to-product-agents-cli validate package`: portable skill package integrity for the distributed skill
 - `prd-to-product-agents-cli validate all`: maintainer validation from a source checkout, including runtime smoke
-- `prdtp-agents-functions-cli validate workspace`: structural validation of a generated workspace
-- `prdtp-agents-functions-cli validate governance`: governance validation for configured workspaces
-- `prdtp-agents-functions-cli validate readiness`: optional enterprise-overlay readiness validation for production-ready workspaces
+- `prdtp-agents-functions-cli --workspace <workspace> validate workspace`: structural validation of a generated workspace
+- `prdtp-agents-functions-cli --workspace <workspace> validate governance`: governance validation for configured workspaces
+- `prdtp-agents-functions-cli --workspace <workspace> validate readiness`: optional enterprise-overlay readiness validation for production-ready workspaces
 
 ## Dependency contract
 

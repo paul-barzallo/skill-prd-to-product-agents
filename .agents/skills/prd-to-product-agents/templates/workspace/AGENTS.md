@@ -14,7 +14,7 @@ When bootstrap merges this file into an existing AGENTS.md, it drops only the ro
 - Treat a freshly generated workspace as `bootstrapped`, not operationally ready. `Readiness: not_ready` in `.state/bootstrap-report.md` means local configuration is still pending.
 - If a PRD already exists and is clear, start with `bootstrap-from-prd` using `pm-orchestrator`.
 - `bootstrap-from-prd` applies the PRD clarity gate and must ask follow-up questions before planning or implementation continues when the PRD is incomplete or ambiguous.
-- A task is not complete until `prdtp-agents-functions-cli git finalize` succeeds.
+- A task is not complete until `prdtp-agents-functions-cli --workspace . git finalize` succeeds.
 
 ### Delegation Hierarchy
 
@@ -150,17 +150,17 @@ Every sub-agent delegation must end with a structured report returned to the del
 - **GitHub governance contract**: `.github/github-governance.yaml` defines readiness, reviewers, labels, reserved future project metadata, and release-gate expectations.
 - A passive audit ledger exists at `.state/project_memory.db` but is managed automatically by infrastructure. Agents do not interact with it.
 - Governance immutability is driven only by `.github/immutable-files.txt`. Seeded project docs under `docs/project/` remain editable after bootstrap by their owning roles.
-- Operational YAML transitions are driven through `prdtp-agents-functions-cli state` subcommands. Direct edits to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` are out of contract even when the file is canonical state.
+- Operational YAML transitions are driven through `prdtp-agents-functions-cli --workspace . state` subcommands. Direct edits to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` are out of contract even when the file is canonical state.
 - If Git capability is disabled, the workspace runs in local-only mode and change evidence is written to `.state/local-history/` instead of commits or PRs.
-- `prdtp-agents-functions-cli git finalize` is the supported closure path for completed work in both Git and local-only modes.
-- Agents must not run `git commit` directly for task work. Use `prdtp-agents-functions-cli git finalize` so staged files, commit metadata, validation, and work-unit evidence are enforced together.
-- In Git-enabled workspaces, `prdtp-agents-functions-cli git finalize` executes the shared pre-commit validator and governance checks before commit creation. If validation fails, no commit is created.
-- The installed `pre-commit` hook blocks normal direct `git commit` attempts and tells the caller to use `prdtp-agents-functions-cli git finalize` instead.
+- `prdtp-agents-functions-cli --workspace . git finalize` is the supported closure path for completed work in both Git and local-only modes.
+- Agents must not run `git commit` directly for task work. Use `prdtp-agents-functions-cli --workspace . git finalize` so staged files, commit metadata, validation, and work-unit evidence are enforced together.
+- In Git-enabled workspaces, `prdtp-agents-functions-cli --workspace . git finalize` executes the shared pre-commit validator and governance checks before commit creation. If validation fails, no commit is created.
+- When `prdtp-agents-functions-cli --workspace . git install-hooks` has been run in a Git-enabled workspace, the installed `pre-commit` hook blocks normal direct `git commit` attempts and tells the caller to use `prdtp-agents-functions-cli --workspace . git finalize` instead.
 - If SQLite capability is disabled, audit keeps a local hash-chained mirror under `.state/audit/`, may spool degraded operational evidence under `.state/audit-spool/` and `.state/degraded-ops/`, and `audit sync` records degraded success instead of failing closed.
 - `docs/project/management-dashboard.md` is the executive summary view generated from canonical docs plus the execution layer.
 - `.state/reporting/report-snapshot.json` is the shared reporting source for Markdown, UI, and exports.
-- `prdtp-agents-functions-cli report serve` is the local read-only reporting dashboard for PM and TL.
-- `prdtp-agents-functions-cli report pack` is the supported path for CSV and XLSX reporting exports.
+- `prdtp-agents-functions-cli --workspace . report serve` is the local read-only reporting dashboard for PM and TL.
+- `prdtp-agents-functions-cli --workspace . report pack` is the supported path for CSV and XLSX reporting exports.
 
 ### Git and Task Governance
 
@@ -181,7 +181,7 @@ Every sub-agent delegation must end with a structured report returned to the del
 - PRs must use `.github/PULL_REQUEST_TEMPLATE.md` and include one `role:*`, one `kind:*`, and one `priority:*` label.
 - Authors must review PR comments and commit comments before asking for merge.
 - `devops-release-engineer` is the final approval gate before merge.
-- If Git capability is disabled, task-branch creation and PR flow are out of contract; work closes through `prdtp-agents-functions-cli git finalize`, which records local-only evidence under `.state/local-history/`.
+- If Git capability is disabled, task-branch creation and PR flow are out of contract; work closes through `prdtp-agents-functions-cli --workspace . git finalize`, which records local-only evidence under `.state/local-history/`.
 
 ### Model routing
 
@@ -213,36 +213,37 @@ Model selection is part of the agent contract in VS Code / IDE environments. The
 
 | Subcommand | Purpose |
 | ---------- | ------- |
-| `prdtp-agents-functions-cli git finalize` | Pre-commit validation + atomic commit |
-| `prdtp-agents-functions-cli git checkout-task-branch` | Task branch creation with naming validation |
-| `prdtp-agents-functions-cli state handoff create/update` | Handoff YAML operations |
-| `prdtp-agents-functions-cli state finding create/update` | Finding YAML operations |
-| `prdtp-agents-functions-cli state release create/update` | Release YAML operations |
-| `prdtp-agents-functions-cli state event record` | Environment event recording |
-| `prdtp-agents-functions-cli report dashboard` | Render management-dashboard.md from snapshot |
-| `prdtp-agents-functions-cli report snapshot` | Generate report-snapshot.json |
-| `prdtp-agents-functions-cli audit sync` | SQLite ledger synchronization |
-| `prdtp-agents-functions-cli audit replay-spool` | Replay degraded-mode spool into SQLite |
-| `prdtp-agents-functions-cli audit sink health/test` | Verify or probe the configured audit sink |
-| `prdtp-agents-functions-cli capabilities detect` | Tool detection -> workspace-capabilities.yaml |
-| `prdtp-agents-functions-cli validate workspace/prompts/agents/models` | Structural validation |
-| `prdtp-agents-functions-cli validate governance` | Governance validation for configured workspaces |
-| `prdtp-agents-functions-cli validate readiness` | Strong operational readiness validation for production-ready workspaces |
+| `prdtp-agents-functions-cli --workspace . git finalize` | Pre-commit validation + atomic commit |
+| `prdtp-agents-functions-cli --workspace . git checkout-task-branch` | Task branch creation with naming validation |
+| `prdtp-agents-functions-cli --workspace . state handoff create/update` | Handoff YAML operations |
+| `prdtp-agents-functions-cli --workspace . state finding create/update` | Finding YAML operations |
+| `prdtp-agents-functions-cli --workspace . state release create/update` | Release YAML operations |
+| `prdtp-agents-functions-cli --workspace . state event record` | Environment event recording |
+| `prdtp-agents-functions-cli --workspace . report dashboard` | Render management-dashboard.md from snapshot |
+| `prdtp-agents-functions-cli --workspace . report snapshot` | Generate report-snapshot.json |
+| `prdtp-agents-functions-cli --workspace . audit sync` | SQLite ledger synchronization |
+| `prdtp-agents-functions-cli --workspace . audit replay-spool` | Replay degraded-mode spool into SQLite |
+| `prdtp-agents-functions-cli --workspace . audit sink health/test` | Verify or probe the configured audit sink |
+| `prdtp-agents-functions-cli --workspace . capabilities detect` | Tool detection -> workspace-capabilities.yaml |
+| `prdtp-agents-functions-cli --workspace . validate workspace/prompts/agents/models` | Structural validation |
+| `prdtp-agents-functions-cli --workspace . validate governance` | Governance validation for configured workspaces |
+| `prdtp-agents-functions-cli --workspace . validate readiness` | Strong operational readiness validation for production-ready workspaces |
 
 #### Per-agent intended call set
 
 This table is an intended call set, not a hard runtime permission boundary.
 Frontmatter and tool support may narrow behavior, but durable containment still
 depends on workspace governance, CODEOWNERS, PR workflows, and review.
+No technical role broker is in scope for this P0.
 
 | Agent | Intended `execute` call set |
 | ----- | ---------------------------- |
-| `pm-orchestrator` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli report dashboard`, `prdtp-agents-functions-cli report snapshot`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding update`, `prdtp-agents-functions-cli agents assemble` |
-| `tech-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create/update`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli agents assemble` |
-| `product-owner` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update` |
-| `software-architect` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli state handoff create` |
-| `ux-designer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create` |
-| `backend-developer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create` |
-| `frontend-developer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state handoff create` |
-| `qa-lead` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state finding create/update`, `prdtp-agents-functions-cli state handoff create` |
-| `devops-release-engineer` | `prdtp-agents-functions-cli git finalize`, `prdtp-agents-functions-cli git checkout-task-branch`, `prdtp-agents-functions-cli state release create/update`, `prdtp-agents-functions-cli state event record`, `prdtp-agents-functions-cli state finding create`, `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update` |
+| `pm-orchestrator` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . report dashboard`, `prdtp-agents-functions-cli --workspace . report snapshot`, `prdtp-agents-functions-cli --workspace . state handoff create/update`, `prdtp-agents-functions-cli --workspace . state finding update`, `prdtp-agents-functions-cli --workspace . agents assemble` |
+| `tech-lead` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state handoff create/update`, `prdtp-agents-functions-cli --workspace . state finding create/update`, `prdtp-agents-functions-cli --workspace . agents assemble` |
+| `product-owner` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state handoff create`, `prdtp-agents-functions-cli --workspace . state finding update` |
+| `software-architect` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state finding create/update`, `prdtp-agents-functions-cli --workspace . state handoff create` |
+| `ux-designer` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state handoff create` |
+| `backend-developer` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state handoff create` |
+| `frontend-developer` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state handoff create` |
+| `qa-lead` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state finding create/update`, `prdtp-agents-functions-cli --workspace . state handoff create` |
+| `devops-release-engineer` | `prdtp-agents-functions-cli --workspace . git finalize`, `prdtp-agents-functions-cli --workspace . git checkout-task-branch`, `prdtp-agents-functions-cli --workspace . state release create/update`, `prdtp-agents-functions-cli --workspace . state event record`, `prdtp-agents-functions-cli --workspace . state finding create`, `prdtp-agents-functions-cli --workspace . state handoff create`, `prdtp-agents-functions-cli --workspace . state finding update` |

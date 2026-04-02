@@ -30,28 +30,24 @@ pub struct AuditRemoteConfig {
     pub timeout_seconds: u64,
 }
 
-pub fn yaml_string(root: &YamlValue, path: &[&str]) -> Option<String> {
+pub fn yaml_value<'a>(root: &'a YamlValue, path: &[&str]) -> Option<&'a YamlValue> {
     let mut current = root;
     for key in path {
         current = current.get(*key)?;
     }
-    current.as_str().map(str::to_string)
+    Some(current)
+}
+
+pub fn yaml_string(root: &YamlValue, path: &[&str]) -> Option<String> {
+    yaml_value(root, path).and_then(YamlValue::as_str).map(str::to_string)
 }
 
 pub fn yaml_bool(root: &YamlValue, path: &[&str]) -> Option<bool> {
-    let mut current = root;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_bool()
+    yaml_value(root, path).and_then(YamlValue::as_bool)
 }
 
 pub fn yaml_u64(root: &YamlValue, path: &[&str]) -> Option<u64> {
-    let mut current = root;
-    for key in path {
-        current = current.get(*key)?;
-    }
-    current.as_u64()
+    yaml_value(root, path).and_then(YamlValue::as_u64)
 }
 
 pub fn parse_csv(value: &str) -> Vec<String> {

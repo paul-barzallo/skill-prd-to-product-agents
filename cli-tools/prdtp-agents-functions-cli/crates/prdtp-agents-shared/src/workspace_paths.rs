@@ -52,6 +52,9 @@ pub const EXTENDED_REQUIRED_FILES: &[&str] = &[
     "docs/project/quality-gates.yaml",
     "docs/project/source-of-truth-map.md",
     "docs/project/releases.md",
+    "schemas/backlog.schema.yaml",
+    "schemas/refined-stories.schema.yaml",
+    "schemas/quality-gates.schema.yaml",
     "schemas/handoffs.schema.yaml",
     "schemas/findings.schema.yaml",
     "schemas/releases.schema.yaml",
@@ -72,6 +75,16 @@ pub const YAML_FILES: &[&str] = &[
     ".github/github-governance.yaml",
     ".github/agent-model-policy.yaml",
     ".github/workspace-capabilities.yaml",
+];
+
+/// Schema files that define the structured YAML contract for canonical project state.
+pub const SCHEMA_FILES: &[&str] = &[
+    "schemas/backlog.schema.yaml",
+    "schemas/refined-stories.schema.yaml",
+    "schemas/quality-gates.schema.yaml",
+    "schemas/handoffs.schema.yaml",
+    "schemas/findings.schema.yaml",
+    "schemas/releases.schema.yaml",
 ];
 
 /// Canonical agent names in hierarchy order (L0, then L1, then L2).

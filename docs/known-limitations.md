@@ -31,7 +31,7 @@ do not get rediscovered, re-sold as solved, or confused with closed work.
 
 - Maintainer support and escalation flow is still minimal even though the runbook and issue templates now exist.
 - Binary refresh now routes through a reviewed PR, but reviewers still need to inspect tracked binaries, SBOMs, provenance policies, and checksums before merge.
-- GitHub issue and PR mutation are wrapped by the runtime CLI, but the broader GitHub write surface is still intentionally narrower than the full `gh` CLI and must stay that way unless new wrappers, tests, and docs land together.
+- The published skill intentionally excludes GitHub issue and PR mutation wrappers; GitHub-connected runtime operations stay narrower than the full `gh` CLI, and docs must not imply those hidden maintainer-only paths are part of the shipped contract unless code, tests, and published binaries change together.
 - Enterprise readiness still depends on real remote infrastructure: the maintained sandbox workflow can now produce evidence, but GitHub API credentials, remote branch protection targets, sandbox variables/secrets, and a reachable remote audit sink must still exist outside the repo for the strongest profile to be meaningful.
 - Remote audit acknowledgement currently means only that the configured sink returned a non-empty `ack_id`; it does not by itself prove immutable retention, independent timestamping, or a cryptographic receipt.
 - Immutable governance currently proves separate reviewer identities plus approval from one declared immutable-governance reviewer; it should not be described as formal dual-control unless validation is intentionally strengthened.

@@ -124,6 +124,13 @@ pub fn run(workspace: &Path) -> Result<()> {
         &["github", "release_gate", "reviewer_logins"],
         "github.release_gate.reviewer_logins",
     );
+    errors += check_approval_quorum(
+        &parsed,
+        &["github", "release_gate", "approval_quorum"],
+        "github.release_gate.approval_quorum",
+        distinct_csv_count(&parsed, &["github", "release_gate", "reviewer_logins"]),
+        Some(6),
+    );
     errors += check_bool(
         &parsed,
         &["github", "immutable_governance", "required"],
@@ -138,6 +145,16 @@ pub fn run(workspace: &Path) -> Result<()> {
         &parsed,
         &["github", "immutable_governance", "reviewer_logins"],
         "github.immutable_governance.reviewer_logins",
+    );
+    errors += check_approval_quorum(
+        &parsed,
+        &["github", "immutable_governance", "approval_quorum"],
+        "github.immutable_governance.approval_quorum",
+        distinct_csv_count(
+            &parsed,
+            &["github", "immutable_governance", "reviewer_logins"],
+        ),
+        None,
     );
     errors += check_scalar(
         &parsed,
@@ -249,6 +266,71 @@ fn check_bool(parsed: &Value, path: &[&str], label: &str) -> u32 {
             1
         }
     }
+}
+
+fn check_approval_quorum(
+    parsed: &Value,
+    path: &[&str],
+    label: &str,
+    reviewer_count: usize,
+    max: Option<u64>,
+) -> u32 {
+    match crate::github_api::yaml_value(parsed, path) {
+        None => {
+            println!("  {} {} defaults to 1", "✓".green(), label);
+            0
+        }
+        Some(value) => match value.as_u64() {
+            Some(0) => {
+                eprintln!("  {} {} must be at least 1", "✗".red(), label);
+                1
+            }
+            Some(quorum) => {
+                if reviewer_count > 0 && quorum > reviewer_count as u64 {
+                    eprintln!(
+                        "  {} {}={} exceeds the {} configured reviewer login(s)",
+                        "✗".red(),
+                        label,
+                        quorum,
+                        reviewer_count
+                    );
+                    1
+                } else if let Some(maximum) = max {
+                    if quorum > maximum {
+                        eprintln!(
+                            "  {} {}={} exceeds the GitHub branch-protection maximum of {} approving reviews",
+                            "✗".red(),
+                            label,
+                            quorum,
+                            maximum
+                        );
+                        1
+                    } else {
+                        println!("  {} {} = {}", "✓".green(), label, quorum);
+                        0
+                    }
+                } else {
+                    println!("  {} {} = {}", "✓".green(), label, quorum);
+                    0
+                }
+            }
+            None => {
+                eprintln!("  {} {} missing or not an integer", "✗".red(), label);
+                1
+            }
+        },
+    }
+}
+
+fn distinct_csv_count(parsed: &Value, path: &[&str]) -> usize {
+    yaml_string(parsed, path)
+        .map(|value| {
+            crate::github_api::parse_csv(&value)
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len()
+        })
+        .unwrap_or(0)
 }
 
 fn yaml_string(root: &Value, path: &[&str]) -> Option<String> {

@@ -7,6 +7,8 @@ use serde_yaml::{Mapping, Value};
 use std::fs;
 use std::path::Path;
 
+const MAX_BRANCH_PROTECTION_APPROVAL_QUORUM: u64 = 6;
+
 #[derive(Args)]
 pub struct ConfigureArgs {
     #[arg(long)]
@@ -15,6 +17,10 @@ pub struct ConfigureArgs {
     pub repo: String,
     #[arg(long)]
     pub release_gate_login: String,
+    #[arg(long)]
+    pub release_gate_extra_logins: Option<String>,
+    #[arg(long)]
+    pub release_gate_approval_quorum: Option<u64>,
     #[arg(long)]
     pub reviewer_product: String,
     #[arg(long)]
@@ -29,6 +35,8 @@ pub struct ConfigureArgs {
     pub reviewer_infra: String,
     #[arg(long)]
     pub reviewer_infra_login: String,
+    #[arg(long)]
+    pub immutable_governance_approval_quorum: Option<u64>,
     #[arg(long, value_enum)]
     pub operating_profile: Option<OperatingProfileArg>,
     #[arg(long, value_enum)]
@@ -116,13 +124,36 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
 
     let owner = normalize_slug_like("owner", &args.owner)?;
     let repo = normalize_slug_like("repo", &args.repo)?;
-    let release_gate_login = normalize_login("release-gate-login", &args.release_gate_login)?;
+    let release_gate_primary_login = normalize_login("release-gate-login", &args.release_gate_login)?;
+    let release_gate_extra_logins = normalize_login_list(
+        "release-gate-extra-logins",
+        args.release_gate_extra_logins.as_deref(),
+    )?;
+    let release_gate_logins = merge_unique_logins(
+        &release_gate_primary_login,
+        &release_gate_extra_logins,
+    );
     let reviewer_infra_login = normalize_login("reviewer-infra-login", &args.reviewer_infra_login)?;
-    if reviewer_infra_login == release_gate_login {
+    if release_gate_logins
+        .iter()
+        .any(|login| login == &reviewer_infra_login)
+    {
         bail!(
-            "reviewer-infra-login must differ from release-gate-login so immutable governance keeps a separate reviewer identity"
+            "reviewer-infra-login must differ from every release-gate login so immutable governance keeps a separate reviewer identity"
         );
     }
+    let release_gate_approval_quorum = validate_approval_quorum(
+        "release-gate-approval-quorum",
+        args.release_gate_approval_quorum.unwrap_or(1),
+        release_gate_logins.len() as u64,
+        Some(MAX_BRANCH_PROTECTION_APPROVAL_QUORUM),
+    )?;
+    let immutable_governance_approval_quorum = validate_approval_quorum(
+        "immutable-governance-approval-quorum",
+        args.immutable_governance_approval_quorum.unwrap_or(1),
+        2,
+        None,
+    )?;
     let reviewers = GovernanceReviewers {
         product: normalize_handle("reviewer-product", &args.reviewer_product)?,
         architecture: normalize_handle("reviewer-architecture", &args.reviewer_architecture)?,
@@ -166,8 +197,10 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
         &mut governance,
         &owner,
         &repo,
-        &release_gate_login,
+        &release_gate_logins,
         &reviewer_infra_login,
+        release_gate_approval_quorum,
+        immutable_governance_approval_quorum,
         &reviewers,
         operating_profile,
         github_auth_mode,
@@ -194,8 +227,14 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
     println!("  Operating profile: {operating_profile}");
     println!("  GitHub auth mode: {github_auth_mode}");
     println!("  Audit mode: {audit_mode}");
-    println!("  Release gate login: {release_gate_login}");
-    println!("  Immutable governance logins: {release_gate_login}, {reviewer_infra_login}");
+    println!("  Release gate logins: {}", release_gate_logins.join(", "));
+    println!("  Release gate approval quorum: {release_gate_approval_quorum}");
+    println!(
+        "  Immutable governance logins: {release_gate_primary_login}, {reviewer_infra_login}"
+    );
+    println!(
+        "  Immutable governance approval quorum: {immutable_governance_approval_quorum}"
+    );
     println!("  Immutable governance: remote PR approval required");
     println!("  Readiness status: configured");
     crate::audit::events::record_sensitive_action(
@@ -208,8 +247,14 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
             "operating_profile": operating_profile.to_string(),
             "github_auth_mode": github_auth_mode.to_string(),
             "audit_mode": audit_mode.to_string(),
-            "release_gate_login": release_gate_login,
-            "immutable_governance_logins": [release_gate_login, reviewer_infra_login],
+            "release_gate_login": release_gate_primary_login.clone(),
+            "release_gate_logins": release_gate_logins.clone(),
+            "release_gate_approval_quorum": release_gate_approval_quorum,
+            "immutable_governance_logins": [
+                release_gate_primary_login.clone(),
+                reviewer_infra_login.clone()
+            ],
+            "immutable_governance_approval_quorum": immutable_governance_approval_quorum,
             "immutable_governance_mode": "remote-pr-approval",
             "readiness_status": "configured"
         }),
@@ -220,6 +265,11 @@ pub fn configure(workspace: &Path, args: ConfigureArgs) -> Result<()> {
 
 pub fn provision_enterprise(workspace: &Path, args: ProvisionEnterpriseArgs) -> Result<()> {
     println!("{}", "=== Provision Enterprise Governance ===".cyan().bold());
+    crate::common::capability_contract::require_policy_enabled(
+        workspace,
+        "gh",
+        "governance provision-enterprise",
+    )?;
 
     let governance_path = workspace.join(".github/github-governance.yaml");
     let governance_raw = fs::read_to_string(&governance_path)
@@ -357,6 +407,22 @@ fn normalize_login(label: &str, value: &str) -> Result<String> {
     Ok(trimmed)
 }
 
+fn normalize_login_list(label: &str, value: Option<&str>) -> Result<Vec<String>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+
+    let mut logins = Vec::new();
+    for candidate in value.split(',').map(str::trim).filter(|item| !item.is_empty()) {
+        let normalized = normalize_login(label, candidate)?;
+        if !logins.contains(&normalized) {
+            logins.push(normalized);
+        }
+    }
+
+    Ok(logins)
+}
+
 fn normalize_slug_like(label: &str, value: &str) -> Result<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -372,8 +438,10 @@ fn update_governance_value(
     governance: &mut Value,
     owner: &str,
     repo: &str,
-    release_gate_login: &str,
+    release_gate_logins: &[String],
     reviewer_infra_login: &str,
+    release_gate_approval_quorum: u64,
+    immutable_governance_approval_quorum: u64,
     reviewers: &GovernanceReviewers,
     operating_profile: OperatingProfileArg,
     github_auth_mode: GithubAuthModeArg,
@@ -417,9 +485,17 @@ fn update_governance_value(
     set_string(reviewers_map, "devops", &reviewers.devops);
     set_string(reviewers_map, "infra", &reviewers.infra);
 
+    let release_gate_primary_login = release_gate_logins
+        .first()
+        .context("release gate login list must contain at least one login")?;
     let release_gate = mapping_mut(governance, &["github", "release_gate"])?;
     set_string(release_gate, "reviewer_handles", &reviewers.devops);
-    set_string(release_gate, "reviewer_logins", release_gate_login);
+    set_string(release_gate, "reviewer_logins", &release_gate_logins.join(","));
+    set_u64(
+        release_gate,
+        "approval_quorum",
+        release_gate_approval_quorum,
+    );
 
     let immutable_governance = mapping_mut(governance, &["github", "immutable_governance"])?;
     set_string(
@@ -430,7 +506,12 @@ fn update_governance_value(
     set_string(
         immutable_governance,
         "reviewer_logins",
-        &format!("{release_gate_login},{reviewer_infra_login}"),
+        &format!("{release_gate_primary_login},{reviewer_infra_login}"),
+    );
+    set_u64(
+        immutable_governance,
+        "approval_quorum",
+        immutable_governance_approval_quorum,
     );
 
     if let Ok(project) = mapping_mut(governance, &["github", "project"]) {
@@ -481,6 +562,50 @@ fn set_string(mapping: &mut Mapping, key: &str, value: &str) {
 
 fn set_bool(mapping: &mut Mapping, key: &str, value: bool) {
     mapping.insert(Value::String(key.to_string()), Value::Bool(value));
+}
+
+fn set_u64(mapping: &mut Mapping, key: &str, value: u64) {
+    mapping.insert(
+        Value::String(key.to_string()),
+        Value::Number(serde_yaml::Number::from(value)),
+    );
+}
+
+fn merge_unique_logins(primary: &str, extras: &[String]) -> Vec<String> {
+    let mut logins = vec![primary.to_string()];
+    for login in extras {
+        if !logins.contains(login) {
+            logins.push(login.clone());
+        }
+    }
+    logins
+}
+
+fn validate_approval_quorum(
+    label: &str,
+    value: u64,
+    reviewer_count: u64,
+    max: Option<u64>,
+) -> Result<u64> {
+    if reviewer_count == 0 {
+        bail!("{label} requires at least one configured reviewer login");
+    }
+    if value == 0 {
+        bail!("{label} must be at least 1");
+    }
+    if value > reviewer_count {
+        bail!(
+            "{label}={value} exceeds the {reviewer_count} configured reviewer login(s)"
+        );
+    }
+    if let Some(max) = max {
+        if value > max {
+            bail!(
+                "{label}={value} exceeds the GitHub branch-protection maximum of {max} approving reviews"
+            );
+        }
+    }
+    Ok(value)
 }
 
 fn validate_profile_contract(
@@ -537,7 +662,31 @@ fn provision_branch_protection(governance: &Value, branch: &str) -> Result<()> {
     )
     .unwrap_or(false);
 
-    let review_count = if require_release_gate_approval { 1 } else { 0 };
+    let review_count = if require_release_gate_approval {
+        let reviewer_count = crate::github_api::parse_csv(
+            &crate::github_api::yaml_string(
+                governance,
+                &["github", "release_gate", "reviewer_logins"],
+            )
+            .unwrap_or_default(),
+        )
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len() as u64;
+        let configured = crate::github_api::yaml_u64(
+            governance,
+            &["github", "release_gate", "approval_quorum"],
+        )
+        .unwrap_or(1);
+        validate_approval_quorum(
+            "github.release_gate.approval_quorum",
+            configured,
+            reviewer_count,
+            Some(MAX_BRANCH_PROTECTION_APPROVAL_QUORUM),
+        )?
+    } else {
+        0
+    };
     let body = json!({
         "required_status_checks": null,
         "enforce_admins": false,

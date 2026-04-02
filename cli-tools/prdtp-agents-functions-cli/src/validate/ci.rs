@@ -8,9 +8,12 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 use walkdir::WalkDir;
 
-use crate::common::enums::{
+use crate::common::{
+    enums::{
     FindingStatus, FindingType, HandoffReason, HandoffStatus, HandoffType, ReleaseStatus, Role,
     Severity,
+    },
+    workspace_paths,
 };
 use crate::operations;
 
@@ -188,6 +191,18 @@ const COPILOT_CONTRACT_FORBIDDEN: &[(&str, &str)] = &[
         "runtime docs must not advertise the unsupported github-app enterprise auth mode",
     ),
     (
+        "GitHub issue/PR wrappers",
+        "runtime docs must not advertise GitHub issue/PR wrappers in the published skill",
+    ),
+    (
+        "runtime CLI issue wrappers",
+        "published-skill docs must not imply hidden runtime CLI issue wrappers",
+    ),
+    (
+        "The installed `pre-commit` hook blocks normal direct `git commit` attempts",
+        "docs must not claim hooks are already installed before git install-hooks runs",
+    ),
+    (
         "Allowed execute calls",
         "execute tables must be framed as intended call sets, not allowed-call enforcement",
     ),
@@ -198,6 +213,10 @@ const COPILOT_CONTRACT_FORBIDDEN: &[(&str, &str)] = &[
     (
         "Permitted execute calls",
         "execute tables must be framed as intended call sets, not permitted-call enforcement",
+    ),
+    (
+        "allowed-calls table",
+        "execute docs must not describe the canonical table as allowed-call enforcement",
     ),
 ];
 const COPILOT_ROLE_DRIFT_PATTERNS: &[(&str, &str)] = &[
@@ -415,27 +434,19 @@ fn yaml_tabs(workspace: &Path) -> Result<()> {
 fn yaml_schemas(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating CI yaml schemas rule");
     println!("{}", "=== CI Validate: YAML Schemas ===".cyan().bold());
-    let schema_dir = workspace.join("schemas");
-    if !schema_dir.is_dir() {
-        tracing::info!(path = %schema_dir.display(), "schemas directory not found; CI yaml schema validation skipped");
-        println!("SKIP: schemas/ directory not found");
-        return Ok(());
-    }
-
     let mut checked = 0u32;
-    for entry in fs::read_dir(&schema_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if !file_name.ends_with(".schema.yaml") {
-            continue;
+    for schema_rel in workspace_paths::SCHEMA_FILES {
+        let schema_path = workspace.join(schema_rel);
+        if !schema_path.is_file() {
+            bail!("missing required schema file: {schema_rel}");
         }
+        let Some(file_name) = Path::new(schema_rel).file_name().and_then(|name| name.to_str()) else {
+            bail!("invalid schema path: {schema_rel}");
+        };
         let base = file_name.trim_end_matches(".schema.yaml");
         let data_path = workspace.join("docs/project").join(format!("{base}.yaml"));
         if !data_path.exists() {
-            continue;
+            bail!("missing schema-backed YAML file: {}", data_path.display());
         }
         let content = fs::read_to_string(&data_path)?;
         let parsed: Value = serde_yaml::from_str(&content)
@@ -450,8 +461,19 @@ fn yaml_schemas(workspace: &Path) -> Result<()> {
         checked += 1;
     }
 
+    let (errors, warnings) = crate::validate::workspace::validate_structured_project_yaml(workspace);
+    if errors > 0 {
+        bail!(
+            "schema-backed YAML contract failed with {errors} error(s) and {warnings} warning(s)"
+        );
+    }
+
     tracing::info!(checked, "schema-backed YAML files validated");
-    println!("Checked {checked} schema-backed YAML file(s)");
+    if warnings > 0 {
+        println!("Checked {checked} schema-backed YAML file(s) with {warnings} warning(s)");
+    } else {
+        println!("Checked {checked} schema-backed YAML file(s)");
+    }
     Ok(())
 }
 
@@ -1218,6 +1240,10 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
             "This table is an intended call set, not a hard runtime permission boundary.",
         ),
         (
+            ".github/instructions/agents.instructions.md",
+            "No technical role broker is in scope for this P0.",
+        ),
+        (
             ".github/copilot-instructions.md",
             "Prompt frontmatter narrows that access for bounded workflows that do not need command execution.",
         ),
@@ -1226,9 +1252,14 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
             "This table is an intended call set, not a hard runtime permission boundary.",
         ),
         (
+            ".github/copilot-instructions.md",
+            "No technical role broker is in scope for this P0.",
+        ),
+        (
             "AGENTS.md",
             "This table is an intended call set, not a hard runtime permission boundary.",
         ),
+        ("AGENTS.md", "No technical role broker is in scope for this P0."),
         (
             ".github/agents/identity/devops-release-engineer.md",
             "`ops/<issue-id>-slug`",
@@ -1263,6 +1294,18 @@ fn copilot_runtime_contract(workspace: &Path) -> Result<()> {
         (
             "docs/runtime/runtime-claims-coverage.md",
             "`enterprise` production-ready claims require `validate readiness`, `governance provision-enterprise`, and `audit sink test`.",
+        ),
+        (
+            "docs/runtime/runtime-claims-coverage.md",
+            "isolated packaged skill copy",
+        ),
+        (
+            "docs/runtime/runtime-claims-coverage.md",
+            "No technical role broker is in scope for this P0.",
+        ),
+        (
+            "docs/runtime/enterprise-readiness-sandbox.md",
+            "isolated temporary directory",
         ),
     ];
 

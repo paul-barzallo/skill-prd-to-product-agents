@@ -33,7 +33,7 @@ Before evaluating release gates, verify governance readiness:
 1. Read `.github/github-governance.yaml` and check `readiness.status`.
 2. If status is `template` or `bootstrapped`, stop. Governance is still pending local configuration.
 3. Scan `github-governance.yaml` and `.github/CODEOWNERS` for any remaining `REPLACE_ME` or `@team-` placeholders. If found, stop with the same routing.
-4. Minimum required readiness: `production-ready`. If the workspace is only `configured`, stop and route the owner to remote governance hardening plus `prdtp-agents-functions-cli validate readiness`.
+4. Minimum required readiness: `production-ready`. If the workspace is only `configured`, stop and route the owner to remote governance hardening plus `prdtp-agents-functions-cli --workspace . validate readiness`.
 
 ### 1. Gather release state
 
@@ -74,7 +74,7 @@ IF any check = 'blocked'
 If all checks pass, transition the release from `ready` to `approved`:
 
 ```shell
-prdtp-agents-functions-cli state release update \
+prdtp-agents-functions-cli --workspace . state release update \
   --release-ref  "{release_ref}" \
   --new-status   approved \
   --agent-role   devops-release-engineer
@@ -83,7 +83,7 @@ prdtp-agents-functions-cli state release update \
 If the decision creates handoffs, use supported snake_case reasons:
 
 ```shell
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
   --from-role     devops-release-engineer \
   --to-role       tech-lead \
   --handoff-type  escalation \
@@ -97,9 +97,9 @@ Use only supported reasons from the handoff contract, including `blocked`, `read
 
 ## Write
 
-- Run `prdtp-agents-functions-cli state handoff create` for escalation or rework when checks fail
-- Run `prdtp-agents-functions-cli state finding create` for newly discovered blockers
-- Run `prdtp-agents-functions-cli state release update` to transition status from `ready` to `approved` when all checks pass
+- Run `prdtp-agents-functions-cli --workspace . state handoff create` for escalation or rework when checks fail
+- Run `prdtp-agents-functions-cli --workspace . state finding create` for newly discovered blockers
+- Run `prdtp-agents-functions-cli --workspace . state release update` to transition status from `ready` to `approved` when all checks pass
 - Update `docs/project/releases.md` only for human-readable notes, evidence, or rollback instructions
 - Do not write YAML directly to `handoffs.yaml`, `findings.yaml`, or `releases.yaml`
 

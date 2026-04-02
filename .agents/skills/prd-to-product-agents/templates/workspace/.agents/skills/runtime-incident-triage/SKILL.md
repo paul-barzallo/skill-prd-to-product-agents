@@ -27,13 +27,13 @@ Gather: source, environment, severity, symptoms, timeline.
 
 ### Step 2 -- Create environment event
 
-Run `prdtp-agents-functions-cli state event record` with appropriate `event_type`:
+Run `prdtp-agents-functions-cli --workspace . state event record` with appropriate `event_type`:
 
 - `health_degraded`, `incident_detected`, `deploy_failed`, `rollback`, `health_restored`
 
 ### Step 3 -- Create finding
 
-Run `prdtp-agents-functions-cli state finding create` to record the finding in `docs/project/findings.yaml`.
+Run `prdtp-agents-functions-cli --workspace . state finding create` to record the finding in `docs/project/findings.yaml`.
 Route by type: `bug`/`security`/`architecture` -> `tech-lead`; UX/scope -> `product-owner`.
 
 ### Step 4 -- Determine action
@@ -47,7 +47,7 @@ Route by type: `bug`/`security`/`architecture` -> `tech-lead`; UX/scope -> `prod
 
 ### Step 5 -- Create handoff
 
-For critical/high: run `prdtp-agents-functions-cli state handoff create` with escalation type to `tech-lead` or `pm-orchestrator`.
+For critical/high: run `prdtp-agents-functions-cli --workspace . state handoff create` with escalation type to `tech-lead` or `pm-orchestrator`.
 
 ### Step 6 -- Report
 
@@ -55,6 +55,6 @@ Structured triage report with timeline, finding ID, action taken.
 
 ## Post-incident
 
-1. Log `health_restored` event via `prdtp-agents-functions-cli state event record`
-2. Resolve finding and handoff via `prdtp-agents-functions-cli state finding update` and `prdtp-agents-functions-cli state handoff update`
+1. Log `health_restored` event via `prdtp-agents-functions-cli --workspace . state event record`
+2. Resolve finding and handoff via `prdtp-agents-functions-cli --workspace . state finding update` and `prdtp-agents-functions-cli --workspace . state handoff update`
 3. Consider post-mortem if systemic

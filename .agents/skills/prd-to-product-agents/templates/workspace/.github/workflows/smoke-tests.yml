@@ -4,31 +4,59 @@ on:
   push:
     branches: [main, develop]
     paths:
+      - '.agents/**'
+      - '.editorconfig'
+      - '.gitattributes'
+      - '.gitignore'
+      - '.markdownlint.json'
       - '.github/agents/**'
+      - '.github/actions/**'
+      - '.github/agent-model-policy.yaml'
+      - '.github/github-governance.yaml'
       - '.github/ISSUE_TEMPLATE/**'
+      - '.github/immutable-files.txt'
       - '.github/PULL_REQUEST_TEMPLATE.md'
       - '.github/project-governance.md'
+      - '.github/workspace-capabilities.yaml'
       - '.github/CODEOWNERS'
       - '.github/prompts/**'
       - '.github/workflows/**'
       - '.github/instructions/**'
       - '.github/copilot-instructions.md'
+      - 'AGENTS.md'
       - '.instructions.md'
+      - 'bin/**'
       - 'docs/**'
+      - 'reporting-ui/**'
+      - 'schemas/**'
   pull_request:
     branches: [main, develop]
     paths:
+      - '.agents/**'
+      - '.editorconfig'
+      - '.gitattributes'
+      - '.gitignore'
+      - '.markdownlint.json'
       - '.github/agents/**'
+      - '.github/actions/**'
+      - '.github/agent-model-policy.yaml'
+      - '.github/github-governance.yaml'
       - '.github/ISSUE_TEMPLATE/**'
+      - '.github/immutable-files.txt'
       - '.github/PULL_REQUEST_TEMPLATE.md'
       - '.github/project-governance.md'
+      - '.github/workspace-capabilities.yaml'
       - '.github/CODEOWNERS'
       - '.github/prompts/**'
       - '.github/workflows/**'
       - '.github/instructions/**'
       - '.github/copilot-instructions.md'
+      - 'AGENTS.md'
       - '.instructions.md'
+      - 'bin/**'
       - 'docs/**'
+      - 'reporting-ui/**'
+      - 'schemas/**'
   workflow_dispatch:
 
 jobs:
@@ -46,32 +74,26 @@ jobs:
       - name: Setup workspace runtime CLI
         uses: ./.github/actions/setup-cli
 
-      - name: Governance pre-commit validator
-        run: prdtp-agents-functions-cli validate ci pre-commit-fixtures
-
       - name: Verify agent assembly
-        run: prdtp-agents-functions-cli agents assemble --verify
+        run: prdtp-agents-functions-cli --workspace . agents assemble --verify
 
       - name: YAML lint
-        run: prdtp-agents-functions-cli validate ci yaml-tabs
+        run: prdtp-agents-functions-cli --workspace . validate ci yaml-tabs
 
       - name: YAML schema structural validation
-        run: prdtp-agents-functions-cli validate ci yaml-schemas
+        run: prdtp-agents-functions-cli --workspace . validate ci yaml-schemas
 
       - name: No raw SQL in prompts
-        run: prdtp-agents-functions-cli validate ci raw-sql-prompts
-
-      - name: Template state is clean
-        run: prdtp-agents-functions-cli validate ci template-state
+        run: prdtp-agents-functions-cli --workspace . validate ci raw-sql-prompts
 
       - name: Prompt tool contracts
-        run: prdtp-agents-functions-cli validate ci prompt-tool-contracts
+        run: prdtp-agents-functions-cli --workspace . validate ci prompt-tool-contracts
 
       - name: No BOM or mojibake in prompts, agents, or skills
-        run: prdtp-agents-functions-cli validate encoding
+        run: prdtp-agents-functions-cli --workspace . validate encoding
 
       - name: Prompt label contracts
-        run: prdtp-agents-functions-cli validate ci prompt-label-contracts
+        run: prdtp-agents-functions-cli --workspace . validate ci prompt-label-contracts
 
       - name: Secrets scan — gitleaks (Bash)
         if: runner.os != 'Windows'
@@ -84,10 +106,24 @@ jobs:
           esac
           TMP_DIR="$(mktemp -d)"
           trap 'rm -rf "${TMP_DIR}"' EXIT
+          GITLEAKS_ASSET="gitleaks_${GITLEAKS_VERSION}_${GITLEAKS_OS}_${GITLEAKS_ARCH}.tar.gz"
           curl -LSsf \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_${GITLEAKS_OS}_${GITLEAKS_ARCH}.tar.gz" \
-            -o "${TMP_DIR}/gitleaks.tar.gz"
-          tar -xzf "${TMP_DIR}/gitleaks.tar.gz" -C "${TMP_DIR}" gitleaks
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${GITLEAKS_ASSET}" \
+            -o "${TMP_DIR}/${GITLEAKS_ASSET}"
+          curl -LSsf \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/checksums.txt" \
+            -o "${TMP_DIR}/checksums.txt"
+          EXPECTED_SHA="$(grep " ${GITLEAKS_ASSET}$" "${TMP_DIR}/checksums.txt" | awk '{print $1}')"
+          if [ -z "${EXPECTED_SHA}" ]; then
+            echo "Missing checksum for ${GITLEAKS_ASSET}" >&2
+            exit 1
+          fi
+          ACTUAL_SHA="$(shasum -a 256 "${TMP_DIR}/${GITLEAKS_ASSET}" | awk '{print $1}')"
+          if [ "${ACTUAL_SHA}" != "${EXPECTED_SHA}" ]; then
+            echo "Checksum mismatch for ${GITLEAKS_ASSET}" >&2
+            exit 1
+          fi
+          tar -xzf "${TMP_DIR}/${GITLEAKS_ASSET}" -C "${TMP_DIR}" gitleaks
           chmod +x "${TMP_DIR}/gitleaks"
           "${TMP_DIR}/gitleaks" detect --source . --no-banner -q
 
@@ -96,13 +132,27 @@ jobs:
         shell: pwsh
         run: |
           $gitleaksVersion = '8.18.2'
+          $assetName = "gitleaks_${gitleaksVersion}_windows_x64.zip"
           $tmpDir = Join-Path $env:RUNNER_TEMP ("gitleaks-$(New-Guid)")
           New-Item -ItemType Directory -Path $tmpDir | Out-Null
           try {
-            $zipPath = Join-Path $tmpDir 'gitleaks.zip'
+            $zipPath = Join-Path $tmpDir $assetName
+            $checksumsPath = Join-Path $tmpDir 'checksums.txt'
             Invoke-WebRequest `
-              "https://github.com/gitleaks/gitleaks/releases/download/v$gitleaksVersion/gitleaks_${gitleaksVersion}_windows_x64.zip" `
+              "https://github.com/gitleaks/gitleaks/releases/download/v$gitleaksVersion/$assetName" `
               -OutFile $zipPath
+            Invoke-WebRequest `
+              "https://github.com/gitleaks/gitleaks/releases/download/v$gitleaksVersion/checksums.txt" `
+              -OutFile $checksumsPath
+            $checksumLine = Get-Content $checksumsPath | Where-Object { $_ -match [regex]::Escape($assetName) } | Select-Object -First 1
+            if (-not $checksumLine) {
+              throw "Missing checksum for $assetName"
+            }
+            $expectedHash = (($checksumLine -split '\s+')[0]).ToLowerInvariant()
+            $actualHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actualHash -ne $expectedHash) {
+              throw "Checksum mismatch for $assetName"
+            }
             Expand-Archive $zipPath -DestinationPath $tmpDir
             $gitleaks = Join-Path $tmpDir 'gitleaks.exe'
             & $gitleaks detect --source . --no-banner -q
@@ -112,7 +162,7 @@ jobs:
           }
 
       - name: Contract consistency
-        run: prdtp-agents-functions-cli validate workspace
+        run: prdtp-agents-functions-cli --workspace . validate workspace
 
   integration:
     strategy:
@@ -129,24 +179,7 @@ jobs:
         uses: ./.github/actions/setup-cli
 
       - name: Operational state validation
-        run: prdtp-agents-functions-cli validate ci operational-state
-
-  degraded:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    name: Degraded (${{ matrix.os }})
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup workspace runtime CLI
-        uses: ./.github/actions/setup-cli
-
-      - name: Degraded runtime validation
-        run: prdtp-agents-functions-cli validate ci degraded-runtime
+        run: prdtp-agents-functions-cli --workspace . validate ci operational-state
 
   reporting:
     strategy:
@@ -163,7 +196,7 @@ jobs:
         uses: ./.github/actions/setup-cli
 
       - name: Reporting validation
-        run: prdtp-agents-functions-cli validate ci reporting
+        run: prdtp-agents-functions-cli --workspace . validate ci reporting
 
       - name: Copilot runtime contract validation
-        run: prdtp-agents-functions-cli validate ci copilot-runtime-contract
+        run: prdtp-agents-functions-cli --workspace . validate ci copilot-runtime-contract

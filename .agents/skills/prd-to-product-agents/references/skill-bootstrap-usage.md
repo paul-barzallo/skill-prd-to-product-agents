@@ -24,6 +24,11 @@ Bootstrap is re-runnable and preserves observable stability on rerun:
 
 Bootstrap preserves existing user files. It does not silently overwrite them.
 
+On first bootstrap, sensitive capabilities such as `git`, `gh`, and
+`markdownlint` are refreshed into `.github/workspace-capabilities.yaml` with
+default-deny authorization unless the workspace is preserving an intentional
+prior authorization state from a rerun.
+
 ## What is generated
 
 Bootstrap seeds:
@@ -54,4 +59,8 @@ After bootstrap:
 2. Read `.state/bootstrap-report.md`.
 3. Confirm `Structure validation`, `Governance status`, and `Readiness status`.
 4. Expect a fresh workspace to be `bootstrapped` and often `not_ready`.
-5. Configure governance locally before treating the workspace as ready.
+5. Run `prdtp-agents-functions-cli --workspace <workspace> governance configure` before treating the workspace as locally configured.
+6. Refresh and review `.github/workspace-capabilities.yaml` with `prdtp-agents-functions-cli --workspace <workspace> capabilities detect`.
+7. Intentionally authorize any sensitive capability you want to use, for example `git`, `gh`, `sqlite`, or `markdownlint`, via `prdtp-agents-functions-cli --workspace <workspace> capabilities authorize ...`.
+8. If the workspace will use Git-backed task flow, run `prdtp-agents-functions-cli --workspace <workspace> git install-hooks` after `.git/` exists.
+9. Use `validate governance` for the configured local gate and `validate readiness` only for the stronger optional `production-ready` enterprise overlay.

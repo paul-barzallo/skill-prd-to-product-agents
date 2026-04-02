@@ -34,6 +34,18 @@ jobs:
       - name: Prepare evidence directory
         run: mkdir -p "$EVIDENCE_DIR"
 
+      - name: Record workflow context
+        run: |
+          set -euo pipefail
+          {
+            echo "repository=${GITHUB_REPOSITORY}"
+            echo "ref=${GITHUB_REF}"
+            echo "sha=${GITHUB_SHA}"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_url=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "sandbox_repo=${SANDBOX_REPO}"
+          } > "$EVIDENCE_DIR/workflow-context.txt"
+
       - name: Validate sandbox configuration
         run: |
           set -euo pipefail
@@ -56,23 +68,53 @@ jobs:
             fi
           done
 
-      - name: Bootstrap temporary workspace
+      - name: Stage isolated packaged skill
+        id: skill
+        run: |
+          set -euo pipefail
+          root="$(mktemp -d)"
+          skill_root="$root/prd-to-product-agents"
+          bootstrap_cli="$skill_root/bin/prd-to-product-agents-cli-linux-x64"
+          runtime_cli="$skill_root/templates/workspace/.agents/bin/prd-to-product-agents/prdtp-agents-functions-cli-linux-x64"
+          cp -R .agents/skills/prd-to-product-agents "$skill_root"
+          chmod +x "$bootstrap_cli" "$runtime_cli"
+          {
+            echo "skill_root=$skill_root"
+            echo "bootstrap_cli=$bootstrap_cli"
+            echo "runtime_cli=$runtime_cli"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "skill_root=$skill_root"
+            echo "bootstrap_cli=$bootstrap_cli"
+            echo "runtime_cli=$runtime_cli"
+          } > "$EVIDENCE_DIR/packaged-skill-paths.txt"
+
+      - name: Validate packaged skill release candidate
+        run: |
+          set -euo pipefail
+          "${{ steps.skill.outputs.bootstrap_cli }}" \
+            --skill-root "${{ steps.skill.outputs.skill_root }}" \
+            validate package 2>&1 | tee "$EVIDENCE_DIR/package-validate.txt"
+
+      - name: Bootstrap temporary workspace from isolated packaged skill
         id: bootstrap
         run: |
           set -euo pipefail
           workspace="$(mktemp -d)"
           echo "workspace=$workspace" >> "$GITHUB_OUTPUT"
-          cargo run --quiet --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml -- \
-            --skill-root . \
+          "${{ steps.skill.outputs.bootstrap_cli }}" \
+            --skill-root "${{ steps.skill.outputs.skill_root }}" \
             bootstrap workspace \
-            --target "$workspace"
+            --target "$workspace" 2>&1 | tee "$EVIDENCE_DIR/bootstrap-workspace.txt"
+          cp "$workspace/.state/bootstrap-report.md" "$EVIDENCE_DIR/bootstrap-report.md"
+          cp "$workspace/.state/bootstrap-manifest.txt" "$EVIDENCE_DIR/bootstrap-manifest.txt"
 
       - name: Configure governance skeleton
         run: |
           set -euo pipefail
           owner="${SANDBOX_REPO%%/*}"
           repo="${SANDBOX_REPO##*/}"
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             governance configure \
             --owner "$owner" \
@@ -108,31 +150,31 @@ jobs:
       - name: Refresh capabilities and validate configured gate
         run: |
           set -euo pipefail
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             capabilities detect 2>&1 | tee "$EVIDENCE_DIR/capabilities-detect.txt"
           cp "${{ steps.bootstrap.outputs.workspace }}/.github/workspace-capabilities.yaml" "$EVIDENCE_DIR/workspace-capabilities.yaml"
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             validate governance 2>&1 | tee "$EVIDENCE_DIR/validate-governance.txt"
 
       - name: Provision enterprise controls
         run: |
           set -euo pipefail
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             governance provision-enterprise 2>&1 | tee "$EVIDENCE_DIR/provision-enterprise.txt"
 
       - name: Validate readiness and audit path
         run: |
           set -euo pipefail
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             validate readiness 2>&1 | tee "$EVIDENCE_DIR/validate-readiness.txt"
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             audit sink health 2>&1 | tee "$EVIDENCE_DIR/audit-sink-health.txt"
-          cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml -- \
+          "${{ steps.skill.outputs.runtime_cli }}" \
             --workspace "${{ steps.bootstrap.outputs.workspace }}" \
             audit sink test 2>&1 | tee "$EVIDENCE_DIR/audit-sink-test.txt"
 
@@ -153,7 +195,7 @@ jobs:
 
       - name: Upload enterprise readiness evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: enterprise-readiness-evidence
           path: ${{ env.EVIDENCE_DIR }}

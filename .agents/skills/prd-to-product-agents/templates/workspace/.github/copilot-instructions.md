@@ -98,7 +98,7 @@ Coordinators (PM, TL) must review the report-back before delegating the next ste
 
 - If `.github/workspace-capabilities.yaml` exists, agents must obey it instead of inferring tool availability ad hoc.
 - If `capabilities.git.authorized.enabled=false`, Git and GitHub mutation are out of contract: no commits, no branch workflow, no PR automation. Evidence goes to `.state/local-history/`.
-- If `capabilities.sqlite.authorized.enabled=false`, infrastructure runs in degraded mirror mode. Agents still use canonical files and `prdtp-agents-functions-cli state` subcommands, `audit sync` records degraded success locally, and SQLite ledger sync is deferred.
+- If `capabilities.sqlite.authorized.enabled=false`, infrastructure runs in degraded mirror mode. Agents still use canonical files and `prdtp-agents-functions-cli --workspace . state` subcommands, `prdtp-agents-functions-cli --workspace . audit sync` records degraded success locally, and SQLite ledger sync is deferred.
 - If `capabilities.markdownlint.authorized.enabled=false`, Markdown lint is skipped by authorization, not by accidental failure.
 - `detected.*` is infrastructure-owned. `policy.*` may be updated later by the user or `devops-release-engineer` after installing missing tooling.
 - `authorized.*` is the hard gate for capability use. Detection never auto-elevates sensitive capabilities.
@@ -149,7 +149,7 @@ Each `.agent.md` file is assembled from source files plus a divider.
 
 **Assembly formula:** `identity/{name}.md` + CONTEXT ZONE divider + `context/shared-context.md` + `context/{name}.md` -> `{name}.agent.md`
 
-Run `prdtp-agents-functions-cli agents assemble` to regenerate `.agent.md` files after editing source files. Use `--verify` to check without writing.
+Run `prdtp-agents-functions-cli --workspace . agents assemble` to regenerate `.agent.md` files after editing source files. Use `--verify` to check without writing.
 
 ### Identity zone (immutable after bootstrap)
 
@@ -162,10 +162,10 @@ Stored in `context/shared-context.md` (shared across all agents) and `context/{n
 ### Injection rules
 
 - `.agent.md` files are generated artifacts. Edit `identity/` or `context/` source files, not `.agent.md` directly.
-- After editing source files, run `prdtp-agents-functions-cli agents assemble` to regenerate `.agent.md` files.
+- After editing source files, run `prdtp-agents-functions-cli --workspace . agents assemble` to regenerate `.agent.md` files.
 - The `CONTEXT ZONE` divider comment must remain in every assembled `.agent.md`.
 - No prompt, workflow, or agent may modify identity source files after bootstrap.
-- `prdtp-agents-functions-cli validate agents` checks for the divider's presence, identity section integrity, and assembly sync.
+- `prdtp-agents-functions-cli --workspace . validate agents` checks for the divider's presence, identity section integrity, and assembly sync.
 
 ## Layered context injection
 
@@ -183,7 +183,7 @@ Agents start generic after bootstrap. Upper layers complete lower layers progres
 - Only the designated injector may write a context section.
 - Context sections use versioned replace semantics.
 - The personality, behavior contract, decision heuristics, and anti-patterns sections are never modified by context injection.
-- After context injection, run `prdtp-agents-functions-cli agents assemble` to regenerate `.agent.md` files.
+- After context injection, run `prdtp-agents-functions-cli --workspace . agents assemble` to regenerate `.agent.md` files.
 - Use the `enrich-agents-from-prd`, `enrich-agents-from-architecture`, and `enrich-agents-from-implementation` prompts to execute injection.
 
 ## Agent memory contracts
@@ -191,7 +191,7 @@ Agents start generic after bootstrap. Upper layers complete lower layers progres
 Every agent declares which canonical docs it reads and writes. These are documented in the `## Memory interaction` section of each agent file. Agents must not read or write outside their declared scope without creating a finding.
 
 - Primary stewardship in `.github/instructions/docs.instructions.md` does not imply exclusive write access.
-- Operational YAML transitions are driven through `prdtp-agents-functions-cli state` subcommands (e.g. `prdtp-agents-functions-cli state handoff create`, `prdtp-agents-functions-cli state finding update`).
+- Operational YAML transitions are driven through `prdtp-agents-functions-cli --workspace . state` subcommands (e.g. `prdtp-agents-functions-cli --workspace . state handoff create`, `prdtp-agents-functions-cli --workspace . state finding update`).
 - Direct edits to `handoffs.yaml`, `findings.yaml`, or `releases.yaml` are out of contract even when the file is canonical state.
 
 ## Git and GitHub execution workflow
@@ -209,24 +209,24 @@ Git history remains a formal input to agent decisions, but GitHub task execution
 **Rules:**
 
 - GitHub Issues are the required task system. Pull requests and branches reflect execution state.
-- `.github/github-governance.yaml` is the explicit governance contract for readiness, reviewers, labels, reserved future project metadata, and the final approval gate.
+- `.github/github-governance.yaml` is the explicit governance contract for readiness, reviewers, approval quorums, labels, reserved future project metadata, and the final approval gate.
 - `bootstrap-from-prd` is the standard PRD entrypoint, and `clarify-prd` remains available for a dedicated clarification pass when the PM needs to isolate requirement cleanup before proceeding.
-- Agents with `execute` may run the runtime CLI. Only `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally use role-scoped build/test/lint commands. PR governance must be validated through `prdtp-agents-functions-cli validate pr-governance` / `validate release-gate`, and enterprise repo controls are provisioned through `prdtp-agents-functions-cli governance provision-enterprise`. GitHub issue and PR mutation flows remain outside the default published skill contract in this release.
-- Agents with `execute` must check `.github/workspace-capabilities.yaml` before using Git, GitHub mutation, SQLite-backed scripts, or markdownlint. `authorized.*` overrides nominal tool access.
+- Agents with `execute` may run the runtime CLI. Only `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally use role-scoped build/test/lint commands. PR governance must be validated through `prdtp-agents-functions-cli --workspace . validate pr-governance` / `prdtp-agents-functions-cli --workspace . validate release-gate`, and enterprise repo controls are provisioned through `prdtp-agents-functions-cli --workspace . governance provision-enterprise`. GitHub issue and PR mutation flows remain outside the default published skill contract in this release.
+- Agents with `execute` must check `.github/workspace-capabilities.yaml` before using Git, GitHub-connected runtime operations, SQLite-backed scripts, or markdownlint. `authorized.*` overrides nominal tool access.
 - Required branch routine for task work - use the controlled wrapper:
-  - `prdtp-agents-functions-cli git checkout-task-branch --role <role> --issue-id <id> --slug <slug>` (creates or switches to task branch)
+  - `prdtp-agents-functions-cli --workspace . git checkout-task-branch --role <role> --issue-id <id> --slug <slug>` (creates or switches to task branch)
   - Branch naming convention: `<role>/<issue-id>-slug` (e.g. `frontend/GH-42-checkout-form`).
   - The command performs a safe branch switch only. It refuses dirty worktrees and does not rebase or fast-forward implicitly.
-  - Manual `git fetch/checkout/pull` sequences are out of contract when `prdtp-agents-functions-cli git checkout-task-branch` exists.
+  - Manual `git fetch/checkout/pull` sequences are out of contract when `prdtp-agents-functions-cli --workspace . git checkout-task-branch` exists.
 - Direct work on `main` or `develop` is out of contract.
 - If Git capability is disabled, local work may continue but must be recorded in `.state/local-history/` instead of branches, commits, or PRs.
 - Commits follow Conventional Commits with role scope and issue reference, for example `feat(frontend): GH-123 checkout form`.
 - PRs must use `.github/PULL_REQUEST_TEMPLATE.md`, include one `role:*`, one `kind:*`, and one `priority:*` label, and link the driving issue.
-- PRs touching immutable governance files listed in `.github/immutable-files.txt` also require the labels and reviewer approval declared in `.github/github-governance.yaml`, and that remote PR approval is the only supported merge authority.
-- `prdtp-agents-functions-cli git finalize` is the supported closure path for any completed task. It must succeed before work is considered done.
-- For task work, never run `git commit` directly. Always use `prdtp-agents-functions-cli git finalize` so the branch guard, staged-file scope, shared validation, and work-unit evidence are enforced together.
+- PRs touching immutable governance files listed in `.github/immutable-files.txt` also require the labels, reviewer approval set, and any configured approval quorum declared in `.github/github-governance.yaml`, and that remote PR approval is the only supported merge authority.
+- `prdtp-agents-functions-cli --workspace . git finalize` is the supported closure path for any completed task. It must succeed before work is considered done.
+- For task work, never run `git commit` directly. Always use `prdtp-agents-functions-cli --workspace . git finalize` so the branch guard, staged-file scope, shared validation, and work-unit evidence are enforced together.
 - Before asking for merge, authors review PR comments and commit comments, respond or apply changes, and refresh the PR description if scope changed.
-- `tech-lead` turns refined stories into executable GitHub Issues through the runtime CLI issue wrappers, `pm-orchestrator` monitors flow and blocked tasks, and `devops-release-engineer` is the final approval gate before merge.
+- `tech-lead` turns refined stories into executable implementation plans and branch-ready work breakdowns, `pm-orchestrator` monitors flow and blocked tasks, and `devops-release-engineer` is the final approval gate before merge.
 - When a canonical file and Git history conflict, the file wins -- then create a finding for the discrepancy.
 
 ## Destructive operations guardrail
@@ -252,13 +252,13 @@ These git operations are **dangerous** and require explicit user confirmation wi
 
 - `docs/project/board.md` is the detailed operational snapshot.
 - `docs/project/management-dashboard.md` is the executive summary for readiness, risk, blockers, and release state.
-- Refresh the executive Markdown view with `prdtp-agents-functions-cli report dashboard`.
-- Use `prdtp-agents-functions-cli report serve` for the local visual dashboard.
-- Use `prdtp-agents-functions-cli report pack` for CSV and XLSX report packs.
+- Refresh the executive Markdown view with `prdtp-agents-functions-cli --workspace . report dashboard`.
+- Use `prdtp-agents-functions-cli --workspace . report serve` for the local visual dashboard.
+- Use `prdtp-agents-functions-cli --workspace . report pack` for CSV and XLSX report packs.
 
 ## Tool restriction rules
 
-> **Canonical per-role execute boundary table:** See `.github/instructions/agents.instructions.md` for the full per-role allowed-calls table and assembly specification.
+> **Canonical per-role execute boundary table:** See `.github/instructions/agents.instructions.md` for the full per-role intended-call table and assembly specification.
 
 - Each agent and prompt declares its allowed `tools` in YAML frontmatter.
 - The `tools` property restricts which VS Code tools are available during that session.
@@ -266,6 +266,7 @@ These git operations are **dangerous** and require explicit user confirmation wi
 - Coordinators (`pm-orchestrator`, `tech-lead`) include the `agent` tool plus `agents` property to restrict which sub-agents they can delegate to.
 - This table is an intended call set, not a hard runtime permission boundary.
 - Role frontmatter may include `execute` because governance, task closure, and some technical validation flows are CLI-driven. Prompt frontmatter narrows that access for bounded workflows that do not need command execution.
+- No technical role broker is in scope for this P0.
 - Only coordinators include the `agent` tool; execution access does not imply delegation authority.
 - `product-owner`, `ux-designer`, `software-architect`, and `pm-orchestrator` are limited to `prdtp-agents-functions-cli` commands, state inspection, and coordination operations.
 - `backend-developer`, `frontend-developer`, `qa-lead`, `devops-release-engineer`, and `tech-lead` may additionally run build, test, lint, and dependency management commands (e.g., `npm install`, `dotnet build`, `pytest`) when clearly tied to their delivery scope. This does not extend to arbitrary shell commands, system administration, or network operations outside the workspace.

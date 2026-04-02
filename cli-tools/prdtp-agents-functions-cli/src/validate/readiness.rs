@@ -20,6 +20,7 @@ struct RemoteBranchProtectionRule {
 pub fn run(workspace: &Path) -> Result<()> {
     tracing::info!(workspace = %workspace.display(), "validating workspace readiness");
     println!("{}", "=== Validate Readiness ===".cyan().bold());
+    capability_contract::require_policy_enabled(workspace, "gh", "validate readiness")?;
 
     let mut errors = 0u32;
     let warnings = 0u32;
@@ -220,6 +221,20 @@ pub(crate) fn validate_remote_governance(_workspace: &Path, governance: &Value) 
         &["github", "branch_protection", "require_release_gate_approval"],
     )
     .unwrap_or(false);
+    let release_gate_reviewer_count = parse_csv(
+        &yaml_string(governance, &["github", "release_gate", "reviewer_logins"])
+            .unwrap_or_default(),
+    )
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>()
+    .len();
+    let release_gate_quorum = configured_approval_quorum(
+        governance,
+        &["github", "release_gate", "approval_quorum"],
+        "github.release_gate.approval_quorum",
+        release_gate_reviewer_count,
+        Some(6),
+    )?;
 
     let mut branch_rule_errors = Vec::new();
     for branch in &protected_branches {
@@ -242,10 +257,10 @@ pub(crate) fn validate_remote_governance(_workspace: &Path, governance: &Value) 
                     "{branch}: remote rule '{}' does not require approving reviews",
                     rule.pattern
                 ));
-            } else if rule.required_approving_review_count < 1 {
+            } else if rule.required_approving_review_count < release_gate_quorum {
                 branch_rule_errors.push(format!(
-                    "{branch}: remote rule '{}' requires fewer than 1 approving review",
-                    rule.pattern
+                    "{branch}: remote rule '{}' requires fewer than {} approving review(s)",
+                    rule.pattern, release_gate_quorum
                 ));
             }
         }
@@ -276,10 +291,21 @@ pub(crate) fn validate_remote_governance(_workspace: &Path, governance: &Value) 
         let immutable_logins = parse_csv(
             &yaml_string(governance, &["github", "immutable_governance", "reviewer_logins"])
                 .unwrap_or_default(),
-        );
+        )
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
         if immutable_logins.is_empty() {
             bail!("github.immutable_governance.reviewer_logins must contain at least one login");
         }
+        let _ = configured_approval_quorum(
+            governance,
+            &["github", "immutable_governance", "approval_quorum"],
+            "github.immutable_governance.approval_quorum",
+            immutable_logins.len(),
+            None,
+        )?;
         for login in &immutable_logins {
             crate::github_api::api_get_json(governance, &format!("users/{login}")).with_context(|| {
                 format!("immutable governance login '{login}' is not readable via GitHub API")
@@ -338,4 +364,40 @@ pub(crate) fn yaml_string(root: &Value, path: &[&str]) -> Option<String> {
 
 pub(crate) fn yaml_bool(root: &Value, path: &[&str]) -> Option<bool> {
     crate::github_api::yaml_bool(root, path)
+}
+
+fn configured_approval_quorum(
+    governance: &Value,
+    path: &[&str],
+    label: &str,
+    reviewer_count: usize,
+    max: Option<u64>,
+) -> Result<u64> {
+    if reviewer_count == 0 {
+        bail!("{label} requires at least one configured reviewer login");
+    }
+
+    let quorum = match crate::github_api::yaml_value(governance, path) {
+        None => 1,
+        Some(value) => value
+            .as_u64()
+            .with_context(|| format!("{label} must be an integer"))?,
+    };
+    if quorum == 0 {
+        bail!("{label} must be at least 1");
+    }
+    if quorum > reviewer_count as u64 {
+        bail!(
+            "{label}={quorum} exceeds the {reviewer_count} configured reviewer login(s)"
+        );
+    }
+    if let Some(maximum) = max {
+        if quorum > maximum {
+            bail!(
+                "{label}={quorum} exceeds the GitHub branch-protection maximum of {maximum} approving reviews"
+            );
+        }
+    }
+
+    Ok(quorum)
 }

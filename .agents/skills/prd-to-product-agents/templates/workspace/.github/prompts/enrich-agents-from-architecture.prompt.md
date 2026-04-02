@@ -50,7 +50,7 @@ Optionally, add brief role-specific technical notes in per-agent overlay files (
 - **Subsequent runs**: use versioned replace -- overwrite the full section, add `<!-- injected: YYYY-MM-DD by software-architect -->` at the top.
 - After updating all context files, run the assemble-agents command to regenerate `.agent.md` files:
   ```
-  prdtp-agents-functions-cli agents assemble
+  prdtp-agents-functions-cli --workspace . agents assemble
   ```
 
 ## Success criteria

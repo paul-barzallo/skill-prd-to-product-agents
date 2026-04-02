@@ -28,7 +28,10 @@ Prepare a dedicated GitHub sandbox repository with:
 1. Bootstrap a temporary workspace from the packaged skill release under review.
    This step happens outside the deployed workspace and must use the bootstrap
    command provided by that packaged release, targeting a fresh
-   `<temp-workspace>` directory.
+   `<temp-workspace>` directory. The maintained publisher workflow first stages
+   that packaged skill in an isolated temporary directory, validates the
+   package there, and only then bootstraps the temporary workspace from that
+   isolated copy.
 
 2. Configure local governance skeleton values:
 
@@ -50,6 +53,8 @@ Prepare a dedicated GitHub sandbox repository with:
      --audit-remote-endpoint <https-endpoint> \
      --audit-remote-auth-header-env <AUTH_HEADER_ENV>
    ```
+
+    If enterprise policy requires more than one release-gate reviewer or explicit immutable-governance dual control, add `--release-gate-extra-logins`, `--release-gate-approval-quorum`, and `--immutable-governance-approval-quorum 2` intentionally.
 
 3. Refresh local capability detection:
 
@@ -100,7 +105,9 @@ immutable retention, independent timestamping, or a cryptographic receipt.
 
 Successful acceptance should prove all of these:
 
+- package validation succeeds against the isolated packaged skill candidate before bootstrap begins
 - `validate governance` passes after local reviewer and repository identifiers are real
+- bootstrap report and bootstrap manifest from the isolated bootstrap run are preserved with the evidence artifact
 - `governance provision-enterprise` applies or confirms remote branch protection and governance labels
 - `validate readiness` passes only when the workspace is `production-ready`
 - branch protection is visible remotely
@@ -114,11 +121,14 @@ The maintainer repository that publishes the packaged skill may expose a manual
 workflow for the same flow. Treat that as external release evidence, not as a
 workspace-local capability or a default `core-local` guarantee. The maintained
 publisher proof path is `.github/workflows/enterprise-readiness-sandbox.yml`,
-which uploads an evidence artifact for the sandbox run.
+which stages an isolated packaged skill copy, records package validation,
+bootstraps from that staged copy, and uploads an evidence artifact for the
+sandbox run.
 
 ## Failure interpretation
 
 - If `validate governance` fails, the workspace is still locally incomplete.
+- If package validation fails before bootstrap, the distributed skill candidate is not coherent enough to use as enterprise release evidence.
 - If `validate readiness` fails on GitHub API identity, the sandbox token is missing, unreadable, or not valid for `token-api` use.
 - If `governance provision-enterprise` fails, the remote repository is missing required permissions or branch targets.
 - If `audit sink test` fails, or the response omits a non-empty `ack_id`, the remote audit sink is not ready for the current enterprise contract.

@@ -38,8 +38,8 @@ contradictory, stop and ask questions first.
 ## Write
 
 - canonical files under `docs/project/`
-- handoffs in `docs/project/handoffs.yaml` through `prdtp-agents-functions-cli state handoff create`
-- findings in `docs/project/findings.yaml` through `prdtp-agents-functions-cli state finding create`
+- handoffs in `docs/project/handoffs.yaml` through `prdtp-agents-functions-cli --workspace . state handoff create`
+- findings in `docs/project/findings.yaml` through `prdtp-agents-functions-cli --workspace . state finding create`
 - `docs/project/open-questions.md` for unresolved product or technical doubts
 
 Do not use free-form chat as the system of record.
@@ -91,7 +91,7 @@ If `capabilities.git.authorized.enabled=true`, create a working branch from
 `develop` using the controlled branch-checkout script:
 
 ```shell
-prdtp-agents-functions-cli git checkout-task-branch --role pm-orchestrator --issue-id "<issue-id>" --slug bootstrap-from-prd
+prdtp-agents-functions-cli --workspace . git checkout-task-branch --role pm-orchestrator --issue-id "<issue-id>" --slug bootstrap-from-prd
 ```
 
 If no issue ID exists yet, stop and create or identify the tracking issue first.
@@ -102,7 +102,7 @@ prefix from the runtime contract. Never commit to `main` or `develop` directly.
 If `capabilities.git.authorized.enabled=false`, do not call
 `git checkout-task-branch` and do not treat an issue ID as a hard prerequisite.
 Stay in local-only mode and close the workflow through
-`prdtp-agents-functions-cli git finalize`, which writes auditable evidence under
+`prdtp-agents-functions-cli --workspace . git finalize`, which writes auditable evidence under
 `.state/local-history/` instead of creating a Git commit.
 
 ## Process
@@ -188,7 +188,7 @@ Use the sub-agent tool to delegate to `tech-lead` with a scoped prompt:
 ### 7. Create coordination handoffs
 
 After all three delegations complete, create handoff records for audit
-traceability using `prdtp-agents-functions-cli state handoff create`.
+traceability using `prdtp-agents-functions-cli --workspace . state handoff create`.
 
 **Exact parameter names and valid values:**
 
@@ -207,7 +207,7 @@ traceability using `prdtp-agents-functions-cli state handoff create`.
 **Example:**
 
 ```shell
-prdtp-agents-functions-cli state handoff create \
+prdtp-agents-functions-cli --workspace . state handoff create \
     --from-role "pm-orchestrator" \
     --to-role "software-architect" \
     --handoff-type "normal" \
@@ -225,7 +225,7 @@ If Git is enabled, use your working branch and include the issue reference plus
 commit message:
 
 ```shell
-prdtp-agents-functions-cli git finalize \
+prdtp-agents-functions-cli --workspace . git finalize \
   --agent-role "pm-orchestrator" \
   --summary "Initialized canonical product memory from PRD." \
   --issue-ref "GH-<id>" \
@@ -241,7 +241,7 @@ If Git is disabled, run the same closure path without `--issue-ref` and
 commit:
 
 ```shell
-prdtp-agents-functions-cli git finalize \
+prdtp-agents-functions-cli --workspace . git finalize \
   --agent-role "pm-orchestrator" \
   --summary "Initialized canonical product memory from PRD." \
   --files-changed "docs/project/vision.md,docs/project/scope.md,docs/project/backlog.yaml,docs/project/acceptance-criteria.md,docs/project/handoffs.yaml" \

@@ -25,6 +25,10 @@ Use this skill when:
 
 **Files**: `docs/project/backlog.yaml`, `docs/project/refined-stories.yaml`, `docs/project/quality-gates.yaml`
 
+Backlog, refined stories, and quality gates are schema-backed by
+`schemas/backlog.schema.yaml`, `schemas/refined-stories.schema.yaml`, and
+`schemas/quality-gates.schema.yaml`.
+
 | Check | Rule |
 | --------------- | ---------------------------------------------- |
 | Parse | File must parse as valid YAML without errors |
@@ -39,7 +43,7 @@ Use this skill when:
 **refined-stories.yaml required fields per story**:
 
 - `id`, `title`, `status`, `priority`, `owner_role`, `acceptance_ref`
-- If `status` >= `refined`: `implementation_map` must exist
+- If `status` is not `draft`: `implementation_map` must exist
 
 **quality-gates.yaml required fields per gate**:
 

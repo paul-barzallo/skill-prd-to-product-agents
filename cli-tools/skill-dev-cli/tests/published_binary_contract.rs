@@ -447,6 +447,42 @@ fn build_workflow_package_acceptance_checks_hidden_runtime_commands() {
 }
 
 #[test]
+fn enterprise_sandbox_workflow_uses_isolated_packaged_skill_candidate() {
+    let content = read_repo_file(".github/workflows/enterprise-readiness-sandbox.yml");
+
+    for expected in [
+        "cp -R .agents/skills/prd-to-product-agents \"$skill_root\"",
+        "package-validate.txt",
+        "bootstrap-report.md",
+        "bootstrap-manifest.txt",
+        "packaged-skill-paths.txt",
+        "workflow-context.txt",
+        "${{ steps.skill.outputs.bootstrap_cli }}",
+        "${{ steps.skill.outputs.runtime_cli }}",
+        "governance promote-enterprise-readiness",
+    ] {
+        assert!(
+            content.contains(expected),
+            "enterprise sandbox workflow must prove the packaged skill release candidate: missing '{expected}'"
+        );
+    }
+
+    assert!(
+        !content.contains("cargo run --quiet --manifest-path cli-tools/prd-to-product-agents-cli/Cargo.toml"),
+        "enterprise sandbox workflow must not bootstrap from the source checkout"
+    );
+
+    let source_runtime_invocations = content
+        .matches("cargo run --quiet --manifest-path cli-tools/prdtp-agents-functions-cli/Cargo.toml")
+        .count();
+    assert_eq!(
+        source_runtime_invocations,
+        1,
+        "enterprise sandbox workflow should use the source runtime only for the maintainer-only readiness promotion step"
+    );
+}
+
+#[test]
 fn build_workflow_validates_published_help_contract_on_every_runner() {
     let content = read_repo_file(".github/workflows/build-skill-binaries.yml");
     for expected in [
@@ -545,6 +581,54 @@ fn release_checklist_declares_ci_pr_only_binary_refresh() {
 }
 
 #[test]
+fn release_checklist_requires_enterprise_evidence_publication_and_artifact_review() {
+    let content = read_repo_file("docs/repo-release-checklist.md");
+    for expected in [
+        "confirm `.github/workflows/enterprise-readiness-sandbox.yml` is published on the remote branch or tag candidate under review",
+        "run the enterprise sandbox only after the branch under review contains the tracked binary-refresh result",
+        "Review the uploaded `enterprise-readiness-evidence` artifact for at least",
+        "`package-validate.txt`",
+        "`bootstrap-report.md`",
+        "`bootstrap-manifest.txt`",
+        "`governance-promote-enterprise-readiness.txt`",
+        "Do not approve release if the workflow is not remotely dispatchable",
+    ] {
+        assert!(
+            content.contains(expected),
+            "repo release checklist must make enterprise evidence a concrete release gate: missing '{expected}'"
+        );
+    }
+}
+
+#[test]
+fn release_docs_require_local_drift_review_and_unix_mode_verification() {
+    let checklist = read_repo_file("docs/repo-release-checklist.md");
+    for expected in [
+        "Treat `test repo-validation` plus `test workflow-release-gate` as the local drift-review pair",
+        "Confirm published Unix binaries in all tracked bundle scopes still preserve `100755` executable mode in the git index.",
+        "Do not approve release if `test repo-validation` or `test release-gate` reports Unix executable-bit drift in published binaries.",
+    ] {
+        assert!(
+            checklist.contains(expected),
+            "repo release checklist must keep the release-drift and executable-bit review path explicit: missing '{expected}'"
+        );
+    }
+
+    let runbook = read_repo_file("docs/maintainer-runbook.md");
+    for expected in [
+        "review `.github/workflows/build-skill-binaries.yml`,",
+        "`.github/workflows/dependency-review.yml`, and `docs/repo-release-checklist.md`",
+        "`test repo-validation` is the local regression proof for release-doc/workflow drift and for published Unix executable-bit integrity.",
+        "must stay `100755` in the git index.",
+    ] {
+        assert!(
+            runbook.contains(expected),
+            "maintainer runbook must keep the release-drift and executable-bit guardrails explicit: missing '{expected}'"
+        );
+    }
+}
+
+#[test]
 fn workflows_use_node24_ready_action_pins() {
     let workflow_checks = [
         (
@@ -571,6 +655,16 @@ fn workflows_use_node24_ready_action_pins() {
             ".github/workflows/release-binaries.yml",
             ["actions/checkout@v6", "actions/upload-artifact@v7"].as_slice(),
             ["actions/checkout@v4", "actions/upload-artifact@v4"].as_slice(),
+        ),
+        (
+            ".github/workflows/enterprise-readiness-sandbox.yml",
+            ["actions/checkout@v6", "actions/upload-artifact@v7"].as_slice(),
+            ["actions/checkout@v4", "actions/upload-artifact@v4"].as_slice(),
+        ),
+        (
+            ".github/workflows/dependency-review.yml",
+            ["actions/checkout@v6", "actions/dependency-review-action@v4"].as_slice(),
+            ["actions/checkout@v4", "actions/dependency-review-action@v3"].as_slice(),
         ),
         (
             ".agents/skills/prd-to-product-agents/templates/workspace/.github/workflows/smoke-tests.yml",

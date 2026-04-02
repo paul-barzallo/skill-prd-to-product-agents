@@ -74,6 +74,11 @@ need the current-platform equivalent of the build workflow gate. Treat
 `test release-gate` as the blocking repository release command inside that
 broader local check.
 
+If release automation, binary publication, dependency policy, or provenance
+claims changed, review `.github/workflows/build-skill-binaries.yml`,
+`.github/workflows/dependency-review.yml`, and `docs/repo-release-checklist.md`
+together in the same change.
+
 For changes under `cli-tools/**`, `.agents/skills/prd-to-product-agents/**`,
 `bin/**`, or `.github/workflows/**`, GitHub now runs the multi-OS build and
 release-gate workflow before merge in addition to the Ubuntu repository
@@ -92,6 +97,8 @@ pre-commit install --hook-type pre-commit --hook-type pre-push
 - Do not hand-edit binary bundles or checksum manifests unless you are intentionally performing release maintenance.
 - The build workflow now proposes tracked binary refreshes through a PR; do not bypass that reviewed path with direct binary pushes to `main`.
 - If build outputs changed, review `.github/workflows/build-skill-binaries.yml` and `docs/repo-release-checklist.md` together.
+- `test repo-validation` is the local regression proof for release-doc/workflow drift and for published Unix executable-bit integrity.
+- Published Unix binaries under `bin/`, `.agents/skills/prd-to-product-agents/bin/`, and `.agents/skills/prd-to-product-agents/templates/workspace/.agents/bin/prd-to-product-agents/` must stay `100755` in the git index.
 
 ## 4. Pull request expectations
 
@@ -112,7 +119,32 @@ When a review or audit matters for future decisions:
 4. write an ADR if it closed a long-lived structural question
 5. record any repository-contract change in `CHANGELOG.md`
 
-## 6. When to stop and ask for review
+For durable follow-up, use the repository issue templates instead of ad hoc
+notes:
+
+- `.github/ISSUE_TEMPLATE/audit-finding.md` for confirmed audit or review gaps
+	that need tracked remediation
+- `.github/ISSUE_TEMPLATE/release-regression.md` for release-gate, packaging,
+	checksum, provenance, or publication-path regressions
+
+When one of those issues is closed, copy the durable conclusion back into the
+relevant source of truth (`docs/current-status.md`, `docs/open-gaps.md`,
+`docs/known-limitations.md`, `CHANGELOG.md`, or an ADR) before considering the
+follow-up complete.
+
+## 6. Support and Escalation
+
+- Use the normal issue templates for repository-scoped maintenance and release
+	follow-up.
+- Use `SECURITY.md` for sensitive reports or anything that should not be filed
+	in a public issue.
+- If a release path is blocked by workflow, binary, checksum, SBOM, or
+	provenance drift, stop release work and file a `release-regression` follow-up.
+- If a confirmed audit gap changes repository priorities or risks, record it in
+	`docs/current-status.md` or `docs/open-gaps.md` in the same change that opens
+	or closes the issue.
+
+## 7. When to stop and ask for review
 
 Stop and escalate if you find:
 
@@ -121,7 +153,7 @@ Stop and escalate if you find:
 - unexpected binary or checksum drift
 - changes that require a new ADR rather than an implicit code edit
 
-## 7. End-of-change checklist
+## 8. End-of-change checklist
 
 - [ ] documentation updated where claims changed
 - [ ] required commands executed for the change type

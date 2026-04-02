@@ -7,6 +7,7 @@ This file is the authoritative capability snapshot for commands that consult it.
 ## Ownership
 
 - `detected.*` fields are infrastructure-owned and refreshed by `prdtp-agents-functions-cli capabilities detect`.
+- Tool detection is path-based. Infrastructure checks whether a command is discoverable on `PATH`; it does not require `command --version` to succeed.
 - `authorized.*` fields are operating decisions and are the runtime gate for capability use.
 - `policy.*` fields carry non-privilege settings such as `mode` or reporting visibility.
 - Sensitive mutation capabilities such as `git` and `gh` must not auto-elevate from detection alone.
@@ -19,7 +20,7 @@ This file is the authoritative capability snapshot for commands that consult it.
 | Capability | `authorized.enabled=true` | `authorized.enabled=false` |
 | --- | --- | --- |
 | `git` | task branches and git-backed finalize flow may run | local-only mode; no task branches or git-backed finalize |
-| `gh` | GitHub issue/PR wrappers, board sync, PR governance validation, and remote governance checks may run | GitHub mutation and production-ready readiness checks stay off |
+| `gh` | board sync, PR governance and release-gate validation, remote audit sink checks, and remote governance/readiness verification may run | GitHub-connected and remote runtime operations stay off |
 | `sqlite` | database init/migrate plus audit sync/replay may write to `.state/project_memory.db` | `audit sync` degrades successfully to local mirror mode; database init/migrate/replay remain out of contract until SQLite is re-authorized |
 | `markdownlint` | Markdown validation may run | lint is skipped by authorization with a warning |
 | `reporting` | snapshot, dashboard, export, serve, and pack may run | reporting commands are out of contract |
@@ -36,13 +37,24 @@ fields for SQLite. It does not auto-authorize SQLite.
 - `audit sync` may still degrade safely to local-only mirror behavior while
   SQLite remains unauthorized or the DB is absent.
 
+## Bootstrap and preservation behavior
+
+Bootstrap refreshes `.github/workspace-capabilities.yaml` from the current
+environment.
+
+- On first bootstrap, sensitive capabilities stay unauthorized by default.
+- On rerun, an existing non-placeholder capability file preserves explicit
+  prior authorization decisions while refreshing `detected.*` fields.
+- Git hooks are installed only when a Git repository exists and `git install-hooks`
+  or the bootstrap Git path can write into `.git/hooks/`.
+
 ## Git-disabled mode
 
 If `capabilities.git.authorized.enabled=false`:
 
 - `prdtp-agents-functions-cli git checkout-task-branch` is out of contract.
 - `prdtp-agents-functions-cli git finalize` falls back to local-only evidence.
-- GitHub issue/PR mutation flows are out of contract.
+- GitHub mutation flows and hidden maintainer-only wrappers are out of contract.
 
 ## GitHub governance contract
 
@@ -55,8 +67,8 @@ Repository governance is defined separately in `.github/github-governance.yaml`.
 - Placeholder reviewers or repository identifiers are acceptable only before the workspace reaches `configured`.
 - `validate governance` is for configured workspaces.
 - `validate readiness` is the stronger production-ready gate and must fail unless local governance is complete and remote GitHub controls are reachable and verified.
-- `validate pr-governance` and `validate release-gate` are the supported contract checks for pull requests and final promotion to `main`.
-- Immutable governance edits are never authorized by local tokens alone; durable enforcement comes from remote PR approval verified through `github.immutable_governance.*`.
+- `validate pr-governance` and `validate release-gate` enforce the configured `github.release_gate.approval_quorum` and `github.immutable_governance.approval_quorum` thresholds against current GitHub review state.
+- Immutable governance edits are never authorized by local tokens alone; durable enforcement comes from remote PR approval verified through `github.immutable_governance.*` and its configured approval quorum.
 
 ## SQLite-disabled mode
 

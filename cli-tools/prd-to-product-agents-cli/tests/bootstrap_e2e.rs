@@ -3,6 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use serde_yaml::Value;
+
 fn skill_root() -> PathBuf {
     if let Some(explicit) = env::var_os("PRDTP_SKILL_ROOT").or_else(|| env::var_os("SKILL_ROOT")) {
         return normalize_skill_root(PathBuf::from(explicit));
@@ -118,6 +120,21 @@ fn count_overlay_files(target: &Path) -> usize {
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
         .count()
+}
+
+fn report_value(report: &str, label: &str) -> Option<String> {
+    report.lines().find_map(|line| {
+        line.strip_prefix(&format!("- {label}:"))
+            .map(|value| value.trim().to_string())
+    })
+}
+
+fn yaml_bool_at(value: &Value, path: &[&str]) -> Option<bool> {
+    let mut current = value;
+    for key in path {
+        current = current.get(*key)?;
+    }
+    current.as_bool()
 }
 
 #[test]
@@ -398,6 +415,58 @@ fn bootstrap_rerun_preserves_stability_with_crlf_text_sources() {
         "CRLF rerun produced unexpected overlay files: {overlay_count}"
     );
     assert_generated_workspace_has_lf_text_files(workspace.path());
+}
+
+#[test]
+fn bootstrap_report_and_capability_snapshot_use_same_detection_results() {
+    let tmp = tempfile::tempdir().expect("failed to create temp dir");
+    let target = tmp.path();
+
+    let output = Command::new(cli_binary())
+        .args([
+            "--skill-root",
+            &skill_root().to_string_lossy(),
+            "bootstrap",
+            "workspace",
+            "--target",
+            &target.to_string_lossy(),
+            "--project-name",
+            "Capability Convergence Test",
+            "--skip-git",
+            "--skip-db-init",
+        ])
+        .output()
+        .expect("failed to execute CLI");
+
+    assert!(
+        output.status.success(),
+        "bootstrap failed:\nSTDOUT:\n{}\nSTDERR:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let report = fs::read_to_string(target.join(".state/bootstrap-report.md"))
+        .expect("bootstrap report should be readable");
+    let caps_raw = fs::read_to_string(target.join(".github/workspace-capabilities.yaml"))
+        .expect("workspace-capabilities should be readable");
+    let caps: Value = serde_yaml::from_str(&caps_raw).expect("failed to parse capabilities yaml");
+
+    let git_reported = report_value(&report, "Git").expect("bootstrap report missing Git line");
+    let markdownlint_reported = report_value(&report, "markdownlint")
+        .expect("bootstrap report missing markdownlint line");
+
+    assert_eq!(
+        git_reported == "available",
+        yaml_bool_at(&caps, &["capabilities", "git", "detected", "installed"])
+            .expect("capabilities.git.detected.installed missing"),
+        "bootstrap report Git status drifted from workspace-capabilities.yaml"
+    );
+    assert_eq!(
+        markdownlint_reported == "available",
+        yaml_bool_at(&caps, &["capabilities", "markdownlint", "detected", "installed"])
+            .expect("capabilities.markdownlint.detected.installed missing"),
+        "bootstrap report markdownlint status drifted from workspace-capabilities.yaml"
+    );
 }
 
 #[test]

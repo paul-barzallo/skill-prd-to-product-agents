@@ -94,7 +94,7 @@ If `prdtp-agents-functions-cli git pre-commit-validate` rejects a commit:
 - Check for invalid operational YAML in staged files.
 - Manual `git commit` is blocked by contract. Use `prdtp-agents-functions-cli git finalize` for supported commit creation.
 - Immutable governance edits can be staged during the controlled finalize/bootstrap path, but merge requires remote approval verified by `prdtp-agents-functions-cli validate pr-governance`.
-- If a PR touching immutable governance fails, confirm `github.immutable_governance.*` is configured, the required labels are present, and a listed reviewer has approved via GitHub review API.
+- If a PR touching immutable governance fails, confirm `github.immutable_governance.*` is configured, the required labels are present, the approval quorum is realistic for the listed reviewer set, and enough listed reviewers currently show `APPROVED` via the GitHub review API.
 
 ## State operations failure
 
